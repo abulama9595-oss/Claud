@@ -44,7 +44,7 @@ const BASE_INPUTS = {
   clinicRent: 1000, staffHousing: 200, marketing: 250, otherOpex: 500,
   insuranceCCHI: 200, malpracticePerDentist: 5000, utilitiesWaste: 150,
   levyPerMonth: 800, iqamaPerYear: 750,
-  exitMultiple: 6, maintenanceCapexPct: 4, zakatPct: 2.5, wacc: 12, minCashMonths: 1.5,
+  exitMultiple: 6, maintenanceCapexPct: 4, zakatPct: 2.5, wacc: 12, minCashMonths: 3,
   insuredPct: 30, rejectionPct: 0, insurerDelayMo: 4,
   rentTerms: "annual", // "annual" | "grace" | "semiannual"
   fitoutMonths: 6,
