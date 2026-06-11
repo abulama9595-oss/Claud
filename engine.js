@@ -159,6 +159,12 @@ function compute(inp) {
   const cumNI = years.reduce((a, y) => a + y.ni, 0);
   // representative Year-1 monthly operating cost, used to size the minimum-cash policy
   const monthlyOpex = (y1.fixedStaff + y1.lease + y1.mkt + y1.other + y1.insUtil + y1.foreign + y1.materials + y1.share) / 12;
+  // operating break-even revenue per chair/month: the revPerChair at which mature (Y5) operating profit BEFORE the dentist
+  // profit share = 0 — the clinic just covers its running costs (excl. share, capital, depreciation & finance). Above this a
+  // profit pool exists and dentists earn their share; use it as the per-chair threshold each dentist must clear before sharing.
+  const fcMature = y5.fixedStaff + y5.lease + y5.mkt + y5.other + y5.insUtil + y5.foreign;
+  const matMargin = 1 - (inp.insuredPct / 100) * (inp.rejectionPct / 100) - matSched[4] / 100; // revenue left after denials & materials
+  const opBreakEvenRev = (matMargin > 0 && inp.chairs > 0) ? (fcMature / matMargin) / (Math.pow(1 + inp.revenueGrowth / 100, 4) * 12 * inp.chairs) : null;
 
   // Pre-opening (fit-out, F months) + 24 operating months (Y1–Y2) cash engine.
   // Rent cheques follow the selected payment terms; the lease year runs from fit-out start (grace: from opening).
@@ -295,7 +301,7 @@ function compute(inp) {
   else { verdict = "MARGINAL"; vColor = C.neg; }
   const exitValue = inp.exitMultiple * y5.ebitda;
 
-  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual };
+  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev };
 }
 function computeIRR(cfs) {
   let lo = -0.95, hi = 5.0;

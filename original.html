@@ -693,6 +693,7 @@
                     <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.text }}>
                       {sens.beRev == null ? "—" : f0(sens.beRev)} <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>SAR'000/mo</span>
                     </div>
+                    <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 2 }}>Operating break-even (ex dentist share): <b style={{ fontFamily: MONO, color: C.text }}>{m.opBreakEvenRev == null ? "—" : f0(m.opBreakEvenRev)}</b> — the per-chair base each dentist shares above</div>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && inp.revPerChair > 0 && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 3 }}>
                       {sens.beRev == null ? "Profitable across the tested range" : `Current ${inp.revPerChair} → ${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion before the project destroys value`}
                     </div>
