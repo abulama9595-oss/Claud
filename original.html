@@ -145,8 +145,10 @@
           beRev = (lo + hi) / 2;
         }
         // lowest Y1 utilization the funding budget survives
+        // downside resilience: hold the capital actually raised fixed, then find the lowest Y1 utilization whose (deeper) cash trough still fits within it
         let minUtil = null;
-        for (let u = 0; u <= 100; u += 1) { if (compute({ ...inp, rampStart: u }).fundingOk) { minUtil = u; break; } }
+        const baseFunding = compute(inp).fundingBudget;
+        for (let u = 0; u <= 100; u += 1) { if (compute({ ...inp, rampStart: u }).peakNeed <= baseFunding) { minUtil = u; break; } }
         return { rows, beRev, minUtil };
       }, [inp]);
 
@@ -734,7 +736,7 @@
                       {sens.minUtil == null ? "> 100" : sens.minUtil}<span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>%</span>
                     </div>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.minUtil == null || inp.rampStart - sens.minUtil < 10 ? C.neg : C.pos, marginTop: 3 }}>
-                      {sens.minUtil == null ? "Funding budget is breached even at 100% — increase the WC reserve" : sens.minUtil > inp.rampStart ? `Already short at the planned ${inp.rampStart}% — reach ${sens.minUtil}% or increase the reserve` : `Current plan ${inp.rampStart}% → ${inp.rampStart - sens.minUtil} pts of slack before cash runs out`}
+                      {sens.minUtil == null ? "Trough exceeds the raise even at 100% utilisation" : sens.minUtil > inp.rampStart ? `Already short at the planned ${inp.rampStart}% — needs ${sens.minUtil}%+` : `Current plan ${inp.rampStart}% → ${inp.rampStart - sens.minUtil} pts of slack before the trough exhausts the raise`}
                     </div>
                   </div>
                 </div>
