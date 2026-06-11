@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dental Clinic · Financial Study — Choose a version</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --ink: #0E1A2B; --ink2: #15263B; --bone: #F1EDE4; --paper: #FBFAF6;
+      --brass: #B0823A; --brassLt: #D9B36A; --line: #DBD4C5; --lineDk: #27384E;
+      --pos: #2E7D63; --text: #1B2733; --sub: #64707C; --inv: #ECE4D3; --invSub: #9DAEC0;
+      --sans: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      --mono: 'SF Mono', 'SFMono-Regular', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+    }
+    body { background: var(--bone); font-family: var(--sans); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .wrap { max-width: 880px; width: 100%; }
+    .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--brass); font-weight: 700; margin-bottom: 6px; }
+    h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 6px; }
+    .lead { font-size: 14px; color: var(--sub); margin-bottom: 26px; max-width: 620px; line-height: 1.55; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+    .card { display: block; text-decoration: none; color: inherit; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 22px; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 10px 30px rgba(14,26,43,0.12); border-color: var(--brass); }
+    .card.new { border-top: 4px solid var(--brass); }
+    .card.old { border-top: 4px solid var(--lineDk); }
+    .tag { display: inline-block; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; padding: 3px 9px; border-radius: 20px; margin-bottom: 12px; }
+    .tag.new { background: var(--brass); color: var(--ink); }
+    .tag.old { background: var(--ink2); color: var(--inv); }
+    .card h2 { font-size: 19px; font-weight: 700; margin-bottom: 6px; }
+    .card p { font-size: 12.5px; color: var(--sub); line-height: 1.55; margin-bottom: 14px; }
+    .feats { list-style: none; }
+    .feats li { font-size: 12px; color: var(--text); padding: 3px 0 3px 18px; position: relative; }
+    .feats li::before { content: "·"; position: absolute; left: 4px; color: var(--brass); font-weight: 700; }
+    .go { margin-top: 14px; font-size: 12.5px; font-weight: 700; color: var(--brass); }
+    .foot { margin-top: 24px; font-size: 11.5px; color: var(--sub); display: flex; gap: 14px; flex-wrap: wrap; }
+    .badge { font-family: var(--mono); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="eyebrow">Dental Clinic · Riyadh — 10 Operatories</div>
+    <h1>Financial Feasibility Study</h1>
+    <p class="lead">Two presentations of the same model. The numbers are identical — same engine, same verdict (<span class="badge">STRONG</span>), same SAR&nbsp;8,180K capital requirement. Pick the layout you want to view or present.</p>
+
+    <div class="grid">
+      <a class="card new" href="redesign.html">
+        <span class="tag new">Redesigned</span>
+        <h2>Study layout</h2>
+        <p>Reads top-to-bottom like an investor document, while staying fully tunable.</p>
+        <ul class="feats">
+          <li>Executive summary with verdict rationale &amp; thesis</li>
+          <li>Section navigation + pinned live KPIs</li>
+          <li>Insight-first order (outputs &amp; sensitivity up top)</li>
+          <li>Print / PDF export with assumptions appendix</li>
+        </ul>
+        <div class="go">Open the redesigned version →</div>
+      </a>
+
+      <a class="card old" href="original.html">
+        <span class="tag old">Original</span>
+        <h2>Classic layout</h2>
+        <p>The earlier single-scroll workspace, preserved unchanged for comparison.</p>
+        <ul class="feats">
+          <li>8-metric header band</li>
+          <li>Controls first, then charts &amp; tables</li>
+          <li>Same financial engine &amp; results</li>
+          <li>No export view</li>
+        </ul>
+        <div class="go">Open the original version →</div>
+      </a>
+    </div>
+
+    <div class="foot">
+      <span>Both run the identical model — only the presentation differs.</span>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,1631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dental Clinic · Financial Model</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #F1EDE4; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .items-baseline { align-items: baseline; }
+    .items-start { align-items: flex-start; }
+    .justify-between { justify-content: space-between; }
+    .flex-wrap { flex-wrap: wrap; }
+    .grid { display: grid; }
+    input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
+    input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #DBD4C5; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; margin-top: -5px; background: var(--accent, #B0823A); cursor: pointer; }
+    html { scroll-behavior: smooth; }
+    .navlink { cursor: pointer; transition: color .15s; }
+    .navlink:hover { color: #D9B36A !important; }
+    .print-only { display: none; }
+    @media print {
+      @page { margin: 12mm; }
+      body { background: #fff !important; }
+      .no-print { display: none !important; }
+      input[type=range] { display: none !important; }
+      .print-only { display: block !important; }
+      .print-section { break-inside: avoid; }
+      .print-break { break-before: page; }
+      .sticky-bar { position: static !important; background: #fff !important; border-bottom: 1px solid #DBD4C5 !important; }
+      .sticky-bar * { color: #1B2733 !important; }
+      .app-shell { background: #fff !important; }
+      .study-shell { background: #fff !important; padding: 0 !important; }
+      .page { break-after: page; border: none !important; box-shadow: none !important; margin: 0 auto !important; border-radius: 0 !important; min-height: auto !important; padding: 6mm 2mm !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useMemo, useCallback } = React;
+    const { ComposedChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, ReferenceDot, PieChart, Pie, Legend } = window.Recharts;
+
+    /* ---- lucide icon stubs ---- */
+    const _icon = (paths) => ({ size=24, color='currentColor', strokeWidth=2, style }) =>
+      React.createElement('svg', { width:size, height:size, viewBox:'0 0 24 24', fill:'none', stroke:color, strokeWidth, strokeLinecap:'round', strokeLinejoin:'round', style },
+        ...paths.map((d,i) => React.createElement('path', { key:i, d })));
+
+    const Save = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+      </svg>
+    );
+    const Trash2 = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+      </svg>
+    );
+    const AlertTriangle = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+    );
+    const RotateCcw = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.95"/>
+      </svg>
+    );
+    const FolderOpen = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="2 10 22 10"/>
+      </svg>
+    );
+    const TrendingUp = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+      </svg>
+    );
+    const Info = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+      </svg>
+    );
+    const FileText = ({ size=24, color='currentColor', strokeWidth=2, style }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" style={style}>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+    );
+
+    /* ---------- palette & type ---------- */
+    const C = {
+      ink: "#0E1A2B", ink2: "#15263B", bone: "#F1EDE4", paper: "#FBFAF6",
+      brass: "#B0823A", brassLt: "#D9B36A", line: "#DBD4C5", lineDk: "#27384E",
+      pos: "#2E7D63", neg: "#B4452F", amber: "#B0823A",
+      text: "#1B2733", sub: "#64707C", inv: "#ECE4D3", invSub: "#9DAEC0",
+    };
+    const MONO = "'SF Mono','SFMono-Regular',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace";
+    const SANS = "Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+
+    /* ---------- format ---------- */
+    const f0 = (n) => { const r = Math.round(n); const s = Math.abs(r).toLocaleString("en-US"); return r < 0 ? `(${s})` : s; };
+    const pctf = (n, d = 0) => `${n.toFixed(d)}%`;
+
+    /* ---------- ramps & schedules ---------- */
+    const RAMPS = {
+      cautious: [0.30, 0.50, 0.70, 0.85, 1.00],
+      standard: [0.40, 0.62, 0.80, 0.92, 1.00],
+      fast:     [0.50, 0.72, 0.88, 0.96, 1.00],
+    };
+    const STAFF_RAMP = [0.65, 0.86, 1.00, 1.03, 1.07];
+    // marketing is front-loaded: new clinics spend most at opening (launch campaign, brand build), tapering to the mature run-rate
+    const MKT_RAMP   = [1.60, 1.30, 1.10, 1.00, 1.00];
+    const OTHER_RAMP = [0.60, 0.70, 0.825, 0.913, 1.00];
+    const LEASE_ESC  = [1.0, 1.018, 1.035, 1.059, 1.082];
+
+    const BASE_INPUTS = {
+      revPerChair: 160, chairs: 10, rampStart: 50, rampGrowth: 50, revenueGrowth: 0,
+      dentistCount: 10, dentistBase: 10000, profitShare: 35,
+      nursesPerChair: 1.5, chairsideSalary: 6000,
+      generalStaffCount: 4, generalStaffSalary: 5500, adminManagerSalary: 15000,
+      medicalSupportCount: 2, medicalSupportSalary: 5000, janitorCount: 3, janitorSalary: 900, driverCount: 1, driverSalary: 1500,
+      gosiPct: 11,
+      materialsPct: 13, materialsY1Premium: 0,
+      clinicRent: 1000, staffHousing: 200, marketing: 250, otherOpex: 500,
+      insuranceCCHI: 200, malpracticePerDentist: 5000, utilitiesWaste: 150,
+      levyPerMonth: 800, iqamaPerYear: 750,
+      exitMultiple: 6, maintenanceCapexPct: 4, zakatPct: 2.5, wacc: 12,
+      insuredPct: 30, rejectionPct: 0, insurerDelayMo: 4,
+      rentTerms: "annual", // "annual" | "grace" | "semiannual"
+      fitoutMonths: 6,
+      // CapEx breakdown (SAR'000)
+      capexFitout: 1000, capexChairs: 800, capexImaging: 700, capexIT: 200,
+      capexWorkingCapital: 2000, capexContingency: 700, capexFurniture: 300,
+      capexRecruitment: 400, capexLicensing: 50, capexCivilDefence: 50,
+      capexConsultants: 150, capexCSSD: 300, capexInventory: 250,
+    };
+    const CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexWorkingCapital","capexContingency","capexFurniture","capexRecruitment","capexLicensing","capexCivilDefence","capexConsultants","capexCSSD","capexInventory"];
+    // expatriate headcount is derived: chairside staff (rounded up) + medical support + janitors + drivers — all typically expat roles in KSA
+    const expatCount = (inp) => Math.ceil(inp.chairs * inp.nursesPerChair) + (inp.medicalSupportCount || 0) + (inp.janitorCount || 0) + (inp.driverCount || 0);
+    // annual cost (SAR'000) of the dedicated support roles, added to the fixed staff base
+    const supportStaffAnnual = (inp) => ((inp.medicalSupportCount * inp.medicalSupportSalary + inp.janitorCount * inp.janitorSalary + inp.driverCount * inp.driverSalary) * 12) / 1000;
+    // pre-opening expenses are derived from the same inputs the cash engine charges before opening day:
+    // first annual rent cheque + 2 months of Y1 staff onboarding (incl. GOSI & expat fees) + annual insurance premiums
+    const preOpeningCost = (inp) => {
+      const chairsideAnnual = (inp.chairs * inp.nursesPerChair * inp.chairsideSalary * 12) / 1000;
+      const dentistBaseAnnual = (inp.dentistCount * inp.dentistBase * 12) / 1000;
+      const generalStaffAnnual = ((inp.generalStaffCount * inp.generalStaffSalary + inp.adminManagerSalary) * 12) / 1000;
+      const fixedBase = (chairsideAnnual + dentistBaseAnnual + generalStaffAnnual + supportStaffAnnual(inp)) * (1 + inp.gosiPct / 100);
+      const perExpat = (inp.levyPerMonth * 12 + inp.iqamaPerYear) / 1000;
+      const y1StaffAnnual = fixedBase * STAFF_RAMP[0] + Math.round(expatCount(inp) * STAFF_RAMP[0]) * perExpat;
+      const prepaidIns = inp.insuranceCCHI * STAFF_RAMP[0] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
+      return (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp) + 2 * (y1StaffAnnual / 12) + prepaidIns;
+    };
+    // share of the first lease year paid before opening, by payment terms and fit-out length
+    const rentUpfrontFactor = (inp) => inp.rentTerms === "grace" ? 0 : inp.rentTerms === "semiannual" ? Math.ceil(Math.round(inp.fitoutMonths) / 6) * 0.5 : 1;
+    // input VAT (15%) on vatable CapEx — paid with invoices during fit-out, recovered against output VAT over M1–M6
+    const VAT_RATE = 0.15;
+    const VAT_CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexFurniture","capexCSSD","capexInventory","capexConsultants","capexRecruitment","capexCivilDefence"];
+    const vatOnCapex = (inp) => VAT_RATE * VAT_CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0);
+    const totalCapex = (inp) => CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0) + preOpeningCost(inp);
+    // hard (maintainable/depreciable) assets only — excludes working capital, contingency, soft costs, opening inventory
+    const HARD_CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexFurniture","capexCSSD","capexCivilDefence"];
+    const hardCapex = (inp) => HARD_CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0);
+    // straight-line useful lives (years): fit-out & fire systems 10, clinical equipment & furniture 7, IT 4
+    const DEP_LIVES = { capexFitout: 10, capexCivilDefence: 10, capexChairs: 7, capexImaging: 7, capexCSSD: 7, capexFurniture: 7, capexIT: 4 };
+    const annualDepreciation = (inp) => Object.entries(DEP_LIVES).reduce((s, [k, life]) => s + (inp[k] || 0) / life, 0);
+
+    /* ---------- engine ---------- */
+    function compute(inp) {
+      inp = { ...BASE_INPUTS, ...inp }; // saved scenarios may predate newer inputs
+      const rev = Array.from({length: 5}, (_, i) => Math.min(1.0, (inp.rampStart / 100) * Math.pow(1 + inp.rampGrowth / 100, i)));
+      // materials % steps down linearly from (mature + Y1 premium) in Y1 to mature in Y5
+      const matSched = Array.from({length: 5}, (_, i) => inp.materialsPct + inp.materialsY1Premium * (1 - i / 4));
+      const chairsideAnnual = (inp.chairs * inp.nursesPerChair * inp.chairsideSalary * 12) / 1000;
+      const dentistBaseAnnual = (inp.dentistCount * inp.dentistBase * 12) / 1000;
+      const generalStaffAnnual = ((inp.generalStaffCount * inp.generalStaffSalary + inp.adminManagerSalary) * 12) / 1000;
+      const fixedBase = (chairsideAnnual + dentistBaseAnnual + generalStaffAnnual + supportStaffAnnual(inp)) * (1 + inp.gosiPct / 100);
+      const perExpat = (inp.levyPerMonth * 12 + inp.iqamaPerYear) / 1000;
+
+      const years = [];
+      for (let i = 0; i < 5; i++) {
+        const revenue = inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, i) * 12 * inp.chairs * rev[i];
+        const denials = revenue * (inp.insuredPct / 100) * (inp.rejectionPct / 100);
+        const materials = (revenue * matSched[i]) / 100;
+        const gp = revenue - denials - materials;
+        const fixedStaff = fixedBase * STAFF_RAMP[i];
+        const lease = (inp.clinicRent + inp.staffHousing) * LEASE_ESC[i];
+        const mkt = inp.marketing * MKT_RAMP[i];
+        const other = inp.otherOpex * OTHER_RAMP[i];
+        // CCHI scales with headcount, malpractice with dentist count, utilities/waste with activity
+        const insUtil = inp.insuranceCCHI * STAFF_RAMP[i] + (inp.dentistCount * inp.malpracticePerDentist) / 1000 + inp.utilitiesWaste * OTHER_RAMP[i];
+        const expatsY = Math.round(expatCount(inp) * STAFF_RAMP[i]);
+        const foreign = expatsY * perExpat;
+        const preshare = gp - fixedStaff - lease - mkt - other - insUtil - foreign;
+        const share = preshare > 0 ? (preshare * inp.profitShare) / 100 : 0;
+        const ebitda = preshare - share;
+        const dep = annualDepreciation(inp);
+        const nibz = ebitda - dep;
+        const zakat = Math.max(0, nibz) * (inp.zakatPct / 100);
+        const ni = nibz - zakat;
+        const maintCapex = hardCapex(inp) * (inp.maintenanceCapexPct / 100);
+        const fcf = ni + dep - maintCapex;
+        years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: gp / revenue * 100, fixedStaff, lease, mkt, other, insUtil, foreign, preshare, share, ebitda, ebitdaPct: ebitda / revenue * 100, dep, zakat, ni, niPct: ni / revenue * 100, fcf });
+      }
+      const y5 = years[4];
+      const cumNI = years.reduce((a, y) => a + y.ni, 0);
+      const initialInvestment = totalCapex(inp);
+      let cum = 0, payback = null;
+      for (let i = 0; i < 5; i++) { const prev = cum; cum += years[i].fcf; if (cum >= initialInvestment && years[i].fcf > 0) { payback = i + (initialInvestment - prev) / years[i].fcf; break; } }
+      if (payback === null && y5.fcf > 0) payback = 5 + (initialInvestment - cum) / y5.fcf;
+      const cfs = [-initialInvestment];
+      for (let i = 0; i < 5; i++) { let cf = years[i].fcf; if (i === 4) cf += inp.exitMultiple * y5.ebitda; cfs.push(cf); }
+      const irr = computeIRR(cfs);
+      const npv = cfs.reduce((a, cf, i) => a + cf / Math.pow(1 + inp.wacc / 100, i), 0);
+      const perDentistMo = inp.dentistCount > 0 ? (dentistBaseAnnual + y5.share) / inp.dentistCount / 12 : 0;
+      const saudization = inp.dentistBase < 9000;
+      let verdict, vColor;
+      if (cumNI > 0 && y5.ebitdaPct >= 25 && payback && payback <= 4.5) { verdict = "STRONG"; vColor = C.pos; }
+      else if (cumNI > 0 && y5.ebitda > 0) { verdict = "VIABLE"; vColor = C.brass; }
+      else { verdict = "MARGINAL"; vColor = C.neg; }
+      const exitValue = inp.exitMultiple * y5.ebitda;
+
+      // Pre-opening (fit-out, F months) + 24 operating months (Y1–Y2) cash engine.
+      // Rent cheques follow the selected payment terms; the lease year runs from fit-out start (grace: from opening).
+      // Staff onboard 2 months before opening; annual insurance premiums paid upfront at P1, renewed at M12.
+      // Input VAT on CapEx is paid with invoices during fit-out and recovered against output VAT over M1–M6.
+      // Utilization ramps linearly inside each year so the 12-month average matches the annual ramp.
+      // Insured billings are collected with a payment delay, net of rejections; cash patients pay at visit.
+      const F = Math.max(1, Math.round(inp.fitoutMonths));
+      const vatCapex = vatOnCapex(inp);
+      const uEnd = Math.min(100, inp.rampStart * 1.5);
+      const uOpen = Math.max(0, 2 * inp.rampStart - uEnd);
+      const u2End = Math.max(0, Math.min(100, 2 * rev[1] * 100 - uEnd));
+      const y1 = years[0];
+      const sIns = inp.insuredPct / 100, rRej = inp.rejectionPct / 100, dLag = inp.insurerDelayMo;
+      const prepaid = (yi) => inp.insuranceCCHI * STAFF_RAMP[yi] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
+      const mStaff = (y1.fixedStaff + y1.foreign) / 12;
+      // gross billings per operating month (j = 0..23)
+      const Bop = Array.from({ length: 24 }, (_, j) => {
+        const util = j < 12 ? uOpen + (uEnd - uOpen) * j / 11 : uEnd + (u2End - uEnd) * (j - 12) / 11;
+        const yi = j < 12 ? 0 : 1;
+        return inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, yi) * inp.chairs * util / 100;
+      });
+      const Bat = (t) => { // billings interpolated at fractional month t (0 before operations)
+        if (t <= -1) return 0;
+        const f = Math.floor(t), fr = t - f;
+        const b0 = f < 0 ? 0 : Bop[Math.min(f, 23)];
+        const b1 = f + 1 < 0 ? 0 : Bop[Math.min(f + 1, 23)];
+        return b0 * (1 - fr) + b1 * fr;
+      };
+      // rent cheques due during operations: lease year runs from fit-out start, except under the fit-out grace option it runs from opening
+      const rentDue = (j) => {
+        if (inp.rentTerms === "grace") return j === 0 ? years[0].lease : j === 12 ? years[1].lease : 0;
+        if (inp.rentTerms === "semiannual") return (j + F) % 6 === 0 ? years[Math.min(2, Math.floor((j + F) / 12))].lease / 2 : 0;
+        return j === 12 - F ? years[1].lease : j === 24 - F ? years[2].lease : 0; // annual, upfront from fit-out start
+      };
+      const win = { coll: [0, 0], share: [0, 0], rent: [0, 0] }; // per-operating-year cash sums for the statement
+      const opCf = Array.from({ length: 24 }, (_, j) => {
+        const yi = j < 12 ? 0 : 1;
+        const yr = years[yi];
+        const B = Bop[j];
+        const fixedAcc = (yr.fixedStaff + yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12;
+        const mPre = B * (1 - sIns * rRej) - (B * matSched[yi]) / 100 - fixedAcc;
+        const mShare = mPre > 0 ? mPre * inp.profitShare / 100 : 0;
+        // share accrues on P&L profit; cash adds back accrued rent & insurance, shifts insured collections by the lag, pays cheques when due
+        const collAdj = sIns * (1 - rRej) * (Bat(j - dLag) - B);
+        const rDue = rentDue(j);
+        win.coll[yi] += (1 - sIns) * B + sIns * (1 - rRej) * Bat(j - dLag); // cash actually received this month
+        win.share[yi] += mShare;
+        win.rent[yi] += rDue;
+        let cf = mPre - mShare + yr.lease / 12 + prepaid(yi) / 12 + collAdj;
+        cf -= rDue;                          // rent cheques per payment terms
+        if (j === 11) cf -= prepaid(1);      // insurance renewal (M12)
+        if (j < 6) cf += vatCapex / 6;       // input VAT on CapEx recovered against output VAT
+        return cf;
+      });
+      const monthly = [], monthlyOp = [];
+      const winMin = [0, 0, 0]; // lowest cumulative cash point within pre-opening, Y1, Y2
+      let cumCash = 0, trough = 0, troughLabel = "", cumOp = 0;
+      for (let mn = -F; mn < 24; mn++) {
+        let mCf;
+        if (mn < 0) {
+          mCf = -vatCapex / F;                  // input VAT paid with fit-out & equipment invoices
+          if (inp.rentTerms === "semiannual") { if ((mn + F) % 6 === 0) mCf -= years[0].lease / 2; } // half-year instalments from fit-out start
+          else if (inp.rentTerms !== "grace") { if (mn === -F) mCf -= years[0].lease; }              // full first-year cheque at fit-out start
+          if (mn >= -2) mCf -= mStaff;          // staff onboarding & training
+          if (mn === -1) mCf -= prepaid(0);     // annual CCHI + malpractice premiums upfront
+        } else {
+          mCf = opCf[mn];
+        }
+        const label = mn < 0 ? `P${-mn}` : `M${mn + 1}`;
+        cumCash += mCf;
+        const wIdx = mn < 0 ? 0 : mn < 12 ? 1 : 2;
+        if (cumCash < winMin[wIdx]) winMin[wIdx] = cumCash;
+        if (cumCash < trough) { trough = cumCash; troughLabel = label; }
+        monthly.push({ month: label, "Net cash": Math.round(mCf), "Cumulative": Math.round(cumCash) });
+        if (mn >= 0) { cumOp += mCf; monthlyOp.push({ month: label, "Net cash": Math.round(mCf), "Cumulative": Math.round(cumOp) }); }
+      }
+      const peakNeed = Math.max(0, -trough);
+      const fundingBudget = inp.capexWorkingCapital + preOpeningCost(inp); // derived pre-opening expenses + WC reserve fund the trough
+      const fundingOk = fundingBudget >= peakNeed;
+
+      // Cash flow statement for launch + first two operating years (direct method, ties exactly to the funding-view curve)
+      const cfPreOpen = preOpeningCost(inp);
+      const utilCash = (yi) => inp.utilitiesWaste * OTHER_RAMP[yi]; // utilities are the monthly-paid slice of insUtil; premiums are paid annually upfront
+      const net1 = opCf.slice(0, 12).reduce((a, v) => a + v, 0);
+      const net2 = opCf.slice(12).reduce((a, v) => a + v, 0);
+      const preStaff = 2 * (years[0].fixedStaff / 12);
+      const preForeign = 2 * (years[0].foreign / 12);
+      const preRent = years[0].lease * rentUpfrontFactor(inp);
+      const cashflow = [
+        ["Cash receipts", null, "section"],
+        ["Patient & insurer collections", [null, win.coll[0], win.coll[1]], "row"],
+        ["VAT recovered on CapEx (M1–M6)", [null, vatCapex, null], "row"],
+        ["Cash payments", null, "section"],
+        ["Rent cheques (per payment terms)", [-preRent, -win.rent[0], -win.rent[1]], "row"],
+        ["Staff & payroll (incl. GOSI)", [-preStaff, -years[0].fixedStaff, -years[1].fixedStaff], "row"],
+        ["Dentist profit share", [null, -win.share[0], -win.share[1]], "row"],
+        ["Materials & lab", [null, -years[0].materials, -years[1].materials], "row"],
+        ["Insurance premiums (CCHI & malpractice)", [-prepaid(0), -prepaid(1), null], "row"],
+        ["VAT on CapEx (15%, paid with invoices)", [-vatCapex, null, null], "row"],
+        ["Marketing", [null, -years[0].mkt, -years[1].mkt], "row"],
+        ["Utilities & medical waste", [null, -utilCash(0), -utilCash(1)], "row"],
+        ["Other OpEx", [null, -years[0].other, -years[1].other], "row"],
+        ["Foreign-labour fees (levy & iqama)", [-preForeign, -years[0].foreign, -years[1].foreign], "row"],
+        ["Net operating cash flow", [-cfPreOpen - vatCapex, net1, net2], "subtotal"],
+        ["Cumulative cash position", [-cfPreOpen - vatCapex, -cfPreOpen - vatCapex + net1, -cfPreOpen - vatCapex + net1 + net2], "total"],
+        ["Lowest cash point in period", winMin, "total"],
+      ];
+
+      return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow };
+    }
+    function computeIRR(cfs) {
+      let lo = -0.95, hi = 5.0;
+      const npv = (r) => cfs.reduce((a, cf, i) => a + cf / Math.pow(1 + r, i), 0);
+      if (npv(lo) * npv(hi) > 0) return null;
+      let mid = 0;
+      for (let k = 0; k < 200; k++) { mid = (lo + hi) / 2; if (npv(mid) > 0) lo = mid; else hi = mid; }
+      return mid;
+    }
+
+    /* ---------- small components ---------- */
+    function Slider({ label, value, min, max, step, unit, onChange, hint, danger }) {
+      return (
+        <div style={{ marginBottom: 14 }}>
+          <div className="flex items-baseline justify-between" style={{ marginBottom: 4 }}>
+            <label style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, fontWeight: 500 }}>{label}</label>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 600, color: danger ? C.neg : C.ink, letterSpacing: "-0.02em" }}>
+              {typeof value === "number" && value % 1 !== 0 ? value.toFixed(2) : value.toLocaleString("en-US")}<span style={{ color: C.sub, fontWeight: 400, marginLeft: 3 }}>{unit}</span>
+            </span>
+          </div>
+          <input type="range" min={min} max={max} step={step} value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value))}
+            style={{ width: "100%", '--accent': danger ? C.neg : C.brass, height: 4, cursor: "pointer" }} />
+          {hint && <div style={{ fontFamily: SANS, fontSize: 11, color: danger ? C.neg : C.sub, marginTop: 3 }}>{hint}</div>}
+        </div>
+      );
+    }
+    function Card({ title, n, children }) {
+      return (
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 18px" }}>
+          <div className="flex items-center" style={{ gap: 8, marginBottom: 14 }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: C.brass, fontWeight: 700 }}>{n}</span>
+            <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>{title}</h3>
+          </div>
+          {children}
+        </div>
+      );
+    }
+    function Chip({ label, value, sub, color }) {
+      return (
+        <div style={{ flex: "1 1 130px", minWidth: 120, padding: "10px 14px", borderLeft: `2px solid ${color || C.brass}` }}>
+          <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.invSub, marginBottom: 4 }}>{label}</div>
+          <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 600, color: color || C.inv, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+          {sub && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.invSub, marginTop: 3 }}>{sub}</div>}
+        </div>
+      );
+    }
+
+    const th = { padding: "9px 14px", textAlign: "right", fontSize: 11, fontWeight: 700, color: "#fff", background: "#15263B", letterSpacing: "0.04em", fontFamily: SANS };
+    const td = { padding: "6px 14px", textAlign: "right", borderBottom: "1px solid #ECE7DA", letterSpacing: "-0.02em", whiteSpace: "nowrap" };
+    const iconBtn = { background: "transparent", border: "none", cursor: "pointer", padding: 3, display: "flex", alignItems: "center", borderRadius: 5 };
+    function btn(bg, color, border) {
+      return { display: "inline-flex", alignItems: "center", gap: 6, background: bg, color, border: `1px solid ${border || bg}`, borderRadius: 7, padding: "8px 13px", fontFamily: SANS, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" };
+    }
+
+    /* ---------- presentation components ---------- */
+    function SectionHeader({ eyebrow, title, sub, meta }) {
+      return (
+        <div className="flex items-baseline justify-between" style={{ flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+          <div>
+            {eyebrow && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: C.brass, marginBottom: 4 }}>{eyebrow}</div>}
+            <h2 style={{ fontFamily: SANS, fontSize: 19, fontWeight: 700, color: C.text, letterSpacing: "-0.01em", margin: 0 }}>{title}</h2>
+            {sub && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, maxWidth: 760 }}>{sub}</div>}
+          </div>
+          {meta && <div style={{ textAlign: "right" }}>{meta}</div>}
+        </div>
+      );
+    }
+    function KpiCard({ label, value, sub, accent, flag, flagColor }) {
+      return (
+        <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: `3px solid ${accent || C.brass}`, borderRadius: 9, padding: "13px 15px" }}>
+          <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub, marginBottom: 5 }}>{label}</div>
+          <div style={{ fontFamily: MONO, fontSize: 25, fontWeight: 700, color: accent || C.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+          {sub && <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 5 }}>{sub}</div>}
+          {flag && <div style={{ fontFamily: SANS, fontSize: 11, fontWeight: 600, color: flagColor || C.pos, marginTop: 3 }}>{flag}</div>}
+        </div>
+      );
+    }
+    const NAV_SECTIONS = [
+      ["summary", "Summary"], ["outputs", "Key Outputs"], ["assumptions", "Assumptions"],
+      ["funding", "Investment & Cash"], ["financials", "Financials"],
+    ];
+
+    /* ---------- executive feasibility study document ---------- */
+    // Big-4-style advisory report, generated live from the model state. Market figures are
+    // research-based (sources in Appendix); all financials are pulled from compute()/budget/sens.
+    function StudyDocument({ inp, m, budget, sens, topRisk, chartData, budgetPie, pieColors, onClose }) {
+      const TOTAL_PAGES = 10;
+      const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      const F = inp.fitoutMonths;
+      const visitsDay = inp.revPerChair * 1000 / 500 / 26;
+      const visitsYear = Math.round(inp.chairs * visitsDay * 26 * 12);
+      const expat = expatCount(inp);
+      const staffTotal = inp.dentistCount + Math.ceil(inp.chairs * inp.nursesPerChair) + inp.medicalSupportCount + inp.janitorCount + inp.driverCount + inp.generalStaffCount + 1;
+      const saudiPct = staffTotal > 0 ? Math.max(0, Math.round(100 * (staffTotal - expat) / staffTotal)) : 0;
+      const selfFund = (m.monthly.find(d => d.month.startsWith("M") && d["Cumulative"] >= 0) || {}).month;
+      const cushion = sens.beRev != null && inp.revPerChair > 0 ? Math.round(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair) : null;
+      const rampY2 = Math.min(100, inp.rampStart * (1 + inp.rampGrowth / 100));
+      const mktData = [{ y: "2022", v: 287 }, { y: "2024", v: 334 }, { y: "2026", v: 389 }, { y: "2028", v: 452 }, { y: "2030", v: 490 }];
+
+      const page = { background: "#FFFFFF", border: `1px solid ${C.line}`, borderRadius: 6, maxWidth: 880, margin: "0 auto 26px", padding: "48px 56px 30px", boxShadow: "0 2px 16px rgba(14,26,43,0.07)", fontFamily: SANS, color: C.text, minHeight: 980, display: "flex", flexDirection: "column" };
+      const secT = { fontFamily: SANS, fontSize: 17.5, fontWeight: 700, letterSpacing: "-0.01em", borderBottom: `2px solid ${C.brass}`, paddingBottom: 7, margin: "0 0 16px" };
+      const subT = { fontFamily: SANS, fontSize: 12.5, fontWeight: 700, color: C.text, margin: "14px 0 6px" };
+      const para = { fontSize: 12.3, lineHeight: 1.75, color: C.text, margin: "0 0 10px", textAlign: "justify" };
+      const bull = { fontSize: 12.3, lineHeight: 1.7, color: C.text, margin: "0 0 5px 16px" };
+      const tTh = { padding: "7px 10px", textAlign: "right", fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "#fff", background: C.ink2 };
+      const tTd = { padding: "6px 10px", textAlign: "right", fontFamily: MONO, fontSize: 11.8, borderBottom: `1px solid ${C.line}`, whiteSpace: "nowrap" };
+      const tLb = { ...tTd, textAlign: "left", fontFamily: SANS };
+      const note = { fontSize: 10.5, color: C.sub, lineHeight: 1.6, marginTop: 8 };
+
+      function Pg({ n, children }) {
+        return (
+          <div className="page print-section" style={page}>
+            <div style={{ flex: 1 }}>{children}</div>
+            <div className="flex justify-between" style={{ borderTop: `1px solid ${C.line}`, marginTop: 26, paddingTop: 8, fontFamily: SANS, fontSize: 9.5, color: C.sub, letterSpacing: "0.06em" }}>
+              <span>PRIVATE &amp; CONFIDENTIAL · DENTAL CLINIC FEASIBILITY STUDY — RIYADH</span>
+              <span>PAGE {n} OF {TOTAL_PAGES}</span>
+            </div>
+          </div>
+        );
+      }
+      function Metric({ k, v, s }) {
+        return (
+          <div style={{ flex: "1 1 150px", border: `1px solid ${C.line}`, borderTop: `3px solid ${C.brass}`, borderRadius: 6, padding: "10px 13px" }}>
+            <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sub }}>{k}</div>
+            <div style={{ fontFamily: MONO, fontSize: 19, fontWeight: 700, color: C.text, marginTop: 3 }}>{v}</div>
+            {s && <div style={{ fontFamily: SANS, fontSize: 9.5, color: C.sub, marginTop: 2 }}>{s}</div>}
+          </div>
+        );
+      }
+
+      return (
+        <div className="study-shell" style={{ background: C.bone, minHeight: "100vh", padding: "70px 18px 40px" }}>
+          <div className="no-print" style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 40, background: C.ink, borderBottom: `1px solid ${C.lineDk}` }}>
+            <div style={{ maxWidth: 880, margin: "0 auto", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <button onClick={onClose} style={btn("transparent", C.brassLt, C.lineDk)}><RotateCcw size={14} /> Back to model</button>
+              <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.invSub }}>Executive feasibility study · figures update live with the model</div>
+              <button onClick={() => window.print()} style={btn(C.brass, C.ink)}><Save size={14} /> Print / PDF</button>
+            </div>
+          </div>
+
+          {/* ——— Page 1 · Cover ——— */}
+          <Pg n={1}>
+            <div style={{ paddingTop: 60 }}>
+              <div style={{ fontFamily: SANS, fontSize: 11, letterSpacing: "0.22em", textTransform: "uppercase", color: C.brass, fontWeight: 700 }}>Private &amp; Confidential · Draft for Discussion</div>
+              <h1 style={{ fontFamily: SANS, fontSize: 31, fontWeight: 700, letterSpacing: "-0.015em", margin: "16px 0 8px", lineHeight: 1.25 }}>Feasibility Study:<br />Establishment of a {inp.chairs}-Chair Dental Clinic in Riyadh</h1>
+              <div style={{ fontFamily: SANS, fontSize: 14, color: C.sub, marginBottom: 34 }}>Kingdom of Saudi Arabia · North Riyadh growth corridor · {today}</div>
+              <div className="flex flex-wrap" style={{ gap: 12, marginBottom: 38 }}>
+                <Metric k="Verdict" v={m.verdict} />
+                <Metric k="Capital required" v={`SAR ${f0(budget.totalRequired)}K`} s="all-in to self-funding" />
+                <Metric k="5-year IRR" v={m.irr == null ? "n/a" : pctf(m.irr * 100)} s={`incl. exit at ${inp.exitMultiple}× EBITDA`} />
+                <Metric k="NPV" v={`SAR ${f0(m.npv)}K`} s={`@ ${inp.wacc}% WACC`} />
+              </div>
+              <div style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 8 }}>Contents</div>
+              {["Executive Summary", "Market & Industry Analysis", "Location Assessment", "Business Model & Operating Plan", "Financial Projections", "Capital Requirements & Funding", "Risk Assessment & Sensitivity", "Implementation Roadmap", "Conclusion & Appendices"].map((s, i) => (
+                <div key={s} className="flex justify-between" style={{ fontFamily: SANS, fontSize: 12, color: C.text, padding: "4px 0", borderBottom: `1px dotted ${C.line}`, maxWidth: 460 }}>
+                  <span>{i + 1}.&nbsp;&nbsp;{s}</span><span style={{ fontFamily: MONO, color: C.sub }}>{i + 2}</span>
+                </div>
+              ))}
+              <div style={{ ...note, marginTop: 30 }}>This document is generated directly from the interactive financial model; every figure reflects the assumption set in force at the time of viewing. It follows the structure of an executive advisory feasibility report and is intended for preliminary investment discussion, not as a substitute for site-level due diligence, legal, tax or regulatory advice.</div>
+            </div>
+          </Pg>
+
+          {/* ——— Page 2 · Executive Summary ——— */}
+          <Pg n={2}>
+            <h2 style={secT}>1. Executive Summary</h2>
+            <p style={para}>This study assesses the commercial and financial feasibility of establishing a {inp.chairs}-operatory private dental clinic in the northern growth corridor of Riyadh, Kingdom of Saudi Arabia. The assessment integrates a market review, a location screening, a five-year financial model with monthly cash simulation of the launch period, and a quantified risk analysis. All figures are stated in SAR '000 unless noted otherwise.</p>
+            <p style={para}>The clinic requires total funding of <b>SAR {f0(budget.totalRequired)}K</b>, comprising SAR {f0(budget.capexInvest)}K of capital expenditure, SAR {f0(budget.preOpen + budget.vat)}K of pre-opening cash (including recoverable VAT), and SAR {f0(budget.opShortfall)}K of post-opening working capital consumed before the operation becomes self-funding{selfFund ? ` (achieved in ${selfFund})` : ""}. At a planned revenue of SAR {inp.revPerChair}K per chair per month — equivalent to {visitsDay.toFixed(1)} patient visits per chair per day at an average ticket of SAR 500 — the clinic matures to revenue of SAR {f0(m.y5.revenue)}K with an EBITDA margin of {pctf(m.y5.ebitdaPct)} by Year 5, {m.y5.ebitdaPct >= 25 ? "within or above" : "below"} the 25–30% range observed for well-run Saudi dental groups.</p>
+            <p style={para}>On these assumptions the project returns a five-year IRR of <b>{m.irr == null ? "n/a" : pctf(m.irr * 100)}</b> (including a terminal sale at {inp.exitMultiple}× Year-5 EBITDA) and a net present value of <b>SAR {f0(m.npv)}K</b> at a {inp.wacc}% discount rate, with capital payback in {m.payback ? m.payback.toFixed(1) : "—"} years on free cash flow. Cumulative net income over the five-year horizon is SAR {f0(m.cumNI)}K after Zakat. The funding plan {m.fundingOk ? `covers the peak cash requirement of SAR ${f0(m.peakNeed)}K (${m.troughLabel}) with headroom of SAR ${f0(m.fundingBudget - m.peakNeed)}K` : `is short of the peak cash requirement of SAR ${f0(m.peakNeed)}K (${m.troughLabel}) by SAR ${f0(m.peakNeed - m.fundingBudget)}K`}.</p>
+            <div style={subT}>Key indicators</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+              <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Indicator</th><th style={tTh}>Value</th><th style={{ ...tTh, textAlign: "left" }}>Indicator</th><th style={tTh}>Value</th></tr></thead>
+              <tbody>
+                <tr><td style={tLb}>Capital required (all-in)</td><td style={tTd}>{f0(budget.totalRequired)}</td><td style={tLb}>Year-5 revenue</td><td style={tTd}>{f0(m.y5.revenue)}</td></tr>
+                <tr><td style={tLb}>Funded budget · buffer</td><td style={tTd}>{f0(budget.totalBudget)} · {budget.buffer >= 0 ? "+" : "−"}{f0(Math.abs(budget.buffer))}</td><td style={tLb}>Year-5 EBITDA (margin)</td><td style={tTd}>{f0(m.y5.ebitda)} ({pctf(m.y5.ebitdaPct)})</td></tr>
+                <tr><td style={tLb}>5-year IRR (incl. exit)</td><td style={tTd}>{m.irr == null ? "n/a" : pctf(m.irr * 100)}</td><td style={tLb}>Year-5 net income</td><td style={tTd}>{f0(m.y5.ni)}</td></tr>
+                <tr><td style={tLb}>NPV @ {inp.wacc}% WACC</td><td style={tTd}>{f0(m.npv)}</td><td style={tLb}>Cumulative net income Y1–Y5</td><td style={tTd}>{f0(m.cumNI)}</td></tr>
+                <tr><td style={tLb}>Payback (free cash flow)</td><td style={tTd}>{m.payback ? m.payback.toFixed(1) + " yrs" : "—"}</td><td style={tLb}>Exit value ({inp.exitMultiple}× Y5 EBITDA)</td><td style={tTd}>{f0(m.exitValue)}</td></tr>
+                <tr><td style={tLb}>Peak funding need</td><td style={tTd}>{f0(m.peakNeed)} ({m.troughLabel})</td><td style={tLb}>Break-even revenue / chair</td><td style={tTd}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}</td></tr>
+              </tbody>
+            </table>
+            <div style={subT}>Recommendation</div>
+            <p style={para}>{m.verdict === "STRONG"
+              ? `The project is assessed as financially attractive. We recommend proceeding to site-level due diligence and lease negotiation, conditional on (i) third-party validation of the SAR ${inp.revPerChair}K per-chair revenue assumption — the single largest value driver, with NPV moving SAR ${f0(Math.abs(topRisk[2] - topRisk[1]))}K across a ±20% range — (ii) securing the full SAR ${f0(budget.totalRequired)}K funding envelope before committing to the lease, and (iii) early initiation of insurer empanelment and SCFHS credentialing to protect the opening date.`
+              : m.verdict === "VIABLE"
+              ? `The project is assessed as viable but with limited margin for error. We recommend strengthening the funding buffer and re-testing the revenue assumption with primary market evidence before committing capital.`
+              : `On the current assumption set the project does not meet investment thresholds. We recommend revisiting the revenue, capacity and cost structure before proceeding.`}</p>
+          </Pg>
+
+          {/* ——— Page 3 · Market & Industry ——— */}
+          <Pg n={3}>
+            <h2 style={secT}>2. Market &amp; Industry Analysis</h2>
+            <div style={subT}>2.1 Macro and policy environment</div>
+            <p style={para}>Saudi Arabia's Vision 2030 Health Sector Transformation Program is re-shaping healthcare delivery, with a stated objective of raising the private sector's share of healthcare provision to approximately 65% by 2030. The privately insured base reached roughly 13 million beneficiaries under the Council of Health Insurance's mandatory employment-linked scheme, underpinning private outpatient demand. Riyadh is the principal beneficiary of this expansion: the city holds about 7.5 million residents, the wider province about 9 million (≈27% of the Kingdom), with official projections of 12.5 million by 2040, while the capital's bed density of ~1.7 per 1,000 population remains below the national (1.9) and global (2.9) averages — evidence of structural healthcare under-supply relative to population growth.</p>
+            <div style={subT}>2.2 Dental services market</div>
+            <p style={para}>Independent estimates place the Saudi dental care market at approximately USD 287 million in 2022, growing toward USD ~490 million by 2030 (≈7.9% CAGR); broader definitions of dental clinic services put the 2030 figure higher still. The supply side is expanding but remains thin by developed-market standards: the Kingdom's dentist workforce reached ~25,970 practitioners in 2023 (7.7 per 10,000 population), of whom roughly 70% practise in the private sector, and the Saudization share of dentists rose from 40% to 54% between 2019 and 2023 — directly relevant to this project's staffing and quota compliance strategy.</p>
+            <div className="flex" style={{ gap: 22, alignItems: "flex-start", marginTop: 6 }}>
+              <div style={{ flex: "1 1 50%" }}>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>KSA dental care market · USD M</div>
+                <ResponsiveContainer width="100%" height={190}>
+                  <ComposedChart data={mktData} margin={{ top: 6, right: 6, left: -14, bottom: 0 }}>
+                    <CartesianGrid stroke={C.line} vertical={false} />
+                    <XAxis dataKey="y" tick={{ fontFamily: MONO, fontSize: 10.5, fill: C.sub }} axisLine={{ stroke: C.line }} tickLine={false} />
+                    <YAxis tick={{ fontFamily: MONO, fontSize: 10.5, fill: C.sub }} axisLine={false} tickLine={false} />
+                    <Bar dataKey="v" radius={[3, 3, 0, 0]} maxBarSize={34}>{mktData.map((d, i) => <Cell key={i} fill={i >= 3 ? C.brassLt : C.ink2} />)}</Bar>
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <div style={note}>2026–2030 extrapolated at ~7.9% CAGR (Insights10, 2022 base). Lighter bars = forecast.</div>
+              </div>
+              <div style={{ flex: "1 1 46%" }}>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>Demand cross-check vs model</div>
+                <div style={bull}>• Model requires <b>{visitsDay.toFixed(1)} visits/chair/day</b> at maturity (SAR 500 avg ticket) — ≈{f0(visitsYear)} visits/yr across {inp.chairs} chairs.</div>
+                <div style={bull}>• A 3 km North-Riyadh catchment of ~150–200k residents at typical utilisation of 0.5–1.0 dental visits per capita per year implies 75–200k addressable visits — the model captures a minority share.</div>
+                <div style={bull}>• {inp.insuredPct}% of revenue is assumed insured; the 13M-beneficiary CHI base and mandatory employer coverage support this mix in formal-employment districts.</div>
+                <div style={bull}>• Pricing benchmarked to mid-premium private positioning; no government (MOH) volume assumed.</div>
+              </div>
+            </div>
+            <div style={note}>Sources: Insights10 (2022); IndustryARC (2024); Council of Health Insurance announcements (2024–25); MOH Statistical Yearbook 2023 / PLOS One national workforce analysis (2023); US-Saudi Business Council healthcare sector review (2025); GASTAT / RCRC population statistics. Full list in Section 9.</div>
+          </Pg>
+
+          {/* ——— Page 4 · Location ——— */}
+          <Pg n={4}>
+            <h2 style={secT}>3. Location Assessment</h2>
+            <p style={para}>The recommended siting is the <b>Al Malqa–Hittin corridor of North Riyadh</b>, on or near the King Fahd Road / Northern Ring Road axis. The corridor combines the city's strongest household-income demographics, sustained residential expansion toward the north, daytime professional traffic from the King Abdullah Financial District (KAFD), and arterial accessibility — while spatial analyses of private dental facilities in Riyadh show clinic supply still concentrated in the older central districts, leaving the northern corridor comparatively under-served per resident.</p>
+            <svg viewBox="0 0 720 430" style={{ width: "100%", height: "auto", background: "#F6F1E7", borderRadius: 8, border: `1px solid ${C.line}` }}>
+              <path d="M150,355 C118,298 128,238 168,198 C198,158 258,118 328,103 C398,88 468,98 518,128 C568,158 598,208 603,263 C608,318 578,366 518,392 C448,420 228,420 150,355 Z" fill="#EDE5D3" stroke="#DBD4C5" strokeWidth="2" />
+              <path d="M205,135 C185,195 175,255 190,325" fill="none" stroke="#C2D0BC" strokeWidth="11" opacity="0.7" />
+              <ellipse cx="385" cy="262" rx="172" ry="118" fill="none" stroke="#9DAEC0" strokeWidth="2.5" />
+              <line x1="385" y1="112" x2="385" y2="402" stroke="#64707C" strokeWidth="3.5" />
+              <path d="M218,182 C298,148 475,148 555,182" fill="none" stroke="#64707C" strokeWidth="3" />
+              <line x1="188" y1="298" x2="598" y2="298" stroke="#64707C" strokeWidth="3" />
+              <text x="392" y="135" fontFamily={SANS} fontSize="9" fill="#64707C" transform="rotate(90 392 135)">King Fahd Rd</text>
+              <text x="455" y="158" fontFamily={SANS} fontSize="9" fill="#64707C">Northern Ring Rd</text>
+              <text x="540" y="292" fontFamily={SANS} fontSize="9" fill="#64707C">Makkah Rd</text>
+              <text x="208" y="142" fontFamily={SANS} fontSize="10.5" fill="#64707C" fontStyle="italic">Diriyah</text>
+              <text x="556" y="100" fontFamily={SANS} fontSize="10.5" fill="#64707C">✈ King Khalid Int'l</text>
+              <text x="402" y="222" fontFamily={SANS} fontSize="10.5" fill="#1B2733" fontWeight="600">KAFD</text>
+              <text x="398" y="262" fontFamily={SANS} fontSize="10.5" fill="#1B2733">Olaya CBD</text>
+              <text x="345" y="240" fontFamily={SANS} fontSize="10.5" fill="#1B2733">Al Nakheel</text>
+              <text x="430" y="152" fontFamily={SANS} fontSize="10.5" fill="#1B2733">Al Yasmin</text>
+              <text x="395" y="350" fontFamily={SANS} fontSize="10.5" fill="#64707C">Ad Dirah (old city)</text>
+              <circle cx="318" cy="170" r="48" fill="rgba(176,130,58,0.10)" stroke="#B0823A" strokeWidth="1.8" strokeDasharray="6 4" />
+              <circle cx="318" cy="170" r="7" fill="#B0823A" stroke="#FFFFFF" strokeWidth="2.5" />
+              <text x="246" y="150" fontFamily={SANS} fontSize="11.5" fill="#1B2733" fontWeight="700">Al Malqa</text>
+              <text x="330" y="196" fontFamily={SANS} fontSize="11.5" fill="#1B2733" fontWeight="700">Hittin</text>
+              <text x="252" y="120" fontFamily={SANS} fontSize="10" fill="#B0823A" fontWeight="700" letterSpacing="0.08em">PROPOSED SITE ★</text>
+              <g transform="translate(48,52)"><line x1="0" y1="14" x2="0" y2="-10" stroke="#64707C" strokeWidth="2" /><polygon points="0,-16 -5,-6 5,-6" fill="#64707C" /><text x="-4" y="30" fontFamily={SANS} fontSize="10" fill="#64707C">N</text></g>
+              <g transform="translate(34,330)">
+                <rect x="0" y="0" width="172" height="74" rx="6" fill="#FFFFFF" opacity="0.92" stroke="#DBD4C5" />
+                <circle cx="16" cy="17" r="5.5" fill="#B0823A" stroke="#fff" strokeWidth="2" /><text x="30" y="21" fontFamily={SANS} fontSize="10" fill="#1B2733">Proposed site (indicative)</text>
+                <circle cx="16" cy="37" r="6.5" fill="none" stroke="#B0823A" strokeWidth="1.6" strokeDasharray="4 3" /><text x="30" y="41" fontFamily={SANS} fontSize="10" fill="#1B2733">3 km primary catchment</text>
+                <line x1="9" y1="56" x2="23" y2="56" stroke="#64707C" strokeWidth="3" /><text x="30" y="60" fontFamily={SANS} fontSize="10" fill="#1B2733">Arterial roads</text>
+              </g>
+              <text x="700" y="420" textAnchor="end" fontFamily={SANS} fontSize="9.5" fill="#9A938A" fontStyle="italic">Schematic — not to scale</text>
+            </svg>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 14 }}>
+              <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Catchment criterion</th><th style={{ ...tTh, textAlign: "left" }}>Assessment (indicative)</th></tr></thead>
+              <tbody>
+                <tr><td style={tLb}>Primary catchment (3 km)</td><td style={tLb}>≈150–200k residents; affluent villa districts, young families &amp; professionals</td></tr>
+                <tr><td style={tLb}>Payor profile</td><td style={tLb}>High formal employment → strong CHI insurance penetration; supports the {inp.insuredPct}% insured-revenue mix</td></tr>
+                <tr><td style={tLb}>Accessibility</td><td style={tLb}>5–10 min drive via King Fahd Rd / Northern Ring Rd; retail-frontage visibility recommended</td></tr>
+                <tr><td style={tLb}>Competitive supply</td><td style={tLb}>Clinic density skewed to central districts (GIS studies); northern corridor relatively under-served per capita</td></tr>
+                <tr><td style={tLb}>Lease assumption</td><td style={tLb}>SAR {f0(inp.clinicRent)}K p.a. premises + SAR {f0(inp.staffHousing)}K staff housing; {inp.rentTerms === "annual" ? "annual cheque payable from fit-out" : inp.rentTerms === "grace" ? `${F}-month fit-out grace negotiated` : "semi-annual instalments"}</td></tr>
+              </tbody>
+            </table>
+            <div style={note}>A site-specific micro-market study (footfall, exact competitor mapping, signed LOI rent) is recommended before lease execution; the map above is schematic and indicative.</div>
+          </Pg>
+
+          {/* ——— Page 5 · Business Model ——— */}
+          <Pg n={5}>
+            <h2 style={secT}>4. Business Model &amp; Operating Plan</h2>
+            <p style={para}>The clinic operates {inp.chairs} operatories on a one-dentist-per-chair model ({inp.dentistCount} dentists), offering general and family dentistry with specialty services (orthodontics, prosthodontics, paediatric, implantology) under a single-shift, 26-day operating month. Dentist remuneration combines a base salary of SAR {f0(inp.dentistBase)}/month with a pooled profit share of {inp.profitShare}% of operating profit — aligning clinical earnings with clinic performance and limiting fixed-cost exposure during the ramp; mature dentist earnings equate to ≈SAR {m.perDentistMo.toFixed(1)}K/month.</p>
+            <div style={subT}>4.1 Organisation &amp; staffing ({staffTotal} FTE at maturity)</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
+              <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Role</th><th style={tTh}>Headcount</th><th style={tTh}>Avg salary (SAR/mo)</th><th style={{ ...tTh, textAlign: "left" }}>Notes</th></tr></thead>
+              <tbody>
+                <tr><td style={tLb}>Dentists</td><td style={tTd}>{inp.dentistCount}</td><td style={tTd}>{f0(inp.dentistBase)}</td><td style={tLb}>+ {inp.profitShare}% pooled profit share; ≥SAR 9,000 GOSI floor for Saudization</td></tr>
+                <tr><td style={tLb}>Chairside staff</td><td style={tTd}>{Math.ceil(inp.chairs * inp.nursesPerChair)}</td><td style={tTd}>{f0(inp.chairsideSalary)}</td><td style={tLb}>{inp.nursesPerChair}/chair — nurses &amp; assistants</td></tr>
+                <tr><td style={tLb}>Medical support (CSSD / X-ray)</td><td style={tTd}>{inp.medicalSupportCount}</td><td style={tTd}>{f0(inp.medicalSupportSalary)}</td><td style={tLb}>Sterilisation &amp; imaging technicians</td></tr>
+                <tr><td style={tLb}>Reception, billing &amp; admin</td><td style={tTd}>{inp.generalStaffCount} + 1</td><td style={tTd}>{f0(inp.generalStaffSalary)} / {f0(inp.adminManagerSalary)}</td><td style={tLb}>Incl. administration manager</td></tr>
+                <tr><td style={tLb}>Janitorial &amp; drivers</td><td style={tTd}>{inp.janitorCount + inp.driverCount}</td><td style={tTd}>{f0(inp.janitorSalary)} / {f0(inp.driverSalary)}</td><td style={tLb}>Hygiene &amp; logistics support</td></tr>
+              </tbody>
+            </table>
+            <div style={bull}>• Expatriate headcount (derived): <b>{expat}</b> — drives work-permit levies (SAR {inp.levyPerMonth}/mo) and iqama fees (SAR {f0(inp.iqamaPerYear)}/yr); indicative Saudization ≈{saudiPct}% of total FTE.</div>
+            <div style={bull}>• Payroll burden: GOSI &amp; benefits load of {inp.gosiPct}% on the fixed staff base; mandatory CCHI health insurance (SAR {f0(inp.insuranceCCHI)}K p.a.) and malpractice cover (SAR {f0(inp.malpracticePerDentist)}/dentist/yr).</div>
+            <div style={subT}>4.2 Revenue model &amp; payor mix</div>
+            <div style={bull}>• Capacity-led model: SAR {inp.revPerChair}K/chair/month at maturity = {visitsDay.toFixed(1)} visits/chair/day at SAR 500 average ticket ({visitsDay > 15 ? "above" : "within"} the ~15/day single-shift ceiling).</div>
+            <div style={bull}>• Utilisation ramp: {inp.rampStart}% (Y1) → {rampY2.toFixed(0)}% (Y2) → 100% by Y3; price escalation {inp.revenueGrowth}% p.a.</div>
+            <div style={bull}>• Payor mix: {inp.insuredPct}% insurer-billed ({inp.insurerDelayMo}-month collection lag, {inp.rejectionPct}% rejections modelled), balance self-pay at point of service.</div>
+            <div style={bull}>• Regulatory pathway: MOH/SEHA facility licence, Civil Defence approval, SFDA-compliant radiology, SCFHS credentialing of clinicians, CHI insurer empanelment from opening.</div>
+          </Pg>
+
+          {/* ——— Page 6 · Financial Projections ——— */}
+          <Pg n={6}>
+            <h2 style={secT}>5. Financial Projections (SAR '000)</h2>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 14 }}>
+              <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Line item</th>{m.years.map(y => <th key={y.year} style={tTh}>{y.year}</th>)}</tr></thead>
+              <tbody>
+                {[["Revenue", "revenue"], ["Gross profit", "gp"], ["EBITDA", "ebitda"], ["Net income (post-Zakat)", "ni"], ["Free cash flow", "fcf"]].map(([lb, k]) => (
+                  <tr key={k}><td style={tLb}>{lb}</td>{m.years.map(y => <td key={y.year} style={{ ...tTd, fontWeight: k === "ebitda" ? 700 : 400 }}>{f0(y[k])}</td>)}</tr>
+                ))}
+                <tr><td style={{ ...tLb, fontStyle: "italic", color: C.sub }}>EBITDA margin</td>{m.years.map(y => <td key={y.year} style={{ ...tTd, color: C.brass }}>{pctf(y.ebitdaPct)}</td>)}</tr>
+              </tbody>
+            </table>
+            <ResponsiveContainer width="100%" height={235}>
+              <ComposedChart data={chartData} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
+                <CartesianGrid stroke={C.line} vertical={false} />
+                <XAxis dataKey="year" tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} axisLine={{ stroke: C.line }} tickLine={false} />
+                <YAxis tick={{ fontFamily: MONO, fontSize: 10.5, fill: C.sub }} axisLine={false} tickLine={false} tickFormatter={(v) => (v / 1000).toFixed(0) + "M"} />
+                <Tooltip formatter={(v) => f0(v)} contentStyle={{ fontFamily: MONO, fontSize: 11.5, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <Bar dataKey="Revenue" radius={[3, 3, 0, 0]} maxBarSize={42}>{chartData.map((_, i) => <Cell key={i} fill={C.ink2} />)}</Bar>
+                <Line type="monotone" dataKey="EBITDA" stroke={C.brass} strokeWidth={2.5} dot={{ r: 3, fill: C.brass }} />
+                <Line type="monotone" dataKey="Net income" stroke={C.pos} strokeWidth={2} strokeDasharray="4 3" dot={{ r: 2.5, fill: C.pos }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+            <div style={subT}>Commentary</div>
+            <div style={bull}>• Year-1 revenue of SAR {f0(m.years[0].revenue)}K reflects the {inp.rampStart}% opening utilisation; maturity is reached in Year 3 at SAR {f0(m.years[2].revenue)}K.</div>
+            <div style={bull}>• Cost structure at maturity: materials &amp; lab {inp.materialsPct}% of revenue; premises SAR {f0(inp.clinicRent + inp.staffHousing)}K (≈{pctf(100 * (inp.clinicRent + inp.staffHousing) / Math.max(1, m.y5.revenue / 1.082))} of mature revenue, within the ≤10% norm); dentist compensation ≈{pctf(100 * (m.y5.fixedStaff * 0 + m.y5.share + inp.dentistCount * inp.dentistBase * 12 / 1000) / m.y5.revenue)} of revenue, production-linked.</div>
+            <div style={bull}>• Depreciation is derived from the CapEx schedule (SAR {f0(annualDepreciation(inp))}K p.a.); Zakat at {inp.zakatPct}% of net income (Saudi-owned entity); maintenance CapEx at {inp.maintenanceCapexPct}% of hard assets p.a. is deducted in free cash flow.</div>
+            <div style={bull}>• Claims denied of SAR {f0(m.y5.denials)}K p.a. at maturity reflects the {inp.rejectionPct}% rejection assumption on the insured book.</div>
+          </Pg>
+
+          {/* ——— Page 7 · Capital & Funding ——— */}
+          <Pg n={7}>
+            <h2 style={secT}>6. Capital Requirements &amp; Funding</h2>
+            <div className="flex" style={{ gap: 24, alignItems: "flex-start" }}>
+              <div style={{ flex: "1 1 52%" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Uses of funds</th><th style={tTh}>SAR '000</th></tr></thead>
+                  <tbody>
+                    <tr><td style={tLb}>Capital expenditure (build-out, equipment, soft costs)</td><td style={tTd}>{f0(budget.capexInvest)}</td></tr>
+                    <tr><td style={tLb}>Pre-opening cash ({F}-month fit-out: rent, onboarding, premiums)</td><td style={tTd}>{f0(budget.preOpen)}</td></tr>
+                    <tr><td style={tLb}>Input VAT on CapEx (recovered M1–M6)</td><td style={tTd}>{f0(budget.vat)}</td></tr>
+                    <tr><td style={tLb}>Post-opening operating shortfall (to {m.troughLabel})</td><td style={tTd}>{f0(budget.opShortfall)}</td></tr>
+                    <tr><td style={{ ...tLb, fontWeight: 700 }}>Total cash required</td><td style={{ ...tTd, fontWeight: 700 }}>{f0(budget.totalRequired)}</td></tr>
+                    <tr><td style={tLb}>Funded budget (incl. SAR {f0(inp.capexWorkingCapital)}K WC reserve)</td><td style={tTd}>{f0(budget.totalBudget)}</td></tr>
+                    <tr><td style={{ ...tLb, fontWeight: 700, color: budget.buffer >= 0 ? C.pos : C.neg }}>{budget.buffer >= 0 ? "Safety buffer" : "Funding shortfall"}</td><td style={{ ...tTd, fontWeight: 700, color: budget.buffer >= 0 ? C.pos : C.neg }}>{f0(Math.abs(budget.buffer))}</td></tr>
+                  </tbody>
+                </table>
+                <div style={note}>All-equity funding assumed; no debt or equipment leasing is modelled. The exit value is not part of the funding plan.</div>
+              </div>
+              <div style={{ flex: "1 1 44%" }}>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 2 }}>Funded budget allocation</div>
+                <ResponsiveContainer width="100%" height={215}>
+                  <PieChart>
+                    <Pie data={budgetPie} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={2} stroke="#FFFFFF" label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                      {budgetPie.map((d) => <Cell key={d.name} fill={pieColors[d.name]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v) => f0(v)} contentStyle={{ fontFamily: MONO, fontSize: 11, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div style={{ fontFamily: SANS, fontSize: 9.5, color: C.sub, lineHeight: 1.6 }}>{budgetPie.map(d => `${d.name} ${f0(d.value)}`).join(" · ")}</div>
+              </div>
+            </div>
+            <div style={subT}>Launch-period cash balance (P{F} → M24)</div>
+            <ResponsiveContainer width="100%" height={205}>
+              <ComposedChart data={m.monthly} margin={{ top: 12, right: 8, left: 4, bottom: 0 }}>
+                <defs><linearGradient id="cashFillDoc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.brass} stopOpacity={0.3} /><stop offset="100%" stopColor={C.brass} stopOpacity={0.04} /></linearGradient></defs>
+                <CartesianGrid stroke={C.line} vertical={false} />
+                <XAxis dataKey="month" tick={{ fontFamily: MONO, fontSize: 9.5, fill: C.sub }} axisLine={{ stroke: C.line }} tickLine={false} interval={2} />
+                <YAxis tick={{ fontFamily: MONO, fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} tickFormatter={(v) => f0(v)} />
+                <Tooltip formatter={(v) => f0(v)} contentStyle={{ fontFamily: MONO, fontSize: 11, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                <ReferenceLine y={0} stroke={C.sub} />
+                <ReferenceLine y={-m.fundingBudget} stroke={C.neg} strokeDasharray="5 4" label={{ value: `Funding budget (${f0(m.fundingBudget)})`, position: "insideBottomRight", fontFamily: SANS, fontSize: 9.5, fill: C.neg }} />
+                <Area type="monotone" dataKey="Cumulative" stroke={C.brass} strokeWidth={2.2} fill="url(#cashFillDoc)" baseValue={0} dot={false} />
+                {m.peakNeed > 0 && <ReferenceDot x={m.troughLabel} y={-m.peakNeed} r={4} fill={C.neg} stroke="#fff" strokeWidth={1.5} label={{ value: `trough ${f0(-m.peakNeed)}`, position: "bottom", fontFamily: MONO, fontSize: 9.5, fontWeight: 700, fill: C.neg }} />}
+              </ComposedChart>
+            </ResponsiveContainer>
+            <p style={{ ...para, marginTop: 8 }}>The deepest cash position of SAR {f0(m.peakNeed)}K occurs in {m.troughLabel}{inp.rentTerms === "annual" ? ", driven by the second annual rent cheque falling due before the demand ramp completes" : ""}. {m.fundingOk ? `The pre-opening and working-capital budget of SAR ${f0(m.fundingBudget)}K covers this requirement with SAR ${f0(m.fundingBudget - m.peakNeed)}K headroom` : `The allocated budget of SAR ${f0(m.fundingBudget)}K does not cover this requirement; an additional SAR ${f0(m.peakNeed - m.fundingBudget)}K should be reserved`}{selfFund ? `; the operation becomes durably cash-positive from ${selfFund}` : ""}.</p>
+          </Pg>
+
+          {/* ——— Page 8 · Risk ——— */}
+          <Pg n={8}>
+            <h2 style={secT}>7. Risk Assessment &amp; Sensitivity</h2>
+            <div style={subT}>7.1 One-way sensitivity (NPV, SAR '000, ±20% per driver)</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+              <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Driver</th><th style={tTh}>−20%</th><th style={tTh}>Base</th><th style={tTh}>+20%</th><th style={tTh}>Swing</th></tr></thead>
+              <tbody>
+                {sens.rows.map(([lb, lo, hi]) => (
+                  <tr key={lb}><td style={tLb}>{lb}</td><td style={{ ...tTd, color: lo < 0 ? C.neg : C.text }}>{f0(lo)}</td><td style={{ ...tTd, fontWeight: 700 }}>{f0(m.npv)}</td><td style={{ ...tTd, color: hi < 0 ? C.neg : C.text }}>{f0(hi)}</td><td style={tTd}>{f0(Math.abs(hi - lo))}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={bull}>• Break-even revenue: <b>{sens.beRev == null ? "below tested range" : `SAR ${f0(sens.beRev)}K/chair/month`}</b> (NPV = 0){cushion != null ? ` — a ${cushion}% cushion below plan` : ""}. Lowest Year-1 utilisation the funding survives: <b>{sens.minUtil == null ? ">100%" : sens.minUtil + "%"}</b> (plan: {inp.rampStart}%).</div>
+            <div style={subT}>7.2 Principal risks &amp; mitigations</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Risk</th><th style={tTh}>L / I</th><th style={{ ...tTh, textAlign: "left" }}>Mitigation (as modelled)</th></tr></thead>
+              <tbody>
+                {[
+                  ["Revenue underperformance vs plan", "M / H", `${cushion != null ? cushion + "% cushion to break-even" : "Break-even below tested range"}; marketing front-loaded at 1.6× in Y1; production-linked dentist pay flexes ${inp.profitShare}% of the cost base`],
+                  ["Clinical recruitment & Saudization", "M / H", `Dentist base ≥ SAR 9,000 GOSI floor; SAR ${f0(inp.capexRecruitment)}K recruitment budget; onboarding window P2–P1; rising Saudi dentist supply (54% of workforce, 2023)`],
+                  ["Licensing / fit-out delay", "M / M", `${F}-month schedule; SAR ${f0(inp.capexContingency)}K contingency; ${inp.rentTerms === "grace" ? "rent-free fit-out grace negotiated" : "early MOH/Civil Defence engagement to protect the opening date"}`],
+                  ["Insurer receivables & denials", "L–M / M", `${inp.insurerDelayMo}-month collection lag and ${inp.rejectionPct}% rejections explicitly modelled; SAR ${f0(inp.capexWorkingCapital)}K WC reserve sized to the ${m.troughLabel} trough`],
+                  ["Competitive intensity (North Riyadh)", "M / M", "Differentiated multi-specialty offer; insurer network contracts from M1; corporate accounts via KAFD proximity"],
+                  ["Cost escalation (rent, salaries)", "L / M", "Lease escalation of up to 8.2% over 5 years and 3–7% staff drift embedded in projections"],
+                ].map(([r, li, mit]) => (
+                  <tr key={r}><td style={tLb}>{r}</td><td style={{ ...tTd, fontFamily: SANS }}>{li}</td><td style={{ ...tLb, fontSize: 11 }}>{mit}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={note}>L / I = indicative likelihood / impact. The dominant exposure is {topRisk[0].toLowerCase()} — the widest NPV swing in §7.1 — and should be the primary focus of pre-investment validation.</div>
+          </Pg>
+
+          {/* ——— Page 9 · Roadmap ——— */}
+          <Pg n={9}>
+            <h2 style={secT}>8. Implementation Roadmap</h2>
+            <div className="flex" style={{ gap: 4, margin: "16px 0 6px" }}>
+              {[
+                [`P${F}–P3`, "Licensing, design & fit-out", C.ink2, 30],
+                ["P2–P1", "Staff onboarding & credentialing", C.lineDk, 14],
+                ["M1", "Opening", C.brass, 8],
+                ["M1–M12", `Ramp ${inp.rampStart}%→${rampY2.toFixed(0)}%`, C.brassLt, 26],
+                ["Y3–Y5", "Maturity → exit window", C.pos, 22],
+              ].map(([t, lb, col, w]) => (
+                <div key={t} style={{ flex: `0 0 ${w}%`, background: col, borderRadius: 5, padding: "8px 8px 7px", color: "#fff" }}>
+                  <div style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700 }}>{t}</div>
+                  <div style={{ fontFamily: SANS, fontSize: 9.5, opacity: 0.9, marginTop: 2 }}>{lb}</div>
+                </div>
+              ))}
+            </div>
+            <div style={subT}>Key milestones</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Milestone</th><th style={tTh}>Timing</th><th style={{ ...tTh, textAlign: "left" }}>Cash / commercial significance</th></tr></thead>
+              <tbody>
+                <tr><td style={tLb}>CR, MISA &amp; SEHA licence applications; lease signature</td><td style={tTd}>P{F}</td><td style={tLb}>{inp.rentTerms === "grace" ? "Fit-out grace period begins" : `First rent cheque SAR ${f0((inp.clinicRent + inp.staffHousing) * rentUpfrontFactor(inp))}K`}; VAT outlays begin</td></tr>
+                <tr><td style={tLb}>Fit-out complete; Civil Defence &amp; MOH inspection</td><td style={tTd}>P2–P1</td><td style={tLb}>Staff onboarding (SAR {f0(budget.staffOnboard)}K); insurance premiums (SAR {f0(budget.insPrem)}K)</td></tr>
+                <tr><td style={tLb}>Soft opening; insurer empanelment under way</td><td style={tTd}>M1</td><td style={tLb}>{inp.rentTerms === "grace" ? `Annual rent cheque SAR ${f0(inp.clinicRent + inp.staffHousing)}K falls due` : "Revenue ramp begins"}; VAT recovery M1–M6</td></tr>
+                <tr><td style={tLb}>Peak funding requirement</td><td style={tTd}>{m.troughLabel}</td><td style={tLb}>SAR {f0(m.peakNeed)}K — deepest cash point; reserve must be in place</td></tr>
+                <tr><td style={tLb}>Durable cash-positive position</td><td style={tTd}>{selfFund || "post-M24"}</td><td style={tLb}>Cumulative cash recovers above zero; reserve released</td></tr>
+                <tr><td style={tLb}>Mature utilisation; audited track record</td><td style={tTd}>Y3</td><td style={tLb}>EBITDA SAR {f0(m.years[2].ebitda)}K run-rate established</td></tr>
+                <tr><td style={tLb}>Exit / refinancing window</td><td style={tTd}>Y5</td><td style={tLb}>Indicative value SAR {f0(m.exitValue)}K at {inp.exitMultiple}× EBITDA</td></tr>
+              </tbody>
+            </table>
+            <div style={note}>The critical path is regulatory (MOH/SEHA licence, Civil Defence, SFDA radiology approval and SCFHS credentialing, including DataFlow verification of 2–4 months per clinician) — these should be initiated at lease signature, not at fit-out completion.</div>
+          </Pg>
+
+          {/* ——— Page 10 · Conclusion & Appendix ——— */}
+          <Pg n={10}>
+            <h2 style={secT}>9. Conclusion &amp; Appendices</h2>
+            <p style={para}>{m.verdict === "STRONG"
+              ? `The proposed ${inp.chairs}-chair clinic presents a financially compelling case: a SAR ${f0(budget.totalRequired)}K total capital requirement generating a ${m.irr == null ? "n/a" : pctf(m.irr * 100)} five-year IRR, SAR ${f0(m.npv)}K of NPV and payback inside ${m.payback ? m.payback.toFixed(1) : "—"} years, in a market with structural tailwinds from Vision 2030 privatisation, mandatory insurance expansion and Riyadh's demographic growth. The conclusions are conditional on validating the per-chair revenue assumption and securing the funding envelope in full before lease commitment.`
+              : m.verdict === "VIABLE"
+              ? `The project clears viability thresholds but with modest headroom; the board should weigh the ${cushion != null ? cushion + "%" : ""} revenue cushion and funding adequacy before proceeding, and consider strengthening the working-capital reserve.`
+              : `On the present assumptions the project does not meet investment criteria; a revised configuration (capacity, pricing or cost base) is required before further work.`}</p>
+            <div style={subT}>Appendix A — Assumption register (current model state)</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
+              <tbody>
+                {[
+                  ["Revenue per chair / month · chairs", `SAR ${inp.revPerChair}K · ${inp.chairs}`],
+                  ["Dentists · base · profit share", `${inp.dentistCount} · SAR ${f0(inp.dentistBase)}/mo · ${inp.profitShare}%`],
+                  ["Y1 utilisation · ramp growth · price growth", `${inp.rampStart}% · ${inp.rampGrowth}%/yr · ${inp.revenueGrowth}%/yr`],
+                  ["Insured share · rejections · collection lag", `${inp.insuredPct}% · ${inp.rejectionPct}% · ${inp.insurerDelayMo} mo`],
+                  ["Materials & lab (mature)", `${inp.materialsPct}% of revenue`],
+                  ["Clinic lease · staff housing (annual)", `SAR ${f0(inp.clinicRent)}K · SAR ${f0(inp.staffHousing)}K`],
+                  ["Fit-out duration · rent terms", `${F} months · ${inp.rentTerms === "annual" ? "annual, upfront from fit-out" : inp.rentTerms === "grace" ? "annual + fit-out grace" : "semi-annual instalments"}`],
+                  ["Total CapEx (incl. derived pre-opening)", `SAR ${f0(totalCapex(inp))}K`],
+                  ["Working capital reserve · contingency", `SAR ${f0(inp.capexWorkingCapital)}K · SAR ${f0(inp.capexContingency)}K`],
+                  ["Exit multiple · WACC · Zakat", `${inp.exitMultiple}× EBITDA · ${inp.wacc}% · ${inp.zakatPct}%`],
+                ].map(([k, v]) => (
+                  <tr key={k}><td style={{ ...tLb, color: C.sub, fontSize: 11 }}>{k}</td><td style={{ ...tTd, fontSize: 11 }}>{v}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={subT}>Appendix B — Principal sources</div>
+            <div style={{ fontSize: 10.5, color: C.sub, lineHeight: 1.8 }}>
+              Insights10, <i>Saudi Arabia Dental Care Market Analysis 2022–2030</i> · IndustryARC, <i>Dental Clinic Services Market in Saudi Arabia 2024–2030</i> · Council of Health Insurance (CHI), beneficiary statistics 2024–25 · MOH Statistical Yearbook 2023 &amp; PLOS One (2023), national dentist workforce analysis · US-Saudi Business Council, <i>Saudi Healthcare Sector 2025</i> · Royal Commission for Riyadh City / GASTAT population statistics · MDPI IJERPH (2024), GIS analysis of private dental facilities in Riyadh · Saudi Vision 2030 Health Sector Transformation Program.
+            </div>
+            <div style={{ ...note, marginTop: 14 }}>Prepared as an indicative executive feasibility assessment generated from an interactive financial model. Market figures are drawn from the public sources above and should be re-validated at the time of investment; financial outputs change with the model's assumptions. This document does not constitute investment, legal, tax or regulatory advice.</div>
+          </Pg>
+        </div>
+      );
+    }
+
+    /* ---------- main ---------- */
+    function App() {
+      const [inp, setInp] = useState(BASE_INPUTS);
+      const [showStudy, setShowStudy] = useState(false);
+      const set = useCallback((k, v) => setInp((p) => ({ ...p, [k]: v })), []);
+      const m = useMemo(() => compute(inp), [inp]);
+
+      // sensitivity & break-even: one-way ±20% swings on the drivers that matter, plus two break-even points
+      const sens = useMemo(() => {
+        const drivers = [
+          ["Revenue per chair", "revPerChair"],
+          ["Y1 utilization", "rampStart"],
+          ["Materials & lab %", "materialsPct"],
+          ["Dentist profit share", "profitShare"],
+          ["Exit multiple", "exitMultiple"],
+        ];
+        const rows = drivers.map(([label, k]) => [label, compute({ ...inp, [k]: inp[k] * 0.8 }).npv, compute({ ...inp, [k]: inp[k] * 1.2 }).npv]);
+        // break-even revenue per chair: NPV = 0 (bisection; NPV is monotonic in revPerChair)
+        let beRev = null;
+        let lo = 0, hi = Math.max(100, inp.revPerChair * 2);
+        if (compute({ ...inp, revPerChair: lo }).npv < 0 && compute({ ...inp, revPerChair: hi }).npv > 0) {
+          for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (compute({ ...inp, revPerChair: mid }).npv < 0) lo = mid; else hi = mid; }
+          beRev = (lo + hi) / 2;
+        }
+        // lowest Y1 utilization the funding budget survives
+        let minUtil = null;
+        for (let u = 0; u <= 100; u += 1) { if (compute({ ...inp, rampStart: u }).fundingOk) { minUtil = u; break; } }
+        return { rows, beRev, minUtil };
+      }, [inp]);
+
+      // active section for the sticky nav (highlights as you scroll)
+      const [activeSec, setActiveSec] = useState("summary");
+      useEffect(() => {
+        const obs = new IntersectionObserver((entries) => {
+          entries.forEach((e) => { if (e.isIntersecting) setActiveSec(e.target.id); });
+        }, { rootMargin: "-140px 0px -66% 0px" });
+        NAV_SECTIONS.forEach(([id]) => { const el = document.getElementById(id); if (el) obs.observe(el); });
+        return () => obs.disconnect();
+      }, []);
+
+      const storage = null; // no Claude storage in standalone mode
+      const [saved, setSaved] = useState([]);
+      const [scenName, setScenName] = useState("");
+      const [toast, setToast] = useState(null);
+      const flash = (t) => { setToast(t); setTimeout(() => setToast(null), 2200); };
+
+      const saveScenario = () => {
+        const name = scenName.trim();
+        if (!name) { flash("Name the scenario first"); return; }
+        const id = name.replace(/[\s/\\'"]+/g, "_").slice(0, 60);
+        const existing = JSON.parse(localStorage.getItem("dental_scenarios") || "{}");
+        existing[id] = { name, inputs: inp, ts: Date.now() };
+        localStorage.setItem("dental_scenarios", JSON.stringify(existing));
+        setScenName(""); flash(`Saved "${name}"`);
+        loadList();
+      };
+      const loadList = useCallback(() => {
+        const existing = JSON.parse(localStorage.getItem("dental_scenarios") || "{}");
+        const out = Object.entries(existing).map(([key, v]) => ({ key, ...v }));
+        out.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        setSaved(out);
+      }, []);
+      useEffect(() => { loadList(); }, [loadList]);
+      const loadScenario = (s) => { setInp({ ...BASE_INPUTS, ...s.inputs }); flash(`Loaded "${s.name}"`); };
+      const deleteScenario = (s) => {
+        const existing = JSON.parse(localStorage.getItem("dental_scenarios") || "{}");
+        delete existing[s.key];
+        localStorage.setItem("dental_scenarios", JSON.stringify(existing));
+        flash(`Deleted "${s.name}"`); loadList();
+      };
+
+      const chartData = m.years.map((y) => ({ year: y.year, Revenue: Math.round(y.revenue), EBITDA: Math.round(y.ebitda), "Net income": Math.round(y.ni) }));
+
+      // opening & year-1 budget: total cash required to open and operate through M12
+      const budget = (() => {
+        const preOpen = preOpeningCost(inp);
+        const vat = vatOnCapex(inp);
+        const rentCheque1 = (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp);
+        const insPrem = inp.insuranceCCHI * STAFF_RAMP[0] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
+        const staffOnboard = preOpen - rentCheque1 - insPrem;
+        const capexInvest = totalCapex(inp) - preOpen - inp.capexWorkingCapital;
+        const opShortfall = Math.max(0, m.peakNeed - preOpen - vat);
+        const totalRequired = capexInvest + preOpen + vat + opShortfall;
+        const totalBudget = totalCapex(inp);
+        const by1 = m.years[0];
+        const opexY1 = by1.fixedStaff + by1.share + by1.materials + by1.lease + by1.mkt + by1.other + by1.insUtil + by1.foreign;
+        const netRevY1 = by1.revenue - by1.denials;
+        return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, totalRequired, totalBudget, buffer: totalBudget - totalRequired, opexY1, netRevY1, ebitdaY1: by1.ebitda };
+      })();
+      const rentChequeLabel = inp.rentTerms === "grace" ? `Rent during fit-out (${inp.fitoutMonths}-month grace — waived)` : inp.rentTerms === "semiannual" ? `Semi-annual rent instalments before opening` : `First annual rent cheque (P${inp.fitoutMonths})`;
+      const budgetPie = [
+        { name: "Facility fit-out", value: inp.capexFitout },
+        { name: "Clinical equipment", value: inp.capexChairs + inp.capexImaging + inp.capexCSSD },
+        { name: "IT, furniture & inventory", value: inp.capexIT + inp.capexFurniture + inp.capexInventory },
+        { name: "Soft costs & compliance", value: inp.capexLicensing + inp.capexCivilDefence + inp.capexConsultants + inp.capexRecruitment },
+        { name: "Contingency", value: inp.capexContingency },
+        { name: "Pre-opening expenses", value: budget.preOpen },
+        { name: "Working capital reserve", value: inp.capexWorkingCapital },
+      ].filter(d => d.value > 0);
+      const PIE_COLORS = { "Facility fit-out": "#15263B", "Clinical equipment": "#27384E", "IT, furniture & inventory": "#64707C", "Soft costs & compliance": "#9DAEC0", "Contingency": "#D9B36A", "Pre-opening expenses": "#B0823A", "Working capital reserve": "#2E7D63" };
+      const budgetCapexRows = [
+        ["Facility fit-out", "capexFitout"], ["Chairs & accessories", "capexChairs"], ["Imaging equipment", "capexImaging"],
+        ["Sterilisation / CSSD", "capexCSSD"], ["IT & systems", "capexIT"], ["Furniture & fittings", "capexFurniture"],
+        ["Initial inventory", "capexInventory"], ["Licensing, legal & CR", "capexLicensing"], ["Civil Defence", "capexCivilDefence"],
+        ["Consultants & PMC", "capexConsultants"], ["Foreign-staff recruitment", "capexRecruitment"], ["Contingency", "capexContingency"],
+      ];
+      const bRow = { display: "flex", justifyContent: "space-between", padding: "3.5px 0", fontFamily: SANS, fontSize: 12.5, color: C.text };
+      const bVal = { fontFamily: MONO, fontSize: 12.5 };
+      const bSub = { display: "flex", justifyContent: "space-between", padding: "7px 0 0", marginTop: 6, borderTop: `1px solid ${C.line}`, fontFamily: SANS, fontSize: 12.5, fontWeight: 700, color: C.text };
+      const bTitle = { fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 8 };
+
+      const pnlRows = [
+        ["Revenue", "revenue", "head"], ["Claims denied", "denials", "neg"], ["Materials & lab", "materials", "neg"], ["Gross profit", "gp", "sub"],
+        ["Fixed staff (incl. dentist base)", "fixedStaff", "neg"], ["Lease & housing", "lease", "neg"],
+        ["Marketing", "mkt", "neg"], ["Other OpEx", "other", "neg"], ["Insurance, utilities & waste", "insUtil", "neg"], ["Foreign-labour fees", "foreign", "neg"],
+        ["Operating profit b/f share", "preshare", "sub"], ["Dentist profit share", "share", "neg"],
+        ["EBITDA", "ebitda", "head"], ["Depreciation", "dep", "neg"], ["Zakat", "zakat", "neg"], ["Net income", "ni", "head"],
+        ["Free cash flow", "fcf", "head"],
+      ];
+
+      // executive-summary derivations (all from the model — no new math)
+      const topRisk = sens.rows.reduce((a, r) => (Math.abs(r[2] - r[1]) > Math.abs(a[2] - a[1]) ? r : a), sens.rows[0]);
+      const marginOk = m.y5.ebitdaPct >= 25;
+      const rationale = [
+        m.cumNI > 0 ? `cumulative income +${f0(m.cumNI)}K` : `cumulative income ${f0(m.cumNI)}K`,
+        `${pctf(m.y5.ebitdaPct)} mature EBITDA margin`,
+        m.payback ? `${m.payback.toFixed(1)}-yr payback` : `no payback in 5 yrs`,
+        m.fundingOk ? `fully funded (+${f0(budget.buffer)}K buffer)` : `underfunded by ${f0(Math.abs(budget.buffer))}K`,
+      ].join("  ·  ");
+      const thesis = `A ${inp.chairs}-chair Riyadh clinic needing SAR ${f0(budget.totalRequired)}K all-in to open and reach self-funding. At ${inp.revPerChair}K/chair/month it matures to ${pctf(m.y5.ebitdaPct)} EBITDA — ${marginOk ? "above" : "below"} the 25–30% KSA benchmark — returning a ${m.irr == null ? "n/a" : pctf(m.irr * 100)} 5-year IRR and ${f0(m.npv)}K NPV at ${inp.wacc}% WACC. ${m.fundingOk ? "The funding plan covers the launch cash trough" : "The funding plan is short of the launch cash trough"}; the result swings most on ${topRisk[0].toLowerCase()}.`;
+      const summaryKpis = [
+        ["Capital required", f0(budget.totalRequired), "SAR '000 all-in", C.brass, budget.buffer >= 0 ? `funded · +${f0(budget.buffer)}K buffer` : `SHORT ${f0(Math.abs(budget.buffer))}K`, budget.buffer >= 0 ? C.pos : C.neg],
+        ["5-year IRR", m.irr == null ? "n/a" : pctf(m.irr * 100), "incl. exit at " + inp.exitMultiple + "× EBITDA", C.text, null, null],
+        ["NPV", f0(m.npv), `@ ${inp.wacc}% WACC, SAR '000`, m.npv < 0 ? C.neg : C.pos, null, null],
+        ["Capital payback", m.payback ? m.payback.toFixed(1) + " yrs" : "—", "on free cash flow", C.text, null, null],
+      ];
+      const outputKpis = [
+        ["Year-5 revenue", f0(m.y5.revenue), "SAR '000", C.brass, null, null],
+        ["Year-5 EBITDA", f0(m.y5.ebitda), pctf(m.y5.ebitdaPct) + " margin", m.y5.ebitda < 0 ? C.neg : C.brass, marginOk ? "vs 25–30% benchmark ✓" : "below 25% benchmark", marginOk ? C.pos : C.neg],
+        ["Cumulative net income", f0(m.cumNI), "Y1–Y5, SAR '000", m.cumNI < 0 ? C.neg : C.pos, null, null],
+        ["Dentist pay (Y5)", "SAR " + m.perDentistMo.toFixed(1) + "K", "per dentist / month", m.perDentistMo < 12 ? C.neg : C.text, null, null],
+        ["Exit value", f0(m.exitValue), `${inp.exitMultiple}× Y5 EBITDA`, m.exitValue < 0 ? C.neg : C.brass, null, null],
+        ["NPV", f0(m.npv), `@ ${inp.wacc}% WACC`, m.npv < 0 ? C.neg : C.pos, null, null],
+      ];
+
+      if (showStudy) return (
+        <StudyDocument inp={inp} m={m} budget={budget} sens={sens} topRisk={topRisk} chartData={chartData} budgetPie={budgetPie} pieColors={PIE_COLORS} onClose={() => setShowStudy(false)} />
+      );
+
+      return (
+        <div className="app-shell" style={{ background: C.bone, minHeight: "100vh", fontFamily: SANS, color: C.text }}>
+          <div className="sticky-bar" style={{ position: "sticky", top: 0, zIndex: 20, background: C.ink, borderBottom: `1px solid ${C.lineDk}` }}>
+            <div style={{ maxWidth: 1180, margin: "0 auto", padding: "14px 22px 0" }}>
+              <div className="flex flex-wrap items-center justify-between" style={{ gap: 12 }}>
+                <div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt }}>Dental Clinic · Riyadh — {inp.chairs} Operatories</div>
+                  <div style={{ fontFamily: SANS, fontSize: 18, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em" }}>Financial Feasibility Study</div>
+                </div>
+                <div className="flex items-center" style={{ gap: 16 }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Capital required</div>
+                    <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: C.brassLt, letterSpacing: "-0.02em", lineHeight: 1 }}>{f0(budget.totalRequired)}</div>
+                  </div>
+                  <div style={{ textAlign: "right", paddingLeft: 16, borderLeft: `1px solid ${C.lineDk}` }}>
+                    <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Verdict</div>
+                    <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: m.vColor, letterSpacing: "-0.02em", lineHeight: 1 }}>{m.verdict}</div>
+                  </div>
+                  <button onClick={() => setShowStudy(true)} className="no-print" style={btn("transparent", C.brassLt, C.lineDk)}><FileText size={14} /> Study</button>
+                  <button onClick={() => window.print()} className="no-print" style={btn(C.brass, C.ink)}><Save size={14} /> Export</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap" style={{ gap: 0, marginTop: 10 }}>
+                {[
+                  ["Net income · Y5", f0(m.y5.ni), m.y5.ni < 0 ? C.neg : C.pos],
+                  ["Cum. net income", f0(m.cumNI), m.cumNI < 0 ? C.neg : C.pos],
+                  ["5-yr IRR", m.irr == null ? "n/a" : pctf(m.irr * 100), C.inv],
+                  ["Payback", m.payback ? m.payback.toFixed(1) + " yr" : "—", C.inv],
+                  ["Y5 EBITDA margin", pctf(m.y5.ebitdaPct), m.y5.ebitdaPct >= 25 ? C.brassLt : C.neg],
+                  ["Funding buffer", (budget.buffer >= 0 ? "+" : "−") + f0(Math.abs(budget.buffer)), budget.buffer >= 0 ? C.pos : C.neg],
+                ].map(([l, v, col]) => (
+                  <div key={l} style={{ flex: "1 1 110px", minWidth: 100, padding: "4px 14px 8px", borderLeft: `2px solid ${col}` }}>
+                    <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.invSub }}>{l}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 600, color: col, letterSpacing: "-0.02em" }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap no-print" style={{ gap: 18, borderTop: `1px solid ${C.lineDk}`, marginTop: 10, padding: "9px 0" }}>
+                {NAV_SECTIONS.map(([id, lbl]) => (
+                  <a key={id} href={`#${id}`} className="navlink" style={{ fontFamily: SANS, fontSize: 12, fontWeight: activeSec === id ? 700 : 500, letterSpacing: "0.02em", color: activeSec === id ? C.brassLt : C.invSub, textDecoration: "none", borderBottom: activeSec === id ? `2px solid ${C.brass}` : "2px solid transparent", paddingBottom: 2 }}>{lbl}</a>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {m.saudization && (
+            <div style={{ background: "#3A1E16", borderBottom: `1px solid #5A2E20` }}>
+              <div style={{ maxWidth: 1180, margin: "0 auto", padding: "10px 22px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <AlertTriangle size={18} color={C.brassLt} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div style={{ fontFamily: SANS, fontSize: 12.5, color: "#F0D9C8", lineHeight: 1.5 }}>
+                  <b style={{ color: C.brassLt }}>Saudization flag:</b> at a SAR {inp.dentistBase.toLocaleString()} registered base, Saudi dentists fall below the SAR 9,000 GOSI threshold required to count toward the mandatory 55% dental Saudization quota (effective 27 Jan 2026). Register Saudi dentists at ≥ SAR 9,000 base — about SAR 252K/year more.
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ maxWidth: 1180, margin: "0 auto", padding: "22px" }}>
+
+            {/* Executive Summary */}
+            <div id="summary" style={{ scrollMarginTop: 150 }}>
+              <SectionHeader eyebrow="01 · Executive Summary" title="Investment Recommendation" sub="A consolidated assessment of the project's financial viability and capital requirement, derived from the assumptions set out below." />
+            </div>
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderLeft: `5px solid ${m.vColor}`, borderRadius: 10, padding: "16px 20px", marginBottom: 14 }}>
+              <div className="flex flex-wrap items-center" style={{ gap: 14, marginBottom: 8 }}>
+                <span style={{ fontFamily: MONO, fontSize: 30, fontWeight: 700, color: m.vColor, letterSpacing: "-0.02em", lineHeight: 1 }}>{m.verdict}</span>
+                <span style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub }}>{rationale}</span>
+              </div>
+              <div style={{ fontFamily: SANS, fontSize: 13.5, color: C.text, lineHeight: 1.6 }}>{thesis}</div>
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginBottom: 14 }}>
+              {summaryKpis.map(([label, value, sub, accent, flag, flagColor]) => (
+                <KpiCard key={label} label={label} value={value} sub={sub} accent={accent} flag={flag} flagColor={flagColor} />
+              ))}
+            </div>
+            <div className="print-section" style={{ background: C.bone, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 18px", marginBottom: 24 }}>
+              <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 10 }}>What the decision hinges on</div>
+              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 18 }}>
+                <div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Most sensitive driver</div>
+                  <div style={{ fontFamily: SANS, fontSize: 14.5, fontWeight: 700, color: C.text }}>{topRisk[0]}</div>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 2 }}>NPV swings {f0(Math.abs(topRisk[2] - topRisk[1]))}K across a ±20% move — validate this first.</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Break-even revenue / chair</div>
+                  <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: C.text }}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}</div>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 2 }}>{sens.beRev == null ? "profitable across range" : `${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion vs the ${inp.revPerChair}K plan`}</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Funding adequacy</div>
+                  <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: m.fundingOk ? C.pos : C.neg }}>{m.fundingOk ? "Covered" : "Short"}</div>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: m.fundingOk ? C.sub : C.neg, marginTop: 2 }}>{m.fundingOk ? `peak need ${f0(m.peakNeed)}K vs ${f0(m.fundingBudget)}K budget` : `${f0(m.peakNeed - m.fundingBudget)}K short of the launch trough`}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Key Outputs */}
+            <div id="outputs" style={{ scrollMarginTop: 150 }}>
+              <SectionHeader eyebrow="02 · Key Outputs" title="The numbers that matter" sub="Headline returns, the five-year earnings trajectory, and how fragile the result is to each assumption." />
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(165px,1fr))", gap: 12, marginBottom: 18 }}>
+              {outputKpis.map(([label, value, sub, accent, flag, flagColor]) => (
+                <KpiCard key={label} label={label} value={value} sub={sub} accent={accent} flag={flag} flagColor={flagColor} />
+              ))}
+            </div>
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 16px 8px", marginBottom: 22 }}>
+              <div className="flex items-center justify-between" style={{ padding: "0 6px 12px" }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Revenue, EBITDA & Net income</h3>
+                <span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>SAR '000</span>
+              </div>
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={chartData} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
+                  <CartesianGrid stroke={C.line} vertical={false} />
+                  <XAxis dataKey="year" tick={{ fontFamily: MONO, fontSize: 12, fill: C.sub }} axisLine={{ stroke: C.line }} tickLine={false} />
+                  <YAxis tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} axisLine={false} tickLine={false} tickFormatter={(v) => (v / 1000).toFixed(0) + "M"} />
+                  <Tooltip formatter={(v) => f0(v)} contentStyle={{ fontFamily: MONO, fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                  <ReferenceLine y={0} stroke={C.sub} />
+                  <Bar dataKey="Revenue" radius={[3, 3, 0, 0]} maxBarSize={46}>
+                    {chartData.map((_, i) => <Cell key={i} fill={C.ink2} />)}
+                  </Bar>
+                  <Line type="monotone" dataKey="EBITDA" stroke={C.brass} strokeWidth={2.5} dot={{ r: 3, fill: C.brass }} />
+                  <Line type="monotone" dataKey="Net income" stroke={C.pos} strokeWidth={2} strokeDasharray="4 3" dot={{ r: 2.5, fill: C.pos }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 24 }}>
+              <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.line}` }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Sensitivity &amp; Break-Even</h3>
+                <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>How fragile is the answer · NPV impact of ±20% on each driver, holding everything else constant · SAR '000</div>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14, marginBottom: 16 }}>
+                  <div style={{ background: C.bone, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.sub, marginBottom: 4 }}>Break-even revenue per chair (NPV = 0)</div>
+                    <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.text }}>
+                      {sens.beRev == null ? "—" : f0(sens.beRev)} <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>SAR'000/mo</span>
+                    </div>
+                    <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && inp.revPerChair > 0 && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 3 }}>
+                      {sens.beRev == null ? "Profitable across the tested range" : `Current ${inp.revPerChair} → ${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion before the project destroys value`}
+                    </div>
+                  </div>
+                  <div style={{ background: C.bone, borderRadius: 8, padding: "12px 16px" }}>
+                    <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.sub, marginBottom: 4 }}>Lowest Y1 utilization the funding survives</div>
+                    <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.text }}>
+                      {sens.minUtil == null ? "> 100" : sens.minUtil}<span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>%</span>
+                    </div>
+                    <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.minUtil == null || inp.rampStart - sens.minUtil < 10 ? C.neg : C.pos, marginTop: 3 }}>
+                      {sens.minUtil == null ? "Funding budget is breached even at 100% — increase the WC reserve" : sens.minUtil > inp.rampStart ? `Already short at the planned ${inp.rampStart}% — reach ${sens.minUtil}% or increase the reserve` : `Current plan ${inp.rampStart}% → ${inp.rampStart - sens.minUtil} pts of slack before cash runs out`}
+                    </div>
+                  </div>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ background: C.bone }}>
+                      <th style={{ padding: "8px 14px", textAlign: "left", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub }}>Driver</th>
+                      <th style={{ padding: "8px 10px", textAlign: "right", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub }}>−20% → NPV</th>
+                      <th style={{ padding: "8px 10px", textAlign: "right", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub }}>Base NPV</th>
+                      <th style={{ padding: "8px 10px", textAlign: "right", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub }}>+20% → NPV</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sens.rows.map(([label, lo, hi]) => (
+                      <tr key={label} style={{ borderTop: `1px solid ${C.line}` }}>
+                        <td style={{ padding: "7px 14px", textAlign: "left", fontFamily: SANS, fontSize: 12.5, color: C.sub }}>{label}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "right", color: lo < 0 ? C.neg : C.text }}>{lo < 0 ? `(${f0(Math.abs(lo))})` : f0(lo)}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 700, color: m.npv < 0 ? C.neg : C.text }}>{f0(m.npv)}</td>
+                        <td style={{ padding: "7px 10px", textAlign: "right", color: hi < 0 ? C.neg : C.text }}>{hi < 0 ? `(${f0(Math.abs(hi))})` : f0(hi)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ padding: "10px 2px 0", fontFamily: SANS, fontSize: 11, color: C.sub }}>
+                  The driver with the widest spread is the one to validate hardest before committing capital · percentage inputs move ±20% relative (e.g. 13% → 10.4% / 15.6%)
+                </div>
+              </div>
+            </div>
+
+            {/* Assumptions */}
+            <div id="assumptions" style={{ scrollMarginTop: 150 }}>
+              <SectionHeader eyebrow="03 · Assumptions" title="Tune the model" sub="Every output above updates live — the headline metrics stay pinned in the bar at the top while you adjust." />
+            </div>
+            <div className="no-print" style={{ background: C.ink2, borderRadius: 10, padding: "14px 18px", marginBottom: 20 }}>
+              <div className="flex flex-wrap items-center justify-between" style={{ gap: 12 }}>
+                <div className="flex items-center" style={{ gap: 10, flex: "1 1 320px" }}>
+                  <FolderOpen size={16} color={C.brassLt} />
+                  <input value={scenName} onChange={(e) => setScenName(e.target.value)} placeholder="Name this scenario…"
+                    onKeyDown={(e) => e.key === "Enter" && saveScenario()}
+                    style={{ flex: 1, minWidth: 140, background: C.ink, border: `1px solid ${C.lineDk}`, borderRadius: 7, color: C.inv, fontFamily: SANS, fontSize: 13, padding: "8px 11px", outline: "none" }} />
+                  <button onClick={saveScenario} style={btn(C.brass, C.ink)}><Save size={14} /> Save</button>
+                  <button onClick={() => { setInp(BASE_INPUTS); flash("Reset to base case"); }} style={btn("transparent", C.brassLt, C.lineDk)}><RotateCcw size={14} /> Reset</button>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[["Benchmark", 90], ["Conservative", 120], ["Base", 160], ["Upside", 200]].map(([lbl, v]) => (
+                    <button key={lbl} onClick={() => set("revPerChair", v)}
+                      style={{ ...btn(inp.revPerChair === v ? C.brass : "transparent", inp.revPerChair === v ? C.ink : C.invSub, C.lineDk), padding: "6px 10px", fontSize: 11.5 }}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+              {saved.length > 0 && (
+                <div style={{ marginTop: 14, borderTop: `1px solid ${C.lineDk}`, paddingTop: 12 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: C.invSub, marginBottom: 8 }}>Saved scenarios · stored locally</div>
+                  <div className="grid" style={{ gap: 8, gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))" }}>
+                    {saved.map((s) => {
+                      const sm = compute({ ...BASE_INPUTS, ...s.inputs });
+                      return (
+                        <div key={s.key} style={{ background: C.ink, border: `1px solid ${C.lineDk}`, borderRadius: 8, padding: "9px 11px" }}>
+                          <div className="flex items-center justify-between" style={{ gap: 6 }}>
+                            <span style={{ fontFamily: SANS, fontSize: 12.5, fontWeight: 600, color: C.inv, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <button onClick={() => loadScenario(s)} title="Load" style={iconBtn}><FolderOpen size={13} color={C.brassLt} /></button>
+                              <button onClick={() => deleteScenario(s)} title="Delete" style={iconBtn}><Trash2 size={13} color={C.invSub} /></button>
+                            </div>
+                          </div>
+                          <div style={{ fontFamily: MONO, fontSize: 11, color: C.invSub, marginTop: 5 }}>
+                            {s.inputs.revPerChair}K/chair · EBITDA <span style={{ color: sm.y5.ebitda < 0 ? C.neg : C.brassLt }}>{pctf(sm.y5.ebitdaPct)}</span> · cum <span style={{ color: sm.cumNI < 0 ? C.neg : C.pos }}>{f0(sm.cumNI)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.invSub, marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}><Info size={13} /> Scenarios are saved to this browser's local storage.</div>
+            </div>
+
+            <div className="grid" style={{ gap: 14, gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", marginBottom: 22 }}>
+              <Card title="Revenue & Capacity" n="01">
+                <Slider label="Revenue per chair / month" value={inp.revPerChair} min={0} max={260} step={5} unit="SAR'000" onChange={(v) => set("revPerChair", v)} danger={inp.revPerChair * 1000 / 500 / 26 > 15} hint={`≈ ${(inp.revPerChair * 1000 / 500 / 26).toFixed(1)} patients/chair/day (${Math.round(inp.revPerChair * 1000 / 500)}/mo) @ SAR 500 avg ticket · realistic max ~15/day single shift`} />
+                <Slider label="Operatories (chairs)" value={inp.chairs} min={0} max={20} step={1} unit="chairs" onChange={(v) => setInp((p) => ({ ...p, chairs: v, dentistCount: v }))} hint="Linked 1:1 to dentists — changing either keeps them equal" />
+              </Card>
+
+              <Card title="Dentist Compensation" n="02">
+                <Slider label="Number of dentists" value={inp.dentistCount} min={0} max={20} step={1} unit="" onChange={(v) => setInp((p) => ({ ...p, dentistCount: v, chairs: v }))} hint="Linked 1:1 to operatories — changing either keeps them equal" />
+                <Slider label="Base salary (each)" value={inp.dentistBase} min={0} max={25000} step={250} unit="SAR/mo" onChange={(v) => set("dentistBase", v)} danger={inp.dentistBase < 9000} hint={inp.dentistBase < 9000 ? "Below SAR 9,000 → Saudi dentists won't count for Saudization" : "Meets the SAR 9,000 Saudization floor"} />
+                <Slider label="Profit share (pooled)" value={inp.profitShare} min={0} max={60} step={1} unit="%" onChange={(v) => set("profitShare", v)} hint="% of operating profit, split across dentists" />
+              </Card>
+
+              <Card title="Revenue Ramp & Growth" n="03">
+                <Slider label="Y1 utilization" value={inp.rampStart} min={0} max={100} step={5} unit="%" onChange={(v) => set("rampStart", v)} hint="% of mature capacity reached in Year 1" />
+                <Slider label="Annual ramp growth" value={inp.rampGrowth} min={0} max={60} step={5} unit="%" onChange={(v) => set("rampGrowth", v)} hint="Year-over-year growth in utilization until full capacity" />
+                <Slider label="Annual revenue growth" value={inp.revenueGrowth} min={0} max={15} step={0.5} unit="%" onChange={(v) => set("revenueGrowth", v)} hint="Year-over-year price/fee growth on top of utilization ramp" />
+                <div style={{ marginTop: 10, background: C.bone, borderRadius: 7, padding: "9px 12px" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sub, marginBottom: 6 }}>Resulting utilization by year</div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {Array.from({length: 5}, (_, i) => {
+                      const pct = Math.min(100, inp.rampStart * Math.pow(1 + inp.rampGrowth / 100, i));
+                      return (
+                        <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                          <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, color: C.brass }}>{pct.toFixed(0)}%</div>
+                          <div style={{ fontFamily: SANS, fontSize: 10, color: C.sub }}>Y{i+1}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </Card>
+
+              <Card title="Insurance & Collections" n="04">
+                <Slider label="Insured share of revenue" value={inp.insuredPct} min={0} max={100} step={5} unit="%" onChange={(v) => set("insuredPct", v)} hint="Revenue billed to insurers (after patient co-pays); 0% = cash-only clinic" />
+                <Slider label="Claim rejection rate" value={inp.rejectionPct} min={0} max={25} step={0.5} unit="%" onChange={(v) => set("rejectionPct", v)} hint="Denied / written-off claims; KSA typical 5–15%" />
+                <Slider label="Insurer payment delay" value={inp.insurerDelayMo} min={0} max={12} step={0.5} unit="months" onChange={(v) => set("insurerDelayMo", v)} hint="Claim to payment; KSA typical 2–3 months, but can stretch well beyond — hits the cash curve, not the P&L" />
+                <div style={{ marginTop: 10, background: C.bone, borderRadius: 7, padding: "9px 12px" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sub, marginBottom: 4 }}>Y5 claims denied</div>
+                  <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: m.y5.denials > 0 ? C.neg : C.text }}>{f0(m.y5.denials)} <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 400, color: C.sub }}>SAR '000 / yr written off</span></div>
+                </div>
+              </Card>
+            </div>
+
+            {/* CapEx Breakdown */}
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 22 }}>
+              <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>CapEx Breakdown</h3>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>All figures SAR '000 · sums automatically into payback & IRR</div>
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.brass, letterSpacing: "-0.03em" }}>
+                  {f0(totalCapex(inp))} <span style={{ fontFamily: SANS, fontSize: 12, fontWeight: 400, color: C.sub }}>SAR '000 total</span>
+                </div>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 12 }}>Hard Costs</div>
+                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: "0 32px" }}>
+                  <Slider label="Facility fit-out" value={inp.capexFitout} min={0} max={8000} step={50} unit="SAR'000" onChange={(v) => set("capexFitout", v)} hint="Construction, MEP, flooring, partitions" />
+                  <Slider label="Chair costs & accessories" value={inp.capexChairs} min={0} max={5000} step={50} unit="SAR'000" onChange={(v) => set("capexChairs", v)} hint="Dental units, delivery systems, lights" />
+                  <Slider label="Imaging equipment" value={inp.capexImaging} min={0} max={3000} step={50} unit="SAR'000" onChange={(v) => set("capexImaging", v)} hint="CBCT, OPG, periapical X-ray units" />
+                  <Slider label="Sterilisation / CSSD" value={inp.capexCSSD} min={0} max={2000} step={50} unit="SAR'000" onChange={(v) => set("capexCSSD", v)} hint="Autoclaves, washer-disinfectors, storage" />
+                  <Slider label="IT & systems" value={inp.capexIT} min={0} max={2000} step={25} unit="SAR'000" onChange={(v) => set("capexIT", v)} hint="PMS, networking, hardware, CCTV, signage" />
+                  <Slider label="Furniture & fittings" value={inp.capexFurniture} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexFurniture", v)} hint="Reception, waiting area, staff areas" />
+                  <Slider label="Initial inventory & consumables" value={inp.capexInventory} min={0} max={1500} step={25} unit="SAR'000" onChange={(v) => set("capexInventory", v)} hint="Opening stock of materials and supplies" />
+                </div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, margin: "18px 0 12px" }}>Soft Costs & Compliance</div>
+                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: "0 32px" }}>
+                  <Slider label="Licensing, legal & CR" value={inp.capexLicensing} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexLicensing", v)} hint="MISA, commercial registration, SEHA licence" />
+                  <Slider label="Civil Defence compliance" value={inp.capexCivilDefence} min={0} max={500} step={25} unit="SAR'000" onChange={(v) => set("capexCivilDefence", v)} hint="Fire suppression, emergency systems, inspection" />
+                  <Slider label="Consultants & PMC" value={inp.capexConsultants} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexConsultants", v)} hint="Project management, design, QS" />
+                  <Slider label="Foreign-staff recruitment" value={inp.capexRecruitment} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexRecruitment", v)} hint="Agency fees, relocation, mobilisation" />
+                </div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, margin: "18px 0 12px" }}>Pre-Opening &amp; Reserves</div>
+                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: "0 32px" }}>
+                  <Slider label="Fit-out duration" value={inp.fitoutMonths} min={3} max={12} step={1} unit="months" onChange={(v) => set("fitoutMonths", v)} hint="Construction & licensing period before opening — rent (per terms), VAT timing and onboarding follow it" />
+                  <div style={{ paddingTop: 2 }}>
+                    <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginBottom: 4 }}>Pre-opening expenses (derived)</div>
+                    <div style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: C.text }}>{f0(preOpeningCost(inp))} <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>SAR '000</span></div>
+                    <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>Rent due before opening + 2 months staff onboarding + insurance premiums — moves with those inputs</div>
+                  </div>
+                  <div style={{ paddingTop: 2 }}>
+                    <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginBottom: 6 }}>Rent payment terms</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {[["annual", "Annual, paid upfront at fit-out"], ["grace", "Annual + 6-month fit-out grace"], ["semiannual", "Semi-annual instalments"]].map(([v, l]) => (
+                        <button key={v} onClick={() => set("rentTerms", v)} style={{ padding: "7px 10px", borderRadius: 7, border: `1px solid ${inp.rentTerms === v ? C.brass : C.line}`, background: inp.rentTerms === v ? C.brass : "transparent", color: inp.rentTerms === v ? "#FFF" : C.sub, fontFamily: SANS, fontSize: 11.5, fontWeight: inp.rentTerms === v ? 700 : 400, cursor: "pointer" }}>{l}</button>
+                      ))}
+                    </div>
+                    <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 6 }}>Sets when rent cheques fall due — drives pre-opening cash and the funding trough</div>
+                  </div>
+                  <Slider label="Working capital reserve" value={inp.capexWorkingCapital} min={0} max={6000} step={50} unit="SAR'000" onChange={(v) => set("capexWorkingCapital", v)} hint="Receivables float & operating buffer — with pre-opening, size to the peak funding need" />
+                  <Slider label="Contingency" value={inp.capexContingency} min={0} max={2000} step={50} unit="SAR'000" onChange={(v) => set("capexContingency", v)} hint="Typically 5–10% of hard costs" />
+                </div>
+                <div style={{ marginTop: 18, padding: "12px 16px", background: C.ink2, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                  {CAPEX_KEYS.map(k => {
+                    const labels = { capexFitout:"Fit-out", capexChairs:"Chairs", capexImaging:"Imaging", capexIT:"IT", capexWorkingCapital:"W/Cap", capexContingency:"Cont.", capexFurniture:"Furn.", capexRecruitment:"Recruit", capexLicensing:"Legal", capexCivilDefence:"CD", capexConsultants:"PMC", capexCSSD:"CSSD", capexInventory:"Stock" };
+                    const v = inp[k] || 0;
+                    const pct = totalCapex(inp) > 0 ? v / totalCapex(inp) * 100 : 0;
+                    return v > 0 ? (
+                      <div key={k} style={{ textAlign: "center", minWidth: 44 }}>
+                        <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: C.brassLt }}>{f0(v)}</div>
+                        <div style={{ fontFamily: SANS, fontSize: 9.5, color: C.invSub }}>{labels[k]}</div>
+                        <div style={{ fontFamily: SANS, fontSize: 9, color: C.invSub }}>{pct.toFixed(0)}%</div>
+                      </div>
+                    ) : null;
+                  })}
+                  {preOpeningCost(inp) > 0 && (
+                    <div style={{ textAlign: "center", minWidth: 44 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: C.brassLt }}>{f0(preOpeningCost(inp))}</div>
+                      <div style={{ fontFamily: SANS, fontSize: 9.5, color: C.invSub }}>Pre-op</div>
+                      <div style={{ fontFamily: SANS, fontSize: 9, color: C.invSub }}>{(preOpeningCost(inp) / totalCapex(inp) * 100).toFixed(0)}%</div>
+                    </div>
+                  )}
+                  <div style={{ borderLeft: `2px solid ${C.lineDk}`, paddingLeft: 16, textAlign: "right" }}>
+                    <div style={{ fontFamily: SANS, fontSize: 10, color: C.invSub, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total</div>
+                    <div style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: C.brassLt, letterSpacing: "-0.02em" }}>{f0(totalCapex(inp))}</div>
+                    <div style={{ fontFamily: SANS, fontSize: 10, color: C.invSub }}>SAR '000</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid" style={{ gap: 14, gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", marginBottom: 22 }}>
+              <Card title="Clinical & Support Staff" n="05">
+                <Slider label="Chairside staff per chair" value={inp.nursesPerChair} min={0} max={3} step={0.25} unit="/chair" onChange={(v) => set("nursesPerChair", v)} hint="Client = 2; industry norm 1.3–1.5" />
+                <Slider label="Avg chairside salary" value={inp.chairsideSalary} min={0} max={15000} step={250} unit="SAR/mo" onChange={(v) => set("chairsideSalary", v)} hint="Blend of registered nurses & assistants" />
+                <Slider label="Medical support staff" value={inp.medicalSupportCount} min={0} max={15} step={1} unit="staff" onChange={(v) => set("medicalSupportCount", v)} hint="Sterilisation/CSSD specialists & X-ray technicians" />
+                <Slider label="Medical support avg salary" value={inp.medicalSupportSalary} min={0} max={15000} step={250} unit="SAR/mo" onChange={(v) => set("medicalSupportSalary", v)} />
+                <Slider label="Janitors / cleaners" value={inp.janitorCount} min={0} max={15} step={1} unit="staff" onChange={(v) => set("janitorCount", v)} hint="Cleaning & waste handling" />
+                <Slider label="Janitor avg salary" value={inp.janitorSalary} min={0} max={8000} step={100} unit="SAR/mo" onChange={(v) => set("janitorSalary", v)} />
+                <Slider label="Drivers" value={inp.driverCount} min={0} max={10} step={1} unit="staff" onChange={(v) => set("driverCount", v)} hint="Patient transport / logistics" />
+                <Slider label="Driver avg salary" value={inp.driverSalary} min={0} max={8000} step={100} unit="SAR/mo" onChange={(v) => set("driverSalary", v)} />
+                <Slider label="General staff headcount" value={inp.generalStaffCount} min={0} max={30} step={1} unit="staff" onChange={(v) => set("generalStaffCount", v)} hint="Reception, billing & admin (cleaning & sterilisation are now separate above)" />
+                <Slider label="General staff avg salary" value={inp.generalStaffSalary} min={0} max={12000} step={250} unit="SAR/mo" onChange={(v) => set("generalStaffSalary", v)} />
+                <Slider label="Admin manager salary" value={inp.adminManagerSalary} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => set("adminManagerSalary", v)} />
+                <Slider label="GOSI + benefits load" value={inp.gosiPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("gosiPct", v)} />
+              </Card>
+
+              <Card title="Facilities & Operating" n="06">
+                <Slider label="Clinic lease (annual)" value={inp.clinicRent} min={0} max={2500} step={25} unit="SAR'000" onChange={(v) => set("clinicRent", v)} hint="Premises rent; Riyadh benchmark 1,000–1,600" />
+                <Slider label="Staff housing (annual)" value={inp.staffHousing} min={0} max={1500} step={25} unit="SAR'000" onChange={(v) => set("staffHousing", v)} hint="Expat accommodation allowance / leased units" />
+                <Slider label="Materials & lab (mature rate)" value={inp.materialsPct} min={0} max={25} step={0.5} unit="%" onChange={(v) => set("materialsPct", v)} hint="% of revenue at full maturity (Year 5)" />
+                <Slider label="Y1 materials premium" value={inp.materialsY1Premium} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("materialsY1Premium", v)} hint="Extra % added in Y1, fades linearly to 0% by Y5" />
+                <Slider label="Marketing (mature, annual)" value={inp.marketing} min={0} max={1500} step={25} unit="SAR'000" onChange={(v) => set("marketing", v)} hint="Front-loaded: Y1 spends 1.6× this, tapering to 1× by Y4" />
+                <Slider label="Other OpEx (mature, annual)" value={inp.otherOpex} min={0} max={1800} step={25} unit="SAR'000" onChange={(v) => set("otherOpex", v)} />
+                <Slider label="Staff health insurance — CCHI (annual)" value={inp.insuranceCCHI} min={0} max={500} step={10} unit="SAR'000" onChange={(v) => set("insuranceCCHI", v)} hint="Mandatory for all employees; scales with staff ramp" />
+                <Slider label="Malpractice insurance" value={inp.malpracticePerDentist} min={0} max={15000} step={500} unit="SAR/dentist/yr" onChange={(v) => set("malpracticePerDentist", v)} hint="Mandatory per licensed practitioner" />
+                <Slider label="Utilities & medical waste (mature)" value={inp.utilitiesWaste} min={0} max={600} step={10} unit="SAR'000" onChange={(v) => set("utilitiesWaste", v)} hint="Electricity, water, licensed waste-disposal contract" />
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.line}` }}>
+                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginBottom: 4 }}>Depreciation (derived from CapEx)</div>
+                  <div style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: C.text }}>{f0(annualDepreciation(inp))} <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>SAR '000 / yr</span></div>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>Straight-line: fit-out 10 yrs · equipment & furniture 7 yrs · IT 4 yrs</div>
+                </div>
+              </Card>
+
+              <Card title="Foreign Labour" n="07">
+                <div style={{ marginBottom: 14, background: C.bone, borderRadius: 7, padding: "10px 12px" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginBottom: 4 }}>Expatriate headcount (derived)</div>
+                  <div style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: C.text }}>{expatCount(inp)} <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>staff</span></div>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>Chairside {Math.ceil(inp.chairs * inp.nursesPerChair)} (⌈{inp.chairs}×{inp.nursesPerChair}⌉) + medical {inp.medicalSupportCount} + janitors {inp.janitorCount} + drivers {inp.driverCount} — drives the levy &amp; iqama below</div>
+                </div>
+                <Slider label="Work-permit levy" value={inp.levyPerMonth} min={0} max={1000} step={50} unit="SAR/mo" onChange={(v) => set("levyPerMonth", v)} />
+                <Slider label="Iqama + permit fees" value={inp.iqamaPerYear} min={0} max={2000} step={50} unit="SAR/yr" onChange={(v) => set("iqamaPerYear", v)} hint="Per expat, per year" />
+              </Card>
+
+              <Card title="Investment & Exit" n="08">
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginBottom: 6 }}>Total CapEx</div>
+                  <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.brass, letterSpacing: "-0.03em" }}>{f0(totalCapex(inp))} <span style={{ fontFamily: SANS, fontSize: 12, fontWeight: 400, color: C.sub }}>SAR '000</span></div>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>See CapEx breakdown below ↓</div>
+                </div>
+                <Slider label="Exit multiple" value={inp.exitMultiple} min={0} max={12} step={0.5} unit="× EBITDA" onChange={(v) => set("exitMultiple", v)} hint="Saudi dental comps ~5–7×" />
+                <Slider label="Maintenance CapEx" value={inp.maintenanceCapexPct} min={0} max={10} step={0.5} unit="% of hard assets/yr" onChange={(v) => set("maintenanceCapexPct", v)} hint={`On fit-out & equipment only (${f0(hardCapex(inp))}K base); typical 3–5%`} />
+                <Slider label="Zakat" value={inp.zakatPct} min={0} max={5} step={0.25} unit="% of net income" onChange={(v) => set("zakatPct", v)} hint="Saudi-owned entity; simplified NI-based approximation of the Zakat base" />
+                <Slider label="Discount rate (WACC)" value={inp.wacc} min={0} max={25} step={0.5} unit="%" onChange={(v) => set("wacc", v)} hint="KSA healthcare SME equity cost typically 10–14%" />
+              </Card>
+
+            </div>
+
+            {/* Investment & Cash */}
+            <div id="funding" style={{ scrollMarginTop: 150 }}>
+              <SectionHeader eyebrow="04 · Investment & Cash" title="What it costs and when the cash flows" sub="The full uses-of-funds budget, the launch-to-Year-2 cash statement, and the monthly funding curve that sizes the reserve." />
+            </div>
+            <div className="print-section print-break" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 22 }}>
+              <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Opening &amp; Year-1 Budget</h3>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>CapEx &amp; OpEx uses of funds — total cash to open and operate through the first 12 months · all values follow the sliders · SAR '000</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.sub }}>Total cash required</div>
+                  <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: C.brass, letterSpacing: "-0.03em" }}>{f0(budget.totalRequired)}</div>
+                </div>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 28 }}>
+                  <div>
+                    <div style={bTitle}>1 · Capital Investment (CapEx)</div>
+                    {budgetCapexRows.map(([label, k]) => (inp[k] || 0) > 0 ? (
+                      <div key={k} style={bRow}><span style={{ color: C.sub }}>{label}</span><span style={bVal}>{f0(inp[k])}</span></div>
+                    ) : null)}
+                    <div style={bSub}><span>Subtotal</span><span style={bVal}>{f0(budget.capexInvest)}</span></div>
+                  </div>
+                  <div>
+                    <div style={bTitle}>2 · Pre-Opening Cash (P{inp.fitoutMonths}–P1)</div>
+                    <div style={bRow}><span style={{ color: C.sub }}>{rentChequeLabel}</span><span style={bVal}>{f0(budget.rentCheque1)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Staff onboarding · 2 months (P2–P1)</span><span style={bVal}>{f0(budget.staffOnboard)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Annual insurance premiums (P1)</span><span style={bVal}>{f0(budget.insPrem)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>VAT on CapEx (15%, recovered M1–M6)</span><span style={bVal}>{f0(budget.vat)}</span></div>
+                    <div style={bSub}><span>Subtotal</span><span style={bVal}>{f0(budget.preOpen + budget.vat)}</span></div>
+                  </div>
+                  <div>
+                    <div style={bTitle}>3 · Year-1 OpEx (funded by revenue)</div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Staff (incl. dentist base)</span><span style={bVal}>{f0(m.years[0].fixedStaff)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Dentist profit share</span><span style={bVal}>{f0(m.years[0].share)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Materials &amp; lab</span><span style={bVal}>{f0(m.years[0].materials)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Lease &amp; housing (accrual)</span><span style={bVal}>{f0(m.years[0].lease)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Marketing (launch-weighted)</span><span style={bVal}>{f0(m.years[0].mkt)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Insurance, utilities &amp; waste</span><span style={bVal}>{f0(m.years[0].insUtil)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Other OpEx</span><span style={bVal}>{f0(m.years[0].other)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Foreign-labour fees</span><span style={bVal}>{f0(m.years[0].foreign)}</span></div>
+                    <div style={bSub}><span>Total Y1 OpEx</span><span style={bVal}>{f0(budget.opexY1)}</span></div>
+                  </div>
+                  <div>
+                    <div style={bTitle}>4 · Year-1 Cash Need (M1–M12)</div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Net revenue (after denials)</span><span style={bVal}>{f0(budget.netRevY1)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Less: Year-1 OpEx</span><span style={bVal}>({f0(budget.opexY1)})</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Year-1 EBITDA</span><span style={bVal}>{f0(budget.ebitdaY1)}</span></div>
+                    <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, fontStyle: "italic", padding: "2px 0 4px" }}>
+                      Profitable on the year, but rent cheques, the ramp &amp; insurer receivables create an intra-year trough:
+                    </div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Peak intra-year shortfall (by {m.troughLabel})</span><span style={bVal}>{f0(budget.opShortfall)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Allocated: working capital reserve</span><span style={bVal}>{f0(inp.capexWorkingCapital)}</span></div>
+                    <div style={bSub}><span>Cash required</span><span style={bVal}>{f0(budget.opShortfall)}</span></div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <div style={bTitle}>Funded Budget Allocation · {f0(budget.totalBudget)} SAR '000</div>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <PieChart>
+                      <Pie data={budgetPie} dataKey="value" nameKey="name" innerRadius={60} outerRadius={92} paddingAngle={2} stroke={C.paper} label={({ percent }) => `${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                        {budgetPie.map((d) => <Cell key={d.name} fill={PIE_COLORS[d.name]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v) => f0(v)} contentStyle={{ fontFamily: MONO, fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                      <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={9} formatter={(value) => { const d = budgetPie.find(x => x.name === value); return `${value} — ${f0(d ? d.value : 0)}`; }} wrapperStyle={{ fontFamily: SANS, fontSize: 12.5, lineHeight: "22px" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ marginTop: 14, padding: "12px 16px", background: C.ink2, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 12, color: C.invSub }}>
+                    Funded budget (Total CapEx incl. WC reserve): <span style={{ fontFamily: MONO, fontWeight: 700, color: C.brassLt }}>{f0(budget.totalBudget)}</span>
+                  </div>
+                  <div style={{ fontFamily: SANS, fontSize: 12, color: budget.buffer >= 0 ? C.invSub : C.neg }}>
+                    {budget.buffer >= 0 ? "Safety buffer: " : "FUNDING SHORTFALL: "}
+                    <span style={{ fontFamily: MONO, fontWeight: 700, color: budget.buffer >= 0 ? C.pos : C.neg }}>{f0(Math.abs(budget.buffer))}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Cash flow statement */}
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 22 }}>
+              <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Cash Flow · Launch &amp; First Two Years · SAR '000</h3>
+                <span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>Direct method · actual cheque timing per the selected rent terms · ties to the funding view below</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ background: C.bone }}>
+                      <th style={{ padding: "9px 14px", textAlign: "left", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub }}>Line item</th>
+                      {[`Pre-Opening (P${inp.fitoutMonths}–P1)`, "Year 1 (M1–M12)", "Year 2 (M13–M24)"].map(h => (
+                        <th key={h} style={{ padding: "9px 10px", textAlign: "right", fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {m.cashflow.map(([label, vals, kind], ri) => {
+                      if (kind === "section") return (
+                        <tr key={ri}><td colSpan={4} style={{ padding: "11px 14px 3px", textAlign: "left", fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: C.brass }}>{label}</td></tr>
+                      );
+                      const bold = kind === "subtotal" || kind === "total";
+                      return (
+                        <tr key={ri} style={{ borderTop: bold ? `1px solid ${C.line}` : "none", background: kind === "total" ? C.bone : "transparent" }}>
+                          <td style={{ padding: "6px 14px", textAlign: "left", fontFamily: SANS, fontSize: 12.5, color: bold ? C.text : C.sub, fontWeight: bold ? 700 : 400 }}>{label}</td>
+                          {vals.map((v, i) => (
+                            <td key={i} style={{ padding: "6px 10px", textAlign: "right", fontWeight: bold ? 700 : 400, color: v == null ? C.line : v < 0 ? (bold ? C.neg : C.sub) : (kind === "total" ? C.pos : C.text) }}>
+                              {v == null ? "—" : v < 0 ? `(${f0(Math.abs(v))})` : f0(v)}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: "10px 18px 14px", fontFamily: SANS, fontSize: 11, color: C.sub }}>
+                Collections are net of denials and shifted by the insurer payment delay · Y2 insurance renewal falls at M24, outside the window · excludes build-out CapEx (funded at launch), maintenance CapEx &amp; Zakat · "lowest cash point" is the funding trough each period, covered by the pre-opening + WC budget ({f0(m.fundingBudget)})
+              </div>
+            </div>
+
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 16px 8px", marginBottom: 22 }}>
+              <div className="flex flex-wrap items-start justify-between" style={{ padding: "0 6px 12px", gap: 10 }}>
+                <div>
+                  <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Funding View · Cash Balance</h3>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>
+                    Running cash on hand from fit-out start (P{inp.fitoutMonths}) through Year 2 — the shaded area is your bank balance; its lowest point is the capital you must have in place. Dashed line = pre-opening + WC budget. · SAR '000
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.sub }}>Peak funding need</div>
+                  <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: m.fundingOk ? C.pos : C.neg, letterSpacing: "-0.02em" }}>
+                    {m.peakNeed > 0 ? f0(m.peakNeed) : "0"} <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 400, color: C.sub }}>{m.peakNeed > 0 ? `in ${m.troughLabel}` : "cash-positive from M1"}</span>
+                  </div>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: m.fundingOk ? C.sub : C.neg, marginTop: 2 }}>
+                    {m.fundingOk ? `Covered by pre-opening + WC budget (${f0(m.fundingBudget)}) · headroom ${f0(m.fundingBudget - m.peakNeed)}` : `EXCEEDS pre-opening + WC budget (${f0(m.fundingBudget)}) by ${f0(m.peakNeed - m.fundingBudget)} — increase reserve`}
+                  </div>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={270}>
+                <ComposedChart data={m.monthly} margin={{ top: 14, right: 8, left: 4, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="cashFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={C.brass} stopOpacity={0.32} />
+                      <stop offset="100%" stopColor={C.brass} stopOpacity={0.04} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke={C.line} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontFamily: MONO, fontSize: 10, fill: C.sub }} axisLine={{ stroke: C.line }} tickLine={false} interval={1} />
+                  <YAxis tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} axisLine={false} tickLine={false} tickFormatter={(v) => f0(v)} />
+                  <Tooltip formatter={(v) => f0(v)} labelFormatter={(l) => `Cash balance · ${l}`} contentStyle={{ fontFamily: MONO, fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                  <ReferenceLine y={0} stroke={C.sub} />
+                  <ReferenceLine y={-m.fundingBudget} stroke={C.neg} strokeDasharray="5 4" label={{ value: `Funding budget (${f0(m.fundingBudget)})`, position: "insideBottomRight", fontFamily: SANS, fontSize: 10.5, fill: C.neg }} />
+                  <ReferenceLine x="M1" stroke={C.lineDk} strokeDasharray="3 3" label={{ value: "Opening", position: "insideTopLeft", fontFamily: SANS, fontSize: 10, fill: C.sub }} />
+                  <Area type="monotone" dataKey="Cumulative" stroke={C.brass} strokeWidth={2.5} fill="url(#cashFill)" baseValue={0} dot={false} activeDot={{ r: 4, fill: C.brass }} />
+                  {m.peakNeed > 0 && <ReferenceDot x={m.troughLabel} y={-m.peakNeed} r={4.5} fill={C.neg} stroke="#fff" strokeWidth={1.5} label={{ value: `trough ${f0(-m.peakNeed)}`, position: "bottom", fontFamily: MONO, fontSize: 10, fontWeight: 700, fill: C.neg }} />}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 16px 8px", marginBottom: 22 }}>
+              <div className="flex flex-wrap items-start justify-between" style={{ padding: "0 6px 12px", gap: 10 }}>
+                <div>
+                  <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Operating Cash Flow · Monthly</h3>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>
+                    Each bar is that month's net operating cash (Years 1–2, pre-opening excluded). Red bars are when big cheques fall due — annual rent (M7 &amp; M19) and insurance renewal (M12). · SAR '000
+                  </div>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <ComposedChart data={m.monthlyOp} margin={{ top: 6, right: 8, left: 4, bottom: 0 }}>
+                  <CartesianGrid stroke={C.line} vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontFamily: MONO, fontSize: 10, fill: C.sub }} axisLine={{ stroke: C.line }} tickLine={false} interval={1} />
+                  <YAxis tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} axisLine={false} tickLine={false} tickFormatter={(v) => f0(v)} />
+                  <Tooltip formatter={(v) => f0(v)} labelFormatter={(l) => `Net cash · ${l}`} contentStyle={{ fontFamily: MONO, fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                  <ReferenceLine y={0} stroke={C.sub} />
+                  <Bar dataKey="Net cash" radius={[3, 3, 0, 0]} maxBarSize={22}>
+                    {m.monthlyOp.map((d, i) => <Cell key={i} fill={d["Net cash"] < 0 ? C.neg : C.pos} />)}
+                  </Bar>
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Financials */}
+            <div id="financials" style={{ scrollMarginTop: 150 }}>
+              <SectionHeader eyebrow="05 · Financials" title="Five-Year P&L" sub="Full income statement at the current assumptions. Figures in SAR '000." />
+            </div>
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 28 }} className="print-section print-break">
+              <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.line}` }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Five-year P&amp;L · SAR '000</h3>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...th, textAlign: "left", fontFamily: SANS }}>Line item</th>
+                      {m.years.map((y) => <th key={y.year} style={th}>{y.year}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pnlRows.map(([label, key, kind]) => (
+                      <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
+                        <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : kind === "sub" ? 600 : 400, color: kind === "neg" ? C.sub : C.text }}>{label}</td>
+                        {m.years.map((y) => {
+                          const v = y[key];
+                          const neg = kind === "neg";
+                          const isLoss = (key === "ebitda" || key === "ni" || key === "preshare") && v < 0;
+                          return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: isLoss ? C.neg : (neg ? C.sub : C.text) }}>{neg ? `(${f0(Math.abs(v))})` : f0(v)}</td>;
+                        })}
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>EBITDA margin</td>
+                      {m.years.map((y) => <td key={y.year} style={{ ...td, color: y.ebitda < 0 ? C.neg : C.brass }}>{pctf(y.ebitdaPct)}</td>)}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="print-only print-break" style={{ marginTop: 20, marginBottom: 18 }}>
+              <SectionHeader eyebrow="Appendix" title="Assumptions Used" />
+              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 11.5 }}>
+                <tbody>
+                  {[
+                    ["Revenue per chair / month", inp.revPerChair + "K SAR"],
+                    ["Operatories (chairs)", inp.chairs],
+                    ["Dentists · base salary · profit share", `${inp.dentistCount} · ${f0(inp.dentistBase)} SAR/mo · ${inp.profitShare}%`],
+                    ["Y1 utilization · ramp growth", `${inp.rampStart}% · ${inp.rampGrowth}%/yr`],
+                    ["Insured share · rejection · delay", `${inp.insuredPct}% · ${inp.rejectionPct}% · ${inp.insurerDelayMo} mo`],
+                    ["Materials & lab (mature)", inp.materialsPct + "%"],
+                    ["Clinic lease · staff housing", `${f0(inp.clinicRent)}K · ${f0(inp.staffHousing)}K`],
+                    ["Marketing · Other OpEx (mature)", `${f0(inp.marketing)}K · ${f0(inp.otherOpex)}K`],
+                    ["Expats (derived) · levy · iqama", `${expatCount(inp)} · ${inp.levyPerMonth}/mo · ${inp.iqamaPerYear}/yr`],
+                    ["Fit-out duration · rent terms", `${inp.fitoutMonths} mo · ${inp.rentTerms}`],
+                    ["Working capital reserve", f0(inp.capexWorkingCapital) + "K"],
+                    ["Total CapEx (incl. pre-opening)", f0(totalCapex(inp)) + "K"],
+                    ["Exit multiple · WACC · Zakat", `${inp.exitMultiple}× · ${inp.wacc}% · ${inp.zakatPct}%`],
+                  ].map(([k, v]) => (
+                    <tr key={k} style={{ borderBottom: `1px solid ${C.line}` }}>
+                      <td style={{ padding: "5px 10px", textAlign: "left", fontFamily: SANS, color: C.sub }}>{k}</td>
+                      <td style={{ padding: "5px 10px", textAlign: "right", color: C.text }}>{v}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="print-section" style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, lineHeight: 1.6, paddingBottom: 30 }}>
+              Indicative model for planning, not investment or legal advice. Dentist pay = base salary + {inp.profitShare}% of operating profit (pooled, paid only when profit is positive). Benchmarks: Riyadh rents & 2025 rent freeze (SAT Real Estate, Knight Frank); salaries (PayScale, SalaryExpert, Paylab); Saudization 55% from 27 Jan 2026 & SAR 9,000 floor (Arab News, HRSD); expat levy SAR 800/mo + iqama/permit fees (MHRSD 2026 schedules). Validate all figures with local quotations before committing capital.
+            </div>
+          </div>
+
+          {toast && (
+            <div style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: C.ink, color: C.inv, fontFamily: SANS, fontSize: 13, fontWeight: 500, padding: "10px 18px", borderRadius: 8, border: `1px solid ${C.brass}`, zIndex: 50, boxShadow: "0 6px 24px rgba(0,0,0,0.25)" }}>{toast}</div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
