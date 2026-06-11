@@ -260,7 +260,7 @@
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Verdict</div>
                     <div style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700, color: m.vColor, letterSpacing: "-0.02em", lineHeight: 1 }}>{m.verdict}</div>
-                    {!m.fundingOk && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: C.neg, marginTop: 2 }}>· underfunded</div>}
+                    {(sens.minUtil != null && inp.rampStart - sens.minUtil < 10) && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: C.neg, marginTop: 2 }}>· thin cushion</div>}
                   </div>
                   <TrendingUp size={26} color={m.vColor} strokeWidth={2} />
                 </div>
@@ -661,11 +661,11 @@
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.sub }}>Peak funding need</div>
-                  <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: m.fundingOk ? C.pos : C.neg, letterSpacing: "-0.02em" }}>
+                  <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: (sens.minUtil != null && inp.rampStart - sens.minUtil < 10) ? C.neg : C.pos, letterSpacing: "-0.02em" }}>
                     {m.peakNeed > 0 ? f0(m.peakNeed) : "0"} <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 400, color: C.sub }}>{m.peakNeed > 0 ? `in ${m.troughLabel}` : "cash-positive from M1"}</span>
                   </div>
-                  <div style={{ fontFamily: SANS, fontSize: 11, color: m.fundingOk ? C.sub : C.neg, marginTop: 2 }}>
-                    {`Launch-liquidity + min-cash budget (${f0(m.fundingBudget)}) · ${f0(m.fundingBudget - m.peakNeed)} min-cash headroom over the ${f0(m.peakNeed)} trough`}
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: (sens.minUtil != null && inp.rampStart - sens.minUtil < 10) ? C.neg : C.sub, marginTop: 2 }}>
+                    {`Budget ${f0(m.fundingBudget)} = ${f0(m.peakNeed)} trough + ${f0(m.minCashReserve)} min-cash${sens.minUtil != null ? ` · survives a Y1 utilisation fall to ${sens.minUtil}%` : ""}`}
                   </div>
                 </div>
               </div>
