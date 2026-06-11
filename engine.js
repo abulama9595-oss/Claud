@@ -120,7 +120,9 @@ function compute(inp) {
     const ni = nibz - zakat;
     const maintCapex = hardCapex(inp) * (inp.maintenanceCapexPct / 100);
     const fcf = ni + dep - maintCapex;
-    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: gp / revenue * 100, fixedStaff, lease, mkt, other, insUtil, foreign, preshare, share, ebitda, ebitdaPct: ebitda / revenue * 100, dep, zakat, ni, niPct: ni / revenue * 100, fcf });
+    // guard margins against a zero-revenue year (revPerChair / chairs / rampStart can all be 0) so the UI never shows NaN%/Infinity%
+    const pct = (x) => revenue > 0 ? x / revenue * 100 : 0;
+    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, zakat, ni, niPct: pct(ni), fcf });
   }
   const y5 = years[4];
   const cumNI = years.reduce((a, y) => a + y.ni, 0);
@@ -174,7 +176,7 @@ function compute(inp) {
     if (inp.rentTerms === "semiannual") return (j + F) % 6 === 0 ? years[Math.min(2, Math.floor((j + F) / 12))].lease / 2 : 0;
     return j === 12 - F ? years[1].lease : j === 24 - F ? years[2].lease : 0; // annual, upfront from fit-out start
   };
-  const win = { coll: [0, 0], share: [0, 0], rent: [0, 0] }; // per-operating-year cash sums for the statement
+  const win = { coll: [0, 0], share: [0, 0], rent: [0, 0], mat: [0, 0] }; // per-operating-year cash sums for the statement
   const opCf = Array.from({ length: 24 }, (_, j) => {
     const yi = j < 12 ? 0 : 1;
     const yr = years[yi];
@@ -188,6 +190,7 @@ function compute(inp) {
     win.coll[yi] += (1 - sIns) * B + sIns * (1 - rRej) * Bat(j - dLag); // cash actually received this month
     win.share[yi] += mShare;
     win.rent[yi] += rDue;
+    win.mat[yi] += (B * matSched[yi]) / 100; // materials charged on the same monthly billings the cash engine uses, so the statement foots
     let cf = mPre - mShare + yr.lease / 12 + prepaid(yi) / 12 + collAdj;
     cf -= rDue;                          // rent cheques per payment terms
     if (j === 11) cf -= prepaid(1);      // insurance renewal (M12)
@@ -236,7 +239,7 @@ function compute(inp) {
     ["Rent cheques (per payment terms)", [-preRent, -win.rent[0], -win.rent[1]], "row"],
     ["Staff & payroll (incl. GOSI)", [-preStaff, -years[0].fixedStaff, -years[1].fixedStaff], "row"],
     ["Dentist profit share", [null, -win.share[0], -win.share[1]], "row"],
-    ["Materials & lab", [null, -years[0].materials, -years[1].materials], "row"],
+    ["Materials & lab", [null, -win.mat[0], -win.mat[1]], "row"],
     ["Insurance premiums (CCHI & malpractice)", [-prepaid(0), -prepaid(1), null], "row"],
     ["VAT on CapEx (15%, paid with invoices)", [-vatCapex, null, null], "row"],
     ["Marketing", [null, -years[0].mkt, -years[1].mkt], "row"],

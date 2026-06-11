@@ -251,6 +251,7 @@
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Verdict</div>
                     <div style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700, color: m.vColor, letterSpacing: "-0.02em", lineHeight: 1 }}>{m.verdict}</div>
+                    {!m.fundingOk && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, color: C.neg, marginTop: 2 }}>· underfunded</div>}
                   </div>
                   <TrendingUp size={26} color={m.vColor} strokeWidth={2} />
                 </div>

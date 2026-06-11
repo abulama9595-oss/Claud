@@ -237,7 +237,7 @@
               <h1 style={{ fontFamily: SANS, fontSize: 31, fontWeight: 700, letterSpacing: "-0.015em", margin: "16px 0 8px", lineHeight: 1.25 }}>Feasibility Study:<br />Establishment of a {inp.chairs}-Chair Dental Clinic in Riyadh</h1>
               <div style={{ fontFamily: SANS, fontSize: 14, color: C.sub, marginBottom: 34 }}>Kingdom of Saudi Arabia · North Riyadh growth corridor · {today}</div>
               <div className="flex flex-wrap" style={{ gap: 12, marginBottom: 38 }}>
-                <Metric k="Verdict" v={m.verdict} />
+                <Metric k="Verdict" v={m.verdict} s={!m.fundingOk ? "⚠ underfunded" : undefined} />
                 <Metric k="Capital required" v={`SAR ${f0(budget.totalRequired)}K`} s="all-in to self-funding" />
                 <Metric k="5-year IRR" v={m.irr == null ? "n/a" : pctf(m.irr * 100)} s={`incl. exit at ${inp.exitMultiple}× EBITDA`} />
                 <Metric k="NPV" v={`SAR ${f0(m.npv)}K`} s={`@ ${inp.wacc}% WACC`} />
@@ -728,6 +728,7 @@
                   <div style={{ textAlign: "right", paddingLeft: 16, borderLeft: `1px solid ${C.lineDk}` }}>
                     <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Verdict</div>
                     <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: m.vColor, letterSpacing: "-0.02em", lineHeight: 1 }}>{m.verdict}</div>
+                    {!m.fundingOk && <div style={{ fontFamily: SANS, fontSize: 9.5, fontWeight: 700, color: C.neg, marginTop: 2 }}>· underfunded</div>}
                   </div>
                   <button onClick={() => setShowStudy(true)} className="no-print" style={btn("transparent", C.brassLt, C.lineDk)}><FileText size={14} /> Study</button>
                   <button onClick={() => window.print()} className="no-print" style={btn(C.brass, C.ink)}><Save size={14} /> Export</button>
@@ -776,6 +777,7 @@
             <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderLeft: `5px solid ${m.vColor}`, borderRadius: 10, padding: "16px 20px", marginBottom: 14 }}>
               <div className="flex flex-wrap items-center" style={{ gap: 14, marginBottom: 8 }}>
                 <span style={{ fontFamily: MONO, fontSize: 30, fontWeight: 700, color: m.vColor, letterSpacing: "-0.02em", lineHeight: 1 }}>{m.verdict}</span>
+                {!m.fundingOk && <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, color: C.neg, border: `1px solid ${C.neg}`, borderRadius: 4, padding: "2px 7px" }}>UNDERFUNDED · peak need {f0(m.peakNeed)}K exceeds funded budget</span>}
                 <span style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub }}>{rationale}</span>
               </div>
               <div style={{ fontFamily: SANS, fontSize: 13.5, color: C.text, lineHeight: 1.6 }}>{thesis}</div>
