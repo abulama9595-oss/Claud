@@ -54,13 +54,13 @@ const BASE_INPUTS = {
   capexRecruitment: 400, capexLicensing: 50, capexCivilDefence: 50,
   capexConsultants: 150, capexCSSD: 300, capexInventory: 250,
 };
-const CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexContingency","capexFurniture","capexRecruitment","capexLicensing","capexCivilDefence","capexConsultants","capexCSSD","capexInventory"];
+const CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexContingency","capexFurniture","capexLicensing","capexCivilDefence","capexConsultants","capexCSSD","capexInventory"];
 // expatriate headcount is derived: chairside staff (rounded up) + medical support + janitors + drivers — all typically expat roles in KSA
 const expatCount = (inp) => Math.ceil(inp.chairs * inp.nursesPerChair) + (inp.medicalSupportCount || 0) + (inp.janitorCount || 0) + (inp.driverCount || 0);
 // annual cost (SAR'000) of the dedicated support roles, added to the fixed staff base
 const supportStaffAnnual = (inp) => ((inp.medicalSupportCount * inp.medicalSupportSalary + inp.janitorCount * inp.janitorSalary + inp.driverCount * inp.driverSalary) * 12) / 1000;
 // pre-opening expenses are derived from the same inputs the cash engine charges before opening day:
-// first annual rent cheque + 2 months of Y1 staff onboarding (incl. GOSI & expat fees) + annual insurance premiums
+// first annual rent cheque + 2 months of Y1 staff onboarding (incl. GOSI & expat fees) + annual insurance premiums + foreign-staff recruitment
 const preOpeningCost = (inp) => {
   const chairsideAnnual = (inp.chairs * inp.nursesPerChair * inp.chairsideSalary * 12) / 1000;
   const dentistBaseAnnual = (inp.dentistCount * inp.dentistBase * 12) / 1000;
@@ -69,7 +69,7 @@ const preOpeningCost = (inp) => {
   const perExpat = (inp.levyPerMonth * 12 + inp.iqamaPerYear) / 1000;
   const y1StaffAnnual = fixedBase * STAFF_RAMP[0] + Math.round(expatCount(inp) * STAFF_RAMP[0]) * perExpat;
   const prepaidIns = inp.insuranceCCHI * STAFF_RAMP[0] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
-  return (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp) + 2 * (y1StaffAnnual / 12) + prepaidIns;
+  return (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp) + 2 * (y1StaffAnnual / 12) + prepaidIns + (inp.capexRecruitment || 0);
 };
 // share of the first lease year paid before opening, by payment terms and fit-out length
 const rentUpfrontFactor = (inp) => inp.rentTerms === "grace" ? 0 : inp.rentTerms === "semiannual" ? Math.ceil(Math.round(inp.fitoutMonths) / 6) * 0.5 : 1;
@@ -195,6 +195,7 @@ function compute(inp) {
       else if (inp.rentTerms !== "grace") { if (mn === -F) mCf -= years[0].lease; }              // full first-year cheque at fit-out start
       if (mn >= -2) mCf -= mStaff;          // staff onboarding & training
       if (mn === -1) mCf -= prepaid(0);     // annual CCHI + malpractice premiums upfront
+      if (mn === -F) mCf -= (inp.capexRecruitment || 0); // foreign-staff recruitment & mobilization (pre-opening)
     } else {
       mCf = opCf[mn];
     }
@@ -239,6 +240,7 @@ function compute(inp) {
     ["Utilities & medical waste", [null, -utilCash(0), -utilCash(1)], "row"],
     ["Other OpEx", [null, -years[0].other, -years[1].other], "row"],
     ["Foreign-labour fees (levy & iqama)", [-preForeign, -years[0].foreign, -years[1].foreign], "row"],
+    ["Foreign-staff recruitment (pre-opening)", [-(inp.capexRecruitment || 0), null, null], "row"],
     ["Net operating cash flow", [-cfPreOpen - vatCapex, net1, net2], "subtotal"],
     ["Cumulative cash position", [-cfPreOpen - vatCapex, -cfPreOpen - vatCapex + net1, -cfPreOpen - vatCapex + net1 + net2], "total"],
     ["Lowest cash point in period", winMin, "total"],

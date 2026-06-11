@@ -193,7 +193,7 @@
         const capexInvest = m.investCapex;                         // all CapEx lines (WC reserve no longer guessed)
         const opShortfall = Math.max(0, m.peakNeed - preOpen - vat);
         const hardAssets = hardCapex(inp);
-        const softCosts = (inp.capexLicensing || 0) + (inp.capexConsultants || 0) + (inp.capexRecruitment || 0);
+        const softCosts = (inp.capexLicensing || 0) + (inp.capexConsultants || 0);
         const inventory = inp.capexInventory || 0;
         const contingency = inp.capexContingency || 0;
         const launchLiquidity = m.launchLiquidity;                  // = peak cumulative cash deficit
@@ -211,7 +211,7 @@
         { name: "Facility fit-out", value: inp.capexFitout },
         { name: "Clinical equipment", value: inp.capexChairs + inp.capexImaging + inp.capexCSSD },
         { name: "IT, furniture & inventory", value: inp.capexIT + inp.capexFurniture + inp.capexInventory },
-        { name: "Soft costs & compliance", value: inp.capexLicensing + inp.capexCivilDefence + inp.capexConsultants + inp.capexRecruitment },
+        { name: "Soft costs & compliance", value: inp.capexLicensing + inp.capexCivilDefence + inp.capexConsultants },
         { name: "Contingency", value: inp.capexContingency },
         { name: "Launch liquidity", value: budget.launchLiquidity },
         { name: "Minimum-cash reserve", value: budget.minCash },
@@ -221,7 +221,7 @@
         ["Facility fit-out", "capexFitout"], ["Chairs & accessories", "capexChairs"], ["Imaging equipment", "capexImaging"],
         ["Sterilisation / CSSD", "capexCSSD"], ["IT & systems", "capexIT"], ["Furniture & fittings", "capexFurniture"],
         ["Initial inventory", "capexInventory"], ["Licensing, legal & CR", "capexLicensing"], ["Civil Defence", "capexCivilDefence"],
-        ["Consultants & PMC", "capexConsultants"], ["Foreign-staff recruitment", "capexRecruitment"], ["Contingency", "capexContingency"],
+        ["Consultants & PMC", "capexConsultants"], ["Contingency", "capexContingency"],
       ];
       const bRow = { display: "flex", justifyContent: "space-between", padding: "3.5px 0", fontFamily: SANS, fontSize: 12.5, color: C.text };
       const bVal = { fontFamily: MONO, fontSize: 12.5 };
@@ -402,7 +402,6 @@
                   <Slider label="Licensing, legal & CR" value={inp.capexLicensing} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexLicensing", v)} hint="MISA, commercial registration, SEHA licence" />
                   <Slider label="Civil Defence compliance" value={inp.capexCivilDefence} min={0} max={500} step={25} unit="SAR'000" onChange={(v) => set("capexCivilDefence", v)} hint="Fire suppression, emergency systems, inspection" />
                   <Slider label="Consultants & PMC" value={inp.capexConsultants} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexConsultants", v)} hint="Project management, design, QS" />
-                  <Slider label="Foreign-staff recruitment" value={inp.capexRecruitment} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexRecruitment", v)} hint="Agency fees, relocation, mobilisation" />
                 </div>
                 <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, margin: "18px 0 12px" }}>Pre-Opening &amp; Reserves</div>
                 <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: "0 32px" }}>
@@ -425,7 +424,7 @@
                 </div>
                 <div style={{ marginTop: 18, padding: "12px 16px", background: C.ink2, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                   {CAPEX_KEYS.map(k => {
-                    const labels = { capexFitout:"Fit-out", capexChairs:"Chairs", capexImaging:"Imaging", capexIT:"IT", capexContingency:"Cont.", capexFurniture:"Furn.", capexRecruitment:"Recruit", capexLicensing:"Legal", capexCivilDefence:"CD", capexConsultants:"PMC", capexCSSD:"CSSD", capexInventory:"Stock" };
+                    const labels = { capexFitout:"Fit-out", capexChairs:"Chairs", capexImaging:"Imaging", capexIT:"IT", capexContingency:"Cont.", capexFurniture:"Furn.", capexLicensing:"Legal", capexCivilDefence:"CD", capexConsultants:"PMC", capexCSSD:"CSSD", capexInventory:"Stock" };
                     const v = inp[k] || 0;
                     const pct = totalCapex(inp) > 0 ? v / totalCapex(inp) * 100 : 0;
                     return v > 0 ? (
@@ -493,6 +492,7 @@
                 </div>
                 <Slider label="Work-permit levy" value={inp.levyPerMonth} min={0} max={1000} step={50} unit="SAR/mo" onChange={(v) => set("levyPerMonth", v)} />
                 <Slider label="Iqama + permit fees" value={inp.iqamaPerYear} min={0} max={2000} step={50} unit="SAR/yr" onChange={(v) => set("iqamaPerYear", v)} hint="Per expat, per year" />
+                <Slider label="Foreign-staff recruitment" value={inp.capexRecruitment} min={0} max={1000} step={25} unit="SAR'000" onChange={(v) => set("capexRecruitment", v)} hint="Agency fees, relocation, mobilisation — a pre-opening cost (sits in launch liquidity, not CapEx)" />
               </Card>
 
               <Card title="Investment & Exit" n="08">
