@@ -39,4 +39,8 @@ npx serve -l 5500 .
 ## Notes
 - Saved scenarios are stored in the browser via `localStorage` (key
   `dental_scenarios`), so they persist per-browser with no backend.
+- **Export / Import** in the scenario bar moves scenarios between browsers or
+  machines: *Export* downloads a JSON bundle (all saved scenarios + the current
+  model); *Import* reads such a file back (it also accepts a single scenario or
+  a bare inputs object) and merges it into your saved list.
 - All monetary figures are in SAR '000 unless labelled otherwise.
