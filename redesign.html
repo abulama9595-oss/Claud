@@ -238,7 +238,7 @@
               <div style={{ fontFamily: SANS, fontSize: 14, color: C.sub, marginBottom: 34 }}>Kingdom of Saudi Arabia · North Riyadh growth corridor · {today}</div>
               <div className="flex flex-wrap" style={{ gap: 12, marginBottom: 38 }}>
                 <Metric k="Verdict" v={m.verdict} s={!m.fundingOk ? "⚠ underfunded" : undefined} />
-                <Metric k="Capital required" v={`SAR ${f0(budget.totalRequired)}K`} s="all-in to self-funding" />
+                <Metric k="Funding to raise" v={`SAR ${f0(budget.totalRaise)}K`} s={`all-in · incl. ${f0(budget.minCash)}K min-cash`} />
                 <Metric k="5-year IRR" v={m.irr == null ? "n/a" : pctf(m.irr * 100)} s={`incl. exit at ${inp.exitMultiple}× EBITDA`} />
                 <Metric k="NPV" v={`SAR ${f0(m.npv)}K`} s={`@ ${inp.wacc}% WACC`} />
               </div>
@@ -256,14 +256,14 @@
           <Pg n={2}>
             <h2 style={secT}>1. Executive Summary</h2>
             <p style={para}>This study assesses the commercial and financial feasibility of establishing a {inp.chairs}-operatory private dental clinic in the northern growth corridor of Riyadh, Kingdom of Saudi Arabia. The assessment integrates a market review, a location screening, a five-year financial model with monthly cash simulation of the launch period, and a quantified risk analysis. All figures are stated in SAR '000 unless noted otherwise.</p>
-            <p style={para}>The clinic requires total funding of <b>SAR {f0(budget.totalRequired)}K</b>, comprising SAR {f0(budget.capexInvest)}K of capital expenditure, SAR {f0(budget.preOpen + budget.vat)}K of pre-opening cash (including recoverable VAT), and SAR {f0(budget.opShortfall)}K of post-opening working capital consumed before the operation becomes self-funding{selfFund ? ` (achieved in ${selfFund})` : ""}. At a planned revenue of SAR {inp.revPerChair}K per chair per month — equivalent to {visitsDay.toFixed(1)} patient visits per chair per day at an average ticket of SAR 500 — the clinic matures to revenue of SAR {f0(m.y5.revenue)}K with an EBITDA margin of {pctf(m.y5.ebitdaPct)} by Year 5, {m.y5.ebitdaPct >= 25 ? "within or above" : "below"} the 25–30% range observed for well-run Saudi dental groups.</p>
+            <p style={para}>The clinic requires total funding of <b>SAR {f0(budget.totalRequired)}K</b>, comprising SAR {f0(budget.capexInvest)}K of capital expenditure, SAR {f0(budget.launchLiquidity)}K of launch liquidity (pre-opening cash, recoverable VAT and the operating ramp to self-funding{selfFund ? `, achieved in ${selfFund}` : ""}), and a SAR {f0(budget.minCash)}K minimum-cash reserve ({inp.minCashMonths} months of operating cost). At a planned revenue of SAR {inp.revPerChair}K per chair per month — equivalent to {visitsDay.toFixed(1)} patient visits per chair per day at an average ticket of SAR 500 — the clinic matures to revenue of SAR {f0(m.y5.revenue)}K with an EBITDA margin of {pctf(m.y5.ebitdaPct)} by Year 5, {m.y5.ebitdaPct >= 25 ? "within or above" : "below"} the 25–30% range observed for well-run Saudi dental groups.</p>
             <p style={para}>On these assumptions the project returns a five-year IRR of <b>{m.irr == null ? "n/a" : pctf(m.irr * 100)}</b> (including a terminal sale at {inp.exitMultiple}× Year-5 EBITDA) and a net present value of <b>SAR {f0(m.npv)}K</b> at a {inp.wacc}% discount rate, with capital payback in {m.payback ? m.payback.toFixed(1) : "—"} years on free cash flow. Cumulative net income over the five-year horizon is SAR {f0(m.cumNI)}K after Zakat. The funding plan {m.fundingOk ? `covers the peak cash requirement of SAR ${f0(m.peakNeed)}K (${m.troughLabel}) with headroom of SAR ${f0(m.fundingBudget - m.peakNeed)}K` : `is short of the peak cash requirement of SAR ${f0(m.peakNeed)}K (${m.troughLabel}) by SAR ${f0(m.peakNeed - m.fundingBudget)}K`}.</p>
             <div style={subT}>Key indicators</div>
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
               <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Indicator</th><th style={tTh}>Value</th><th style={{ ...tTh, textAlign: "left" }}>Indicator</th><th style={tTh}>Value</th></tr></thead>
               <tbody>
-                <tr><td style={tLb}>Capital required (all-in)</td><td style={tTd}>{f0(budget.totalRequired)}</td><td style={tLb}>Year-5 revenue</td><td style={tTd}>{f0(m.y5.revenue)}</td></tr>
-                <tr><td style={tLb}>Funded budget · buffer</td><td style={tTd}>{f0(budget.totalBudget)} · {budget.buffer >= 0 ? "+" : "−"}{f0(Math.abs(budget.buffer))}</td><td style={tLb}>Year-5 EBITDA (margin)</td><td style={tTd}>{f0(m.y5.ebitda)} ({pctf(m.y5.ebitdaPct)})</td></tr>
+                <tr><td style={tLb}>Funding to raise (all-in)</td><td style={tTd}>{f0(budget.totalRaise)}</td><td style={tLb}>Year-5 revenue</td><td style={tTd}>{f0(m.y5.revenue)}</td></tr>
+                <tr><td style={tLb}>Min-cash reserve</td><td style={tTd}>{f0(budget.minCash)} ({inp.minCashMonths} mo)</td><td style={tLb}>Year-5 EBITDA (margin)</td><td style={tTd}>{f0(m.y5.ebitda)} ({pctf(m.y5.ebitdaPct)})</td></tr>
                 <tr><td style={tLb}>5-year IRR (incl. exit)</td><td style={tTd}>{m.irr == null ? "n/a" : pctf(m.irr * 100)}</td><td style={tLb}>Year-5 net income</td><td style={tTd}>{f0(m.y5.ni)}</td></tr>
                 <tr><td style={tLb}>NPV @ {inp.wacc}% WACC</td><td style={tTd}>{f0(m.npv)}</td><td style={tLb}>Cumulative net income Y1–Y5</td><td style={tTd}>{f0(m.cumNI)}</td></tr>
                 <tr><td style={tLb}>Payback (free cash flow)</td><td style={tTd}>{m.payback ? m.payback.toFixed(1) + " yrs" : "—"}</td><td style={tLb}>Exit value ({inp.exitMultiple}× Y5 EBITDA)</td><td style={tTd}>{f0(m.exitValue)}</td></tr>
@@ -420,15 +420,12 @@
                   <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Uses of funds</th><th style={tTh}>SAR '000</th></tr></thead>
                   <tbody>
                     <tr><td style={tLb}>Capital expenditure (build-out, equipment, soft costs)</td><td style={tTd}>{f0(budget.capexInvest)}</td></tr>
-                    <tr><td style={tLb}>Pre-opening cash ({F}-month fit-out: rent, onboarding, premiums)</td><td style={tTd}>{f0(budget.preOpen)}</td></tr>
-                    <tr><td style={tLb}>Input VAT on CapEx (recovered M1–M6)</td><td style={tTd}>{f0(budget.vat)}</td></tr>
-                    <tr><td style={tLb}>Post-opening operating shortfall (to {m.troughLabel})</td><td style={tTd}>{f0(budget.opShortfall)}</td></tr>
-                    <tr><td style={{ ...tLb, fontWeight: 700 }}>Total cash required</td><td style={{ ...tTd, fontWeight: 700 }}>{f0(budget.totalRequired)}</td></tr>
-                    <tr><td style={tLb}>Funded budget (incl. SAR {f0(inp.capexWorkingCapital)}K WC reserve)</td><td style={tTd}>{f0(budget.totalBudget)}</td></tr>
-                    <tr><td style={{ ...tLb, fontWeight: 700, color: budget.buffer >= 0 ? C.pos : C.neg }}>{budget.buffer >= 0 ? "Safety buffer" : "Funding shortfall"}</td><td style={{ ...tTd, fontWeight: 700, color: budget.buffer >= 0 ? C.pos : C.neg }}>{f0(Math.abs(budget.buffer))}</td></tr>
+                    <tr><td style={tLb}>Launch liquidity (pre-opening, VAT timing &amp; ramp to self-funding)</td><td style={tTd}>{f0(budget.launchLiquidity)}</td></tr>
+                    <tr><td style={tLb}>Minimum-cash reserve ({inp.minCashMonths} months of operating cost)</td><td style={tTd}>{f0(budget.minCash)}</td></tr>
+                    <tr><td style={{ ...tLb, fontWeight: 700 }}>Total funding to raise</td><td style={{ ...tTd, fontWeight: 700 }}>{f0(budget.totalRaise)}</td></tr>
                   </tbody>
                 </table>
-                <div style={note}>All-equity funding assumed; no debt or equipment leasing is modelled. The exit value is not part of the funding plan.</div>
+                <div style={note}>Launch liquidity is the deepest cumulative cash deficit ({m.troughLabel}) and includes SAR {f0(budget.vat)}K input VAT recovered over M1–M6. All-equity funding assumed; no debt or equipment leasing is modelled. The exit value is not part of the funding plan.</div>
               </div>
               <div style={{ flex: "1 1 44%" }}>
                 <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 2 }}>Funded budget allocation</div>
@@ -481,7 +478,7 @@
                   ["Revenue underperformance vs plan", "M / H", `${cushion != null ? cushion + "% cushion to break-even" : "Break-even below tested range"}; marketing front-loaded at 1.6× in Y1; production-linked dentist pay flexes ${inp.profitShare}% of the cost base`],
                   ["Clinical recruitment & Saudization", "M / H", `Dentist base ≥ SAR 9,000 GOSI floor; SAR ${f0(inp.capexRecruitment)}K recruitment budget; onboarding window P2–P1; rising Saudi dentist supply (54% of workforce, 2023)`],
                   ["Licensing / fit-out delay", "M / M", `${F}-month schedule; SAR ${f0(inp.capexContingency)}K contingency; ${inp.rentTerms === "grace" ? "rent-free fit-out grace negotiated" : "early MOH/Civil Defence engagement to protect the opening date"}`],
-                  ["Insurer receivables & denials", "L–M / M", `${inp.insurerDelayMo}-month collection lag and ${inp.rejectionPct}% rejections explicitly modelled; SAR ${f0(inp.capexWorkingCapital)}K WC reserve sized to the ${m.troughLabel} trough`],
+                  ["Insurer receivables & denials", "L–M / M", `${inp.insurerDelayMo}-month collection lag and ${inp.rejectionPct}% rejections explicitly modelled; SAR ${f0(budget.wcDerived)}K launch liquidity sized to the ${m.troughLabel} trough`],
                   ["Competitive intensity (North Riyadh)", "M / M", "Differentiated multi-specialty offer; insurer network contracts from M1; corporate accounts via KAFD proximity"],
                   ["Cost escalation (rent, salaries)", "L / M", "Lease escalation of up to 8.2% over 5 years and 3–7% staff drift embedded in projections"],
                 ].map(([r, li, mit]) => (
@@ -545,7 +542,7 @@
                   ["Clinic lease · staff housing (annual)", `SAR ${f0(inp.clinicRent)}K · SAR ${f0(inp.staffHousing)}K`],
                   ["Fit-out duration · rent terms", `${F} months · ${inp.rentTerms === "annual" ? "annual, upfront from fit-out" : inp.rentTerms === "grace" ? "annual + fit-out grace" : "semi-annual instalments"}`],
                   ["Total CapEx (incl. derived pre-opening)", `SAR ${f0(totalCapex(inp))}K`],
-                  ["Working capital reserve · contingency", `SAR ${f0(inp.capexWorkingCapital)}K · SAR ${f0(inp.capexContingency)}K`],
+                  ["Launch liquidity · contingency", `SAR ${f0(budget.wcDerived)}K · SAR ${f0(inp.capexContingency)}K`],
                   ["Exit multiple · WACC · Zakat", `${inp.exitMultiple}× EBITDA · ${inp.wacc}% · ${inp.zakatPct}%`],
                 ].map(([k, v]) => (
                   <tr key={k}><td style={{ ...tLb, color: C.sub, fontSize: 11 }}>{k}</td><td style={{ ...tTd, fontSize: 11 }}>{v}</td></tr>
@@ -642,14 +639,22 @@
         const rentCheque1 = (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp);
         const insPrem = inp.insuranceCCHI * STAFF_RAMP[0] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
         const staffOnboard = preOpen - rentCheque1 - insPrem;
-        const capexInvest = totalCapex(inp) - preOpen - inp.capexWorkingCapital;
+        const capexInvest = m.investCapex;                         // all CapEx lines (WC reserve no longer guessed)
         const opShortfall = Math.max(0, m.peakNeed - preOpen - vat);
-        const totalRequired = capexInvest + preOpen + vat + opShortfall;
-        const totalBudget = totalCapex(inp);
+        // sources & uses building blocks
+        const hardAssets = hardCapex(inp);
+        const softCosts = (inp.capexLicensing || 0) + (inp.capexConsultants || 0) + (inp.capexRecruitment || 0);
+        const inventory = inp.capexInventory || 0;
+        const contingency = inp.capexContingency || 0;
+        const launchLiquidity = m.launchLiquidity;                  // = peak cumulative cash deficit
+        const minCash = m.minCashReserve;                           // deliberate liquidity policy cushion
+        const wcDerived = launchLiquidity + minCash;                // derived working capital (replaces the old guess)
+        const totalRaise = m.totalRaise;
+        const totalRequired = totalRaise, totalBudget = totalRaise, buffer = minCash;
         const by1 = m.years[0];
         const opexY1 = by1.fixedStaff + by1.share + by1.materials + by1.lease + by1.mkt + by1.other + by1.insUtil + by1.foreign;
         const netRevY1 = by1.revenue - by1.denials;
-        return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, totalRequired, totalBudget, buffer: totalBudget - totalRequired, opexY1, netRevY1, ebitdaY1: by1.ebitda };
+        return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, hardAssets, softCosts, inventory, contingency, launchLiquidity, minCash, wcDerived, totalRaise, totalRequired, totalBudget, buffer, opexY1, netRevY1, ebitdaY1: by1.ebitda };
       })();
       const rentChequeLabel = inp.rentTerms === "grace" ? `Rent during fit-out (${inp.fitoutMonths}-month grace — waived)` : inp.rentTerms === "semiannual" ? `Semi-annual rent instalments before opening` : `First annual rent cheque (P${inp.fitoutMonths})`;
       const budgetPie = [
@@ -658,10 +663,10 @@
         { name: "IT, furniture & inventory", value: inp.capexIT + inp.capexFurniture + inp.capexInventory },
         { name: "Soft costs & compliance", value: inp.capexLicensing + inp.capexCivilDefence + inp.capexConsultants + inp.capexRecruitment },
         { name: "Contingency", value: inp.capexContingency },
-        { name: "Pre-opening expenses", value: budget.preOpen },
-        { name: "Working capital reserve", value: inp.capexWorkingCapital },
+        { name: "Launch liquidity", value: budget.launchLiquidity },
+        { name: "Minimum-cash reserve", value: budget.minCash },
       ].filter(d => d.value > 0);
-      const PIE_COLORS = { "Facility fit-out": "#15263B", "Clinical equipment": "#27384E", "IT, furniture & inventory": "#64707C", "Soft costs & compliance": "#9DAEC0", "Contingency": "#D9B36A", "Pre-opening expenses": "#B0823A", "Working capital reserve": "#2E7D63" };
+      const PIE_COLORS = { "Facility fit-out": "#15263B", "Clinical equipment": "#27384E", "IT, furniture & inventory": "#64707C", "Soft costs & compliance": "#9DAEC0", "Contingency": "#D9B36A", "Launch liquidity": "#B0823A", "Minimum-cash reserve": "#2E7D63" };
       const budgetCapexRows = [
         ["Facility fit-out", "capexFitout"], ["Chairs & accessories", "capexChairs"], ["Imaging equipment", "capexImaging"],
         ["Sterilisation / CSSD", "capexCSSD"], ["IT & systems", "capexIT"], ["Furniture & fittings", "capexFurniture"],
@@ -689,12 +694,11 @@
         m.cumNI > 0 ? `cumulative income +${f0(m.cumNI)}K` : `cumulative income ${f0(m.cumNI)}K`,
         `${pctf(m.y5.ebitdaPct)} mature EBITDA margin`,
         m.payback ? `${m.payback.toFixed(1)}-yr payback` : `no payback in 5 yrs`,
-        m.fundingOk ? `fully funded (+${f0(budget.buffer)}K buffer)` : `underfunded by ${f0(Math.abs(budget.buffer))}K`,
+        `${f0(budget.minCash)}K min-cash reserve (${inp.minCashMonths} mo opex)`,
       ].join("  ·  ");
-      const thesis = `A ${inp.chairs}-chair Riyadh clinic needing SAR ${f0(budget.totalRequired)}K all-in to open and reach self-funding. At ${inp.revPerChair}K/chair/month it matures to ${pctf(m.y5.ebitdaPct)} EBITDA — ${marginOk ? "above" : "below"} the 25–30% KSA benchmark — returning a ${m.irr == null ? "n/a" : pctf(m.irr * 100)} 5-year IRR and ${f0(m.npv)}K NPV at ${inp.wacc}% WACC. ${m.fundingOk ? "The funding plan covers the launch cash trough" : "The funding plan is short of the launch cash trough"}; the result swings most on ${topRisk[0].toLowerCase()}.`;
+      const thesis = `A ${inp.chairs}-chair Riyadh clinic needing SAR ${f0(budget.totalRaise)}K all-in to open and reach self-funding. At ${inp.revPerChair}K/chair/month it matures to ${pctf(m.y5.ebitdaPct)} EBITDA — ${marginOk ? "above" : "below"} the 25–30% KSA benchmark — returning a ${m.irr == null ? "n/a" : pctf(m.irr * 100)} 5-year IRR and ${f0(m.npv)}K NPV at ${inp.wacc}% WACC. ${m.fundingOk ? "The funding plan covers the launch cash trough" : "The funding plan is short of the launch cash trough"}; the result swings most on ${topRisk[0].toLowerCase()}.`;
       const summaryKpis = [
-        ["Capital required", f0(budget.totalRequired), "SAR '000 · minimum to launch", C.brass, null, null],
-        ["Funding to raise", f0(budget.totalBudget), "SAR '000 · capital deployed", C.brass, budget.buffer >= 0 ? `+${f0(budget.buffer)}K cash buffer` : `SHORT ${f0(Math.abs(budget.buffer))}K`, budget.buffer >= 0 ? C.pos : C.neg],
+        ["Funding to raise", f0(budget.totalRaise), "SAR '000 · all-in capital", C.brass, `incl. ${f0(budget.minCash)}K min-cash reserve`, C.pos],
         ["5-year IRR", m.irr == null ? "n/a" : pctf(m.irr * 100), "incl. exit at " + inp.exitMultiple + "× EBITDA", C.text, null, null],
         ["NPV", f0(m.npv), `@ ${inp.wacc}% WACC, SAR '000`, m.npv < 0 ? C.neg : C.pos, null, null],
         ["Capital payback", m.payback ? m.payback.toFixed(1) + " yrs" : "—", "on free cash flow", C.text, null, null],
@@ -723,7 +727,7 @@
                 </div>
                 <div className="flex items-center" style={{ gap: 16 }}>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Capital required</div>
+                    <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Funding to raise</div>
                     <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: C.brassLt, letterSpacing: "-0.02em", lineHeight: 1 }}>{f0(budget.totalRequired)}</div>
                   </div>
                   <div style={{ textAlign: "right", paddingLeft: 16, borderLeft: `1px solid ${C.lineDk}` }}>
@@ -742,7 +746,7 @@
                   ["5-yr IRR", m.irr == null ? "n/a" : pctf(m.irr * 100), C.inv],
                   ["Payback", m.payback ? m.payback.toFixed(1) + " yr" : "—", C.inv],
                   ["Y5 EBITDA margin", pctf(m.y5.ebitdaPct), m.y5.ebitdaPct >= 25 ? C.brassLt : C.neg],
-                  ["Funding buffer", (budget.buffer >= 0 ? "+" : "−") + f0(Math.abs(budget.buffer)), budget.buffer >= 0 ? C.pos : C.neg],
+                  ["Min-cash reserve", f0(budget.minCash), C.pos],
                 ].map(([l, v, col]) => (
                   <div key={l} style={{ flex: "1 1 110px", minWidth: 100, padding: "4px 14px 8px", borderLeft: `2px solid ${col}` }}>
                     <div style={{ fontFamily: SANS, fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.invSub }}>{l}</div>
@@ -1027,7 +1031,7 @@
                     </div>
                     <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 6 }}>Sets when rent cheques fall due — drives pre-opening cash and the funding trough</div>
                   </div>
-                  <Slider label="Working capital reserve" value={inp.capexWorkingCapital} min={0} max={6000} step={50} unit="SAR'000" onChange={(v) => set("capexWorkingCapital", v)} hint="Receivables float & operating buffer — with pre-opening, size to the peak funding need" />
+                  <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={0.5} unit="months opex" onChange={(v) => set("minCashMonths", v)} hint={`Liquidity policy floor held above the launch trough — ${f0(m.minCashReserve)}K at ${f0(m.monthlyOpex)}K/mo Y1 opex`} />
                   <Slider label="Contingency" value={inp.capexContingency} min={0} max={2000} step={50} unit="SAR'000" onChange={(v) => set("capexContingency", v)} hint="Typically 5–10% of hard costs" />
                 </div>
                 <div style={{ marginTop: 18, padding: "12px 16px", background: C.ink2, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -1168,9 +1172,9 @@
                     <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, fontStyle: "italic", padding: "2px 0 4px" }}>
                       Profitable on the year, but rent cheques, the ramp &amp; insurer receivables create an intra-year trough:
                     </div>
-                    <div style={bRow}><span style={{ color: C.sub }}>Peak intra-year shortfall (by {m.troughLabel})</span><span style={bVal}>{f0(budget.opShortfall)}</span></div>
-                    <div style={bRow}><span style={{ color: C.sub }}>Allocated: working capital reserve</span><span style={bVal}>{f0(inp.capexWorkingCapital)}</span></div>
-                    <div style={bSub}><span>Cash required</span><span style={bVal}>{f0(budget.opShortfall)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Launch liquidity (peak deficit, {m.troughLabel})</span><span style={bVal}>{f0(budget.launchLiquidity)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>+ Minimum-cash reserve ({inp.minCashMonths} mo opex)</span><span style={bVal}>{f0(budget.minCash)}</span></div>
+                    <div style={bSub}><span>Cash to raise (excl. CapEx)</span><span style={bVal}>{f0(budget.wcDerived)}</span></div>
                   </div>
                 </div>
                 <div style={{ marginTop: 16 }}>
@@ -1189,9 +1193,9 @@
                   <div style={{ fontFamily: SANS, fontSize: 12, color: C.invSub }}>
                     Funded budget (Total CapEx incl. WC reserve): <span style={{ fontFamily: MONO, fontWeight: 700, color: C.brassLt }}>{f0(budget.totalBudget)}</span>
                   </div>
-                  <div style={{ fontFamily: SANS, fontSize: 12, color: budget.buffer >= 0 ? C.invSub : C.neg }}>
-                    {budget.buffer >= 0 ? "Safety buffer: " : "FUNDING SHORTFALL: "}
-                    <span style={{ fontFamily: MONO, fontWeight: 700, color: budget.buffer >= 0 ? C.pos : C.neg }}>{f0(Math.abs(budget.buffer))}</span>
+                  <div style={{ fontFamily: SANS, fontSize: 12, color: C.invSub }}>
+                    {`Min-cash reserve (${inp.minCashMonths} mo opex): `}
+                    <span style={{ fontFamily: MONO, fontWeight: 700, color: C.pos }}>{f0(budget.minCash)}</span>
                   </div>
                 </div>
               </div>
@@ -1234,7 +1238,7 @@
                 </table>
               </div>
               <div style={{ padding: "10px 18px 14px", fontFamily: SANS, fontSize: 11, color: C.sub }}>
-                Collections are net of denials and shifted by the insurer payment delay · Y2 insurance renewal falls at M24, outside the window · excludes build-out CapEx (funded at launch), maintenance CapEx &amp; Zakat · "lowest cash point" is the funding trough each period, covered by the pre-opening + WC budget ({f0(m.fundingBudget)})
+                Collections are net of denials and shifted by the insurer payment delay · Y2 insurance renewal falls at M24, outside the window · excludes build-out CapEx (funded at launch), maintenance CapEx &amp; Zakat · "lowest cash point" is the funding trough each period, covered by the launch-liquidity + min-cash budget ({f0(m.fundingBudget)})
               </div>
             </div>
 
@@ -1243,7 +1247,7 @@
                 <div>
                   <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Funding View · Cash Balance</h3>
                   <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>
-                    Running cash on hand from fit-out start (P{inp.fitoutMonths}) through Year 2 — the shaded area is your bank balance; its lowest point is the capital you must have in place. Dashed line = pre-opening + WC budget. · SAR '000
+                    Running cash on hand from fit-out start (P{inp.fitoutMonths}) through Year 2 — the shaded area is your bank balance; its lowest point is the capital you must have in place. Dashed line = launch-liquidity + min-cash budget. · SAR '000
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -1252,7 +1256,7 @@
                     {m.peakNeed > 0 ? f0(m.peakNeed) : "0"} <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 400, color: C.sub }}>{m.peakNeed > 0 ? `in ${m.troughLabel}` : "cash-positive from M1"}</span>
                   </div>
                   <div style={{ fontFamily: SANS, fontSize: 11, color: m.fundingOk ? C.sub : C.neg, marginTop: 2 }}>
-                    {m.fundingOk ? `Covered by pre-opening + WC budget (${f0(m.fundingBudget)}) · headroom ${f0(m.fundingBudget - m.peakNeed)}` : `EXCEEDS pre-opening + WC budget (${f0(m.fundingBudget)}) by ${f0(m.peakNeed - m.fundingBudget)} — increase reserve`}
+                    {`Launch-liquidity + min-cash budget (${f0(m.fundingBudget)}) · ${f0(m.fundingBudget - m.peakNeed)} min-cash headroom over the ${f0(m.peakNeed)} trough`}
                   </div>
                 </div>
               </div>
@@ -1352,8 +1356,8 @@
                     ["Marketing · Other OpEx (mature)", `${f0(inp.marketing)}K · ${f0(inp.otherOpex)}K`],
                     ["Expats (derived) · levy · iqama", `${expatCount(inp)} · ${inp.levyPerMonth}/mo · ${inp.iqamaPerYear}/yr`],
                     ["Fit-out duration · rent terms", `${inp.fitoutMonths} mo · ${inp.rentTerms}`],
-                    ["Working capital reserve", f0(inp.capexWorkingCapital) + "K"],
-                    ["Total CapEx (incl. pre-opening)", f0(totalCapex(inp)) + "K"],
+                    ["Min-cash reserve · launch liquidity", `${f0(budget.minCash)}K · ${f0(budget.launchLiquidity)}K`],
+                    ["Total funding to raise", f0(budget.totalRaise) + "K"],
                     ["Exit multiple · WACC · Zakat", `${inp.exitMultiple}× · ${inp.wacc}% · ${inp.zakatPct}%`],
                   ].map(([k, v]) => (
                     <tr key={k} style={{ borderBottom: `1px solid ${C.line}` }}>

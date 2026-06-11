@@ -44,17 +44,17 @@ const BASE_INPUTS = {
   clinicRent: 1000, staffHousing: 200, marketing: 250, otherOpex: 500,
   insuranceCCHI: 200, malpracticePerDentist: 5000, utilitiesWaste: 150,
   levyPerMonth: 800, iqamaPerYear: 750,
-  exitMultiple: 6, maintenanceCapexPct: 4, zakatPct: 2.5, wacc: 12,
+  exitMultiple: 6, maintenanceCapexPct: 4, zakatPct: 2.5, wacc: 12, minCashMonths: 1.5,
   insuredPct: 30, rejectionPct: 0, insurerDelayMo: 4,
   rentTerms: "annual", // "annual" | "grace" | "semiannual"
   fitoutMonths: 6,
   // CapEx breakdown (SAR'000)
   capexFitout: 1000, capexChairs: 800, capexImaging: 700, capexIT: 200,
-  capexWorkingCapital: 2000, capexContingency: 700, capexFurniture: 300,
+  capexContingency: 700, capexFurniture: 300,
   capexRecruitment: 400, capexLicensing: 50, capexCivilDefence: 50,
   capexConsultants: 150, capexCSSD: 300, capexInventory: 250,
 };
-const CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexWorkingCapital","capexContingency","capexFurniture","capexRecruitment","capexLicensing","capexCivilDefence","capexConsultants","capexCSSD","capexInventory"];
+const CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexContingency","capexFurniture","capexRecruitment","capexLicensing","capexCivilDefence","capexConsultants","capexCSSD","capexInventory"];
 // expatriate headcount is derived: chairside staff (rounded up) + medical support + janitors + drivers — all typically expat roles in KSA
 const expatCount = (inp) => Math.ceil(inp.chairs * inp.nursesPerChair) + (inp.medicalSupportCount || 0) + (inp.janitorCount || 0) + (inp.driverCount || 0);
 // annual cost (SAR'000) of the dedicated support roles, added to the fixed staff base
@@ -125,22 +125,10 @@ function compute(inp) {
     years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, zakat, ni, niPct: pct(ni), fcf });
   }
   const y5 = years[4];
+  const y1 = years[0];
   const cumNI = years.reduce((a, y) => a + y.ni, 0);
-  const initialInvestment = totalCapex(inp);
-  let cum = 0, payback = null;
-  for (let i = 0; i < 5; i++) { const prev = cum; cum += years[i].fcf; if (cum >= initialInvestment && years[i].fcf > 0) { payback = i + (initialInvestment - prev) / years[i].fcf; break; } }
-  if (payback === null && y5.fcf > 0) payback = 5 + (initialInvestment - cum) / y5.fcf;
-  const cfs = [-initialInvestment];
-  for (let i = 0; i < 5; i++) { let cf = years[i].fcf; if (i === 4) cf += inp.exitMultiple * y5.ebitda; cfs.push(cf); }
-  const irr = computeIRR(cfs);
-  const npv = cfs.reduce((a, cf, i) => a + cf / Math.pow(1 + inp.wacc / 100, i), 0);
-  const perDentistMo = inp.dentistCount > 0 ? (dentistBaseAnnual + y5.share) / inp.dentistCount / 12 : 0;
-  const saudization = inp.dentistBase < 9000;
-  let verdict, vColor;
-  if (cumNI > 0 && y5.ebitdaPct >= 25 && payback && payback <= 4.5) { verdict = "STRONG"; vColor = C.pos; }
-  else if (cumNI > 0 && y5.ebitda > 0) { verdict = "VIABLE"; vColor = C.brass; }
-  else { verdict = "MARGINAL"; vColor = C.neg; }
-  const exitValue = inp.exitMultiple * y5.ebitda;
+  // representative Year-1 monthly operating cost, used to size the minimum-cash policy
+  const monthlyOpex = (y1.fixedStaff + y1.lease + y1.mkt + y1.other + y1.insUtil + y1.foreign + y1.materials + y1.share) / 12;
 
   // Pre-opening (fit-out, F months) + 24 operating months (Y1–Y2) cash engine.
   // Rent cheques follow the selected payment terms; the lease year runs from fit-out start (grace: from opening).
@@ -153,7 +141,6 @@ function compute(inp) {
   const uEnd = Math.min(100, inp.rampStart * 1.5);
   const uOpen = Math.max(0, 2 * inp.rampStart - uEnd);
   const u2End = Math.max(0, Math.min(100, 2 * rev[1] * 100 - uEnd));
-  const y1 = years[0];
   const sIns = inp.insuredPct / 100, rRej = inp.rejectionPct / 100, dLag = inp.insurerDelayMo;
   const prepaid = (yi) => inp.insuranceCCHI * STAFF_RAMP[yi] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
   const mStaff = (y1.fixedStaff + y1.foreign) / 12;
@@ -220,8 +207,14 @@ function compute(inp) {
     if (mn >= 0) { cumOp += mCf; monthlyOp.push({ month: label, "Net cash": Math.round(mCf), "Cumulative": Math.round(cumOp) }); }
   }
   const peakNeed = Math.max(0, -trough);
-  const fundingBudget = inp.capexWorkingCapital + preOpeningCost(inp); // derived pre-opening expenses + WC reserve fund the trough
-  const fundingOk = fundingBudget >= peakNeed;
+  // Funding requirement (sources & uses): launch liquidity = the deepest cumulative cash deficit
+  // (pre-opening opex + VAT timing + the operating ramp); plus a deliberate minimum-cash reserve.
+  const launchLiquidity = peakNeed;
+  const minCashReserve = Math.max(0, inp.minCashMonths) * monthlyOpex;
+  const fundingBudget = launchLiquidity + minCashReserve; // cash earmarked for the launch trough + policy cushion
+  const fundingOk = fundingBudget >= peakNeed;            // true by construction — we size the raise to the need
+  const investCapex = CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0); // all CapEx lines (the WC reserve is no longer a guessed line)
+  const totalRaise = investCapex + launchLiquidity + minCashReserve;     // single headline capital to raise
 
   // Cash flow statement for launch + first two operating years (direct method, ties exactly to the funding-view curve)
   const cfPreOpen = preOpeningCost(inp);
@@ -251,7 +244,24 @@ function compute(inp) {
     ["Lowest cash point in period", winMin, "total"],
   ];
 
-  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow };
+  // === Returns — capital base is the total capital actually deployed (totalRaise), not a guessed budget ===
+  const initialInvestment = totalRaise;
+  let cum = 0, payback = null;
+  for (let i = 0; i < 5; i++) { const prev = cum; cum += years[i].fcf; if (cum >= initialInvestment && years[i].fcf > 0) { payback = i + (initialInvestment - prev) / years[i].fcf; break; } }
+  if (payback === null && y5.fcf > 0) payback = 5 + (initialInvestment - cum) / y5.fcf;
+  const cfs = [-initialInvestment];
+  for (let i = 0; i < 5; i++) { let cf = years[i].fcf; if (i === 4) cf += inp.exitMultiple * y5.ebitda; cfs.push(cf); }
+  const irr = computeIRR(cfs);
+  const npv = cfs.reduce((a, cf, i) => a + cf / Math.pow(1 + inp.wacc / 100, i), 0);
+  const perDentistMo = inp.dentistCount > 0 ? (dentistBaseAnnual + y5.share) / inp.dentistCount / 12 : 0;
+  const saudization = inp.dentistBase < 9000;
+  let verdict, vColor;
+  if (cumNI > 0 && y5.ebitdaPct >= 25 && payback && payback <= 4.5) { verdict = "STRONG"; vColor = C.pos; }
+  else if (cumNI > 0 && y5.ebitda > 0) { verdict = "VIABLE"; vColor = C.brass; }
+  else { verdict = "MARGINAL"; vColor = C.neg; }
+  const exitValue = inp.exitMultiple * y5.ebitda;
+
+  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex };
 }
 function computeIRR(cfs) {
   let lo = -0.95, hi = 5.0;
