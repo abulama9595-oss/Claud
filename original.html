@@ -182,7 +182,9 @@
         ["Fixed staff (incl. dentist base)", "fixedStaff", "neg"], ["Lease & housing", "lease", "neg"],
         ["Marketing", "mkt", "neg"], ["Other OpEx", "other", "neg"], ["Insurance, utilities & waste", "insUtil", "neg"], ["Foreign-labour fees", "foreign", "neg"],
         ["Operating profit b/f share", "preshare", "sub"], ["Dentist profit share", "share", "neg"],
-        ["EBITDA", "ebitda", "head"], ["Depreciation", "dep", "neg"], ["Zakat", "zakat", "neg"], ["Net income", "ni", "head"],
+        ["EBITDA", "ebitda", "head"], ["Depreciation", "dep", "neg"],
+        ...(m.financedPrincipal > 0 ? [["Equipment finance interest", "interest", "neg"]] : []),
+        ["Zakat", "zakat", "neg"], ["Net income", "ni", "head"],
         ["Free cash flow", "fcf", "head"],
       ];
 
@@ -458,6 +460,21 @@
                 <Slider label="Maintenance CapEx" value={inp.maintenanceCapexPct} min={0} max={10} step={0.5} unit="% of hard assets/yr" onChange={(v) => set("maintenanceCapexPct", v)} hint={`On fit-out & equipment only (${f0(hardCapex(inp))}K base); typical 3–5%`} />
                 <Slider label="Zakat" value={inp.zakatPct} min={0} max={5} step={0.25} unit="% of net income" onChange={(v) => set("zakatPct", v)} hint="Saudi-owned entity; simplified NI-based approximation of the Zakat base" />
                 <Slider label="Discount rate (WACC)" value={inp.wacc} min={0} max={25} step={0.5} unit="%" onChange={(v) => set("wacc", v)} hint="KSA healthcare SME equity cost typically 10–14%" />
+              </Card>
+              <Card title="Asset Finance · Clinical Equipment" n="09">
+                <Slider label="Equipment financed" value={inp.financePct} min={0} max={100} step={5} unit="%" onChange={(v) => set("financePct", v)} hint={`Share of chairs, imaging & CSSD (SAR ${f0(m.financeable)}K) funded by a loan instead of equity — 0% = all-equity`} />
+                <Slider label="Interest rate (APR)" value={inp.financeRate} min={0} max={18} step={0.5} unit="%" onChange={(v) => set("financeRate", v)} hint="Equipment loan / hire-purchase rate" />
+                <Slider label="Finance term" value={inp.financeTermYears} min={1} max={7} step={1} unit="years" onChange={(v) => set("financeTermYears", v)} />
+                {m.financedPrincipal > 0 ? (
+                  <div style={{ marginTop: 6, padding: "10px 12px", background: C.bone, borderRadius: 8, fontFamily: SANS, fontSize: 12 }}>
+                    <div className="flex justify-between" style={{ padding: "2px 0" }}><span style={{ color: C.sub }}>Financed (debt) · down payment</span><span style={{ fontFamily: MONO }}>{f0(m.financedPrincipal)} · {f0(m.downPayment)}</span></div>
+                    <div className="flex justify-between" style={{ padding: "2px 0" }}><span style={{ color: C.sub }}>Monthly payment</span><span style={{ fontFamily: MONO }}>{f0(m.monthlyPayment)}</span></div>
+                    <div className="flex justify-between" style={{ padding: "2px 0" }}><span style={{ color: C.sub }}>Total interest (5y) · balance at exit</span><span style={{ fontFamily: MONO }}>{f0(m.financeInterest)} · {f0(m.financeResidual)}</span></div>
+                    <div style={{ fontSize: 11, color: C.sub, marginTop: 4 }}>Lowers the equity raise; interest sits below EBITDA so the exit value is unchanged. Returns shown are levered (equity).</div>
+                  </div>
+                ) : (
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 4 }}>All-equity — set a financed % to model an equipment loan.</div>
+                )}
               </Card>
 
             </div>
