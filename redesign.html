@@ -825,7 +825,7 @@
                       {sens.minUtil == null ? "> 100" : sens.minUtil}<span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>%</span>
                     </div>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 2 }}>
-                      A demand stress test: holding the capital raised fixed ({f0(m.fundingBudget)}K for the launch trough + min-cash), the model re-runs at ever-lower Year-1 utilisation. Slower demand deepens the cash trough; this is the lowest utilisation it still fits within the raise — below it the clinic runs out of cash before reaching self-funding.
+                      If Year-1 demand falls below this level, the cash raised ({f0(m.fundingBudget)}K) runs out before the clinic becomes self-funding.
                     </div>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.minUtil == null || inp.rampStart - sens.minUtil < 10 ? C.neg : C.pos, marginTop: 3 }}>
                       {sens.minUtil == null ? "Trough exceeds the raise even at 100% utilisation" : sens.minUtil > inp.rampStart ? `Already short at the planned ${inp.rampStart}% — needs ${sens.minUtil}%+` : `Current plan ${inp.rampStart}% → ${inp.rampStart - sens.minUtil} pts of slack before the trough exhausts the raise`}
