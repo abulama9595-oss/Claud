@@ -190,14 +190,21 @@
         const rentCheque1 = (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp);
         const insPrem = inp.insuranceCCHI * STAFF_RAMP[0] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
         const staffOnboard = preOpen - rentCheque1 - insPrem;
-        const capexInvest = totalCapex(inp) - preOpen - inp.capexWorkingCapital;
+        const capexInvest = m.investCapex;                         // all CapEx lines (WC reserve no longer guessed)
         const opShortfall = Math.max(0, m.peakNeed - preOpen - vat);
-        const totalRequired = capexInvest + preOpen + vat + opShortfall;
-        const totalBudget = totalCapex(inp);
+        const hardAssets = hardCapex(inp);
+        const softCosts = (inp.capexLicensing || 0) + (inp.capexConsultants || 0) + (inp.capexRecruitment || 0);
+        const inventory = inp.capexInventory || 0;
+        const contingency = inp.capexContingency || 0;
+        const launchLiquidity = m.launchLiquidity;                  // = peak cumulative cash deficit
+        const minCash = m.minCashReserve;                           // deliberate liquidity policy cushion
+        const wcDerived = launchLiquidity + minCash;                // derived working capital (replaces the old guess)
+        const totalRaise = m.totalRaise;
+        const totalRequired = totalRaise, totalBudget = totalRaise, buffer = minCash;
         const by1 = m.years[0];
         const opexY1 = by1.fixedStaff + by1.share + by1.materials + by1.lease + by1.mkt + by1.other + by1.insUtil + by1.foreign;
         const netRevY1 = by1.revenue - by1.denials;
-        return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, totalRequired, totalBudget, buffer: totalBudget - totalRequired, opexY1, netRevY1, ebitdaY1: by1.ebitda };
+        return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, hardAssets, softCosts, inventory, contingency, launchLiquidity, minCash, wcDerived, totalRaise, totalRequired, totalBudget, buffer, opexY1, netRevY1, ebitdaY1: by1.ebitda };
       })();
       const rentChequeLabel = inp.rentTerms === "grace" ? `Rent during fit-out (${inp.fitoutMonths}-month grace — waived)` : inp.rentTerms === "semiannual" ? `Semi-annual rent instalments before opening` : `First annual rent cheque (P${inp.fitoutMonths})`;
       const budgetPie = [
@@ -206,10 +213,10 @@
         { name: "IT, furniture & inventory", value: inp.capexIT + inp.capexFurniture + inp.capexInventory },
         { name: "Soft costs & compliance", value: inp.capexLicensing + inp.capexCivilDefence + inp.capexConsultants + inp.capexRecruitment },
         { name: "Contingency", value: inp.capexContingency },
-        { name: "Pre-opening expenses", value: budget.preOpen },
-        { name: "Working capital reserve", value: inp.capexWorkingCapital },
+        { name: "Launch liquidity", value: budget.launchLiquidity },
+        { name: "Minimum-cash reserve", value: budget.minCash },
       ].filter(d => d.value > 0);
-      const PIE_COLORS = { "Facility fit-out": "#15263B", "Clinical equipment": "#27384E", "IT, furniture & inventory": "#64707C", "Soft costs & compliance": "#9DAEC0", "Contingency": "#D9B36A", "Pre-opening expenses": "#B0823A", "Working capital reserve": "#2E7D63" };
+      const PIE_COLORS = { "Facility fit-out": "#15263B", "Clinical equipment": "#27384E", "IT, furniture & inventory": "#64707C", "Soft costs & compliance": "#9DAEC0", "Contingency": "#D9B36A", "Launch liquidity": "#B0823A", "Minimum-cash reserve": "#2E7D63" };
       const budgetCapexRows = [
         ["Facility fit-out", "capexFitout"], ["Chairs & accessories", "capexChairs"], ["Imaging equipment", "capexImaging"],
         ["Sterilisation / CSSD", "capexCSSD"], ["IT & systems", "capexIT"], ["Furniture & fittings", "capexFurniture"],
@@ -241,11 +248,11 @@
                 </div>
                 <div className="flex items-center" style={{ gap: 16 }}>
                   <div style={{ textAlign: "right", paddingRight: 16, borderRight: `1px solid ${C.lineDk}` }}>
-                    <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Capital required</div>
+                    <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.invSub }}>Funding to raise</div>
                     <div style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700, color: C.brassLt, letterSpacing: "-0.02em", lineHeight: 1 }}>{f0(budget.totalRequired)}</div>
                     <div style={{ fontFamily: SANS, fontSize: 10, color: C.invSub, marginTop: 2 }}>SAR '000 · CapEx + cash to self-funding</div>
-                    <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 600, color: budget.buffer >= 0 ? C.pos : C.neg, marginTop: 1 }}>
-                      {budget.buffer >= 0 ? `funded ${f0(budget.totalBudget)} · buffer +${f0(budget.buffer)}` : `funded ${f0(budget.totalBudget)} · SHORT ${f0(Math.abs(budget.buffer))}`}
+                    <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 600, color: C.pos, marginTop: 1 }}>
+                      {`incl. ${f0(budget.minCash)} min-cash reserve (${inp.minCashMonths} mo opex)`}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -414,7 +421,7 @@
                     </div>
                     <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 6 }}>Sets when rent cheques fall due — drives pre-opening cash and the funding trough</div>
                   </div>
-                  <Slider label="Working capital reserve" value={inp.capexWorkingCapital} min={0} max={6000} step={50} unit="SAR'000" onChange={(v) => set("capexWorkingCapital", v)} hint="Receivables float & operating buffer — with pre-opening, size to the peak funding need" />
+                  <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={0.5} unit="months opex" onChange={(v) => set("minCashMonths", v)} hint={`Liquidity policy floor held above the launch trough — ${f0(m.minCashReserve)}K at ${f0(m.monthlyOpex)}K/mo Y1 opex`} />
                   <Slider label="Contingency" value={inp.capexContingency} min={0} max={2000} step={50} unit="SAR'000" onChange={(v) => set("capexContingency", v)} hint="Typically 5–10% of hard costs" />
                 </div>
                 <div style={{ marginTop: 18, padding: "12px 16px", background: C.ink2, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
@@ -551,9 +558,9 @@
                     <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, fontStyle: "italic", padding: "2px 0 4px" }}>
                       Profitable on the year, but rent cheques, the ramp &amp; insurer receivables create an intra-year trough:
                     </div>
-                    <div style={bRow}><span style={{ color: C.sub }}>Peak intra-year shortfall (by {m.troughLabel})</span><span style={bVal}>{f0(budget.opShortfall)}</span></div>
-                    <div style={bRow}><span style={{ color: C.sub }}>Allocated: working capital reserve</span><span style={bVal}>{f0(inp.capexWorkingCapital)}</span></div>
-                    <div style={bSub}><span>Cash required</span><span style={bVal}>{f0(budget.opShortfall)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Launch liquidity (peak deficit, {m.troughLabel})</span><span style={bVal}>{f0(budget.launchLiquidity)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>+ Minimum-cash reserve ({inp.minCashMonths} mo opex)</span><span style={bVal}>{f0(budget.minCash)}</span></div>
+                    <div style={bSub}><span>Cash to raise (excl. CapEx)</span><span style={bVal}>{f0(budget.wcDerived)}</span></div>
                   </div>
                 </div>
                 <div style={{ marginTop: 16 }}>
@@ -572,9 +579,9 @@
                   <div style={{ fontFamily: SANS, fontSize: 12, color: C.invSub }}>
                     Funded budget (Total CapEx incl. WC reserve): <span style={{ fontFamily: MONO, fontWeight: 700, color: C.brassLt }}>{f0(budget.totalBudget)}</span>
                   </div>
-                  <div style={{ fontFamily: SANS, fontSize: 12, color: budget.buffer >= 0 ? C.invSub : C.neg }}>
-                    {budget.buffer >= 0 ? "Safety buffer: " : "FUNDING SHORTFALL: "}
-                    <span style={{ fontFamily: MONO, fontWeight: 700, color: budget.buffer >= 0 ? C.pos : C.neg }}>{f0(Math.abs(budget.buffer))}</span>
+                  <div style={{ fontFamily: SANS, fontSize: 12, color: C.invSub }}>
+                    {`Min-cash reserve (${inp.minCashMonths} mo opex): `}
+                    <span style={{ fontFamily: MONO, fontWeight: 700, color: C.pos }}>{f0(budget.minCash)}</span>
                   </div>
                 </div>
               </div>
@@ -638,7 +645,7 @@
                 </table>
               </div>
               <div style={{ padding: "10px 18px 14px", fontFamily: SANS, fontSize: 11, color: C.sub }}>
-                Collections are net of denials and shifted by the insurer payment delay · Y2 insurance renewal falls at M24, outside the window · excludes build-out CapEx (funded at launch), maintenance CapEx &amp; Zakat · "lowest cash point" is the funding trough each period, covered by the pre-opening + WC budget ({f0(m.fundingBudget)})
+                Collections are net of denials and shifted by the insurer payment delay · Y2 insurance renewal falls at M24, outside the window · excludes build-out CapEx (funded at launch), maintenance CapEx &amp; Zakat · "lowest cash point" is the funding trough each period, covered by the launch-liquidity + min-cash budget ({f0(m.fundingBudget)})
               </div>
             </div>
 
@@ -647,7 +654,7 @@
                 <div>
                   <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Funding View · Cash Balance</h3>
                   <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>
-                    Running cash on hand from fit-out start (P{inp.fitoutMonths}) through Year 2 — the shaded area is your bank balance; its lowest point is the capital you must have in place. Dashed line = pre-opening + WC budget. · SAR '000
+                    Running cash on hand from fit-out start (P{inp.fitoutMonths}) through Year 2 — the shaded area is your bank balance; its lowest point is the capital you must have in place. Dashed line = launch-liquidity + min-cash budget. · SAR '000
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -656,7 +663,7 @@
                     {m.peakNeed > 0 ? f0(m.peakNeed) : "0"} <span style={{ fontFamily: SANS, fontSize: 11, fontWeight: 400, color: C.sub }}>{m.peakNeed > 0 ? `in ${m.troughLabel}` : "cash-positive from M1"}</span>
                   </div>
                   <div style={{ fontFamily: SANS, fontSize: 11, color: m.fundingOk ? C.sub : C.neg, marginTop: 2 }}>
-                    {m.fundingOk ? `Covered by pre-opening + WC budget (${f0(m.fundingBudget)}) · headroom ${f0(m.fundingBudget - m.peakNeed)}` : `EXCEEDS pre-opening + WC budget (${f0(m.fundingBudget)}) by ${f0(m.peakNeed - m.fundingBudget)} — increase reserve`}
+                    {`Launch-liquidity + min-cash budget (${f0(m.fundingBudget)}) · ${f0(m.fundingBudget - m.peakNeed)} min-cash headroom over the ${f0(m.peakNeed)} trough`}
                   </div>
                 </div>
               </div>
