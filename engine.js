@@ -48,6 +48,8 @@ const BASE_INPUTS = {
   insuredPct: 30, rejectionPct: 0, insurerDelayMo: 4,
   rentTerms: "annual", // "annual" | "grace" | "semiannual"
   fitoutMonths: 6,
+  // clinical-equipment asset finance (loan / hire-purchase); financePct 0 = all-equity (default, no change)
+  financePct: 0, financeRate: 8, financeTermYears: 4,
   // CapEx breakdown (SAR'000)
   capexFitout: 1000, capexChairs: 800, capexImaging: 700, capexIT: 200,
   capexContingency: 700, capexFurniture: 300,
@@ -84,6 +86,30 @@ const hardCapex = (inp) => HARD_CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0
 // straight-line useful lives (years): fit-out & fire systems 10, clinical equipment & furniture 7, IT 4
 const DEP_LIVES = { capexFitout: 10, capexCivilDefence: 10, capexChairs: 7, capexImaging: 7, capexCSSD: 7, capexFurniture: 7, capexIT: 4 };
 const annualDepreciation = (inp) => Object.entries(DEP_LIVES).reduce((s, [k, life]) => s + (inp[k] || 0) / life, 0);
+// asset finance: the clinical/medical equipment that can be financed via a loan / hire-purchase
+const FINANCE_KEYS = ["capexChairs","capexImaging","capexCSSD"];
+const financeableBase = (inp) => FINANCE_KEYS.reduce((s, k) => s + (inp[k] || 0), 0);
+const financedPrincipal = (inp) => financeableBase(inp) * (Math.max(0, Math.min(100, inp.financePct || 0)) / 100);
+// level-payment amortization of the financed principal; returns the monthly payment, per-year interest/principal (5y) and any balance left at exit
+function loanSchedule(inp) {
+  const P = financedPrincipal(inp);
+  const r = (inp.financeRate || 0) / 100 / 12, n = Math.round(Math.max(0, inp.financeTermYears || 0) * 12);
+  const empty = { pmt: 0, n: 0, perYear: [0, 1, 2, 3, 4].map(() => ({ interest: 0, principal: 0 })), residual: 0, totalInterest: 0 };
+  if (P <= 0 || n <= 0) return empty;
+  const pmt = r > 0 ? P * r / (1 - Math.pow(1 + r, -n)) : P / n;
+  let bal = P, totalInterest = 0;
+  const perYear = [];
+  for (let y = 0; y < 5; y++) {
+    let yi = 0, yp = 0;
+    for (let mo = 0; mo < 12; mo++) {
+      if (y * 12 + mo >= n) break;
+      const interest = bal * r, principal = Math.min(pmt - interest, bal);
+      bal -= principal; yi += interest; yp += principal; totalInterest += interest;
+    }
+    perYear.push({ interest: yi, principal: yp });
+  }
+  return { pmt, n, perYear, residual: Math.max(0, bal), totalInterest };
+}
 
 /* ---------- engine ---------- */
 function compute(inp) {
@@ -96,6 +122,8 @@ function compute(inp) {
   const generalStaffAnnual = ((inp.generalStaffCount * inp.generalStaffSalary + inp.adminManagerSalary) * 12) / 1000;
   const fixedBase = (chairsideAnnual + dentistBaseAnnual + generalStaffAnnual + supportStaffAnnual(inp)) * (1 + inp.gosiPct / 100);
   const perExpat = (inp.levyPerMonth * 12 + inp.iqamaPerYear) / 1000;
+  const loan = loanSchedule(inp);            // clinical-equipment asset-finance schedule (all zeros when financePct = 0)
+  const finPrincipal = financedPrincipal(inp);
 
   const years = [];
   for (let i = 0; i < 5; i++) {
@@ -115,14 +143,16 @@ function compute(inp) {
     const share = preshare > 0 ? (preshare * inp.profitShare) / 100 : 0;
     const ebitda = preshare - share;
     const dep = annualDepreciation(inp);
-    const nibz = ebitda - dep;
+    const interest = loan.perYear[i].interest;      // clinical-equipment finance interest (below EBITDA)
+    const principal = loan.perYear[i].principal;     // finance principal repayment (cash flow, not P&L)
+    const nibz = ebitda - dep - interest;
     const zakat = Math.max(0, nibz) * (inp.zakatPct / 100);
     const ni = nibz - zakat;
     const maintCapex = hardCapex(inp) * (inp.maintenanceCapexPct / 100);
-    const fcf = ni + dep - maintCapex;
+    const fcf = ni + dep - maintCapex - principal;   // levered (equity) FCF — interest is in ni, principal subtracted here
     // guard margins against a zero-revenue year (revPerChair / chairs / rampStart can all be 0) so the UI never shows NaN%/Infinity%
     const pct = (x) => revenue > 0 ? x / revenue * 100 : 0;
-    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, zakat, ni, niPct: pct(ni), fcf });
+    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, interest, principal, zakat, ni, niPct: pct(ni), fcf });
   }
   const y5 = years[4];
   const y1 = years[0];
@@ -163,7 +193,7 @@ function compute(inp) {
     if (inp.rentTerms === "semiannual") return (j + F) % 6 === 0 ? years[Math.min(2, Math.floor((j + F) / 12))].lease / 2 : 0;
     return j === 12 - F ? years[1].lease : j === 24 - F ? years[2].lease : 0; // annual, upfront from fit-out start
   };
-  const win = { coll: [0, 0], share: [0, 0], rent: [0, 0], mat: [0, 0] }; // per-operating-year cash sums for the statement
+  const win = { coll: [0, 0], share: [0, 0], rent: [0, 0], mat: [0, 0], debt: [0, 0] }; // per-operating-year cash sums for the statement
   const opCf = Array.from({ length: 24 }, (_, j) => {
     const yi = j < 12 ? 0 : 1;
     const yr = years[yi];
@@ -182,6 +212,7 @@ function compute(inp) {
     cf -= rDue;                          // rent cheques per payment terms
     if (j === 11) cf -= prepaid(1);      // insurance renewal (M12)
     if (j < 6) cf += vatCapex / 6;       // input VAT on CapEx recovered against output VAT
+    if (loan.pmt > 0 && j < loan.n) { win.debt[yi] += loan.pmt; cf -= loan.pmt; } // clinical-equipment finance monthly debt service
     return cf;
   });
   const monthly = [], monthlyOp = [];
@@ -214,7 +245,7 @@ function compute(inp) {
   const minCashReserve = Math.max(0, inp.minCashMonths) * monthlyOpex;
   const fundingBudget = launchLiquidity + minCashReserve; // cash earmarked for the launch trough + policy cushion
   const fundingOk = fundingBudget >= peakNeed;            // true by construction — we size the raise to the need
-  const investCapex = CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0); // all CapEx lines (the WC reserve is no longer a guessed line)
+  const investCapex = CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0) - finPrincipal; // equity-funded CapEx (financed equipment is debt, not equity)
   const totalRaise = investCapex + launchLiquidity + minCashReserve;     // single headline capital to raise
 
   // Cash flow statement for launch + first two operating years (direct method, ties exactly to the funding-view curve)
@@ -241,6 +272,7 @@ function compute(inp) {
     ["Other OpEx", [null, -years[0].other, -years[1].other], "row"],
     ["Foreign-labour fees (levy & iqama)", [-preForeign, -years[0].foreign, -years[1].foreign], "row"],
     ["Foreign-staff recruitment (pre-opening)", [-(inp.capexRecruitment || 0), null, null], "row"],
+    ...(finPrincipal > 0 ? [["Equipment finance (interest + principal)", [null, -win.debt[0], -win.debt[1]], "row"]] : []),
     ["Net operating cash flow", [-cfPreOpen - vatCapex, net1, net2], "subtotal"],
     ["Cumulative cash position", [-cfPreOpen - vatCapex, -cfPreOpen - vatCapex + net1, -cfPreOpen - vatCapex + net1 + net2], "total"],
     ["Lowest cash point in period", winMin, "total"],
@@ -252,7 +284,7 @@ function compute(inp) {
   for (let i = 0; i < 5; i++) { const prev = cum; cum += years[i].fcf; if (cum >= initialInvestment && years[i].fcf > 0) { payback = i + (initialInvestment - prev) / years[i].fcf; break; } }
   if (payback === null && y5.fcf > 0) payback = 5 + (initialInvestment - cum) / y5.fcf;
   const cfs = [-initialInvestment];
-  for (let i = 0; i < 5; i++) { let cf = years[i].fcf; if (i === 4) cf += inp.exitMultiple * y5.ebitda; cfs.push(cf); }
+  for (let i = 0; i < 5; i++) { let cf = years[i].fcf; if (i === 4) cf += inp.exitMultiple * y5.ebitda - loan.residual; cfs.push(cf); } // exit nets any residual equipment-finance balance
   const irr = computeIRR(cfs);
   const npv = cfs.reduce((a, cf, i) => a + cf / Math.pow(1 + inp.wacc / 100, i), 0);
   const perDentistMo = inp.dentistCount > 0 ? (dentistBaseAnnual + y5.share) / inp.dentistCount / 12 : 0;
@@ -263,7 +295,7 @@ function compute(inp) {
   else { verdict = "MARGINAL"; vColor = C.neg; }
   const exitValue = inp.exitMultiple * y5.ebitda;
 
-  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex };
+  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual };
 }
 function computeIRR(cfs) {
   let lo = -0.95, hi = 5.0;
