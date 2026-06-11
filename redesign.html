@@ -539,6 +539,40 @@
         localStorage.setItem("dental_scenarios", JSON.stringify(existing));
         flash(`Deleted "${s.name}"`); loadList();
       };
+      const fileRef = React.useRef(null);
+      const exportScenarios = () => {
+        const scenarios = JSON.parse(localStorage.getItem("dental_scenarios") || "{}");
+        const bundle = { type: "dental-clinic-scenarios", version: 1, exportedAt: new Date().toISOString(), current: inp, scenarios };
+        const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = `dental-scenarios-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        flash(`Exported ${Object.keys(scenarios).length} saved + current model`);
+      };
+      const importScenarios = (e) => {
+        const file = e.target.files && e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const data = JSON.parse(reader.result);
+            let incoming = {}, loadedCurrent = false;
+            if (data && data.scenarios && typeof data.scenarios === "object") {
+              incoming = data.scenarios;
+              if (data.current && typeof data.current === "object") { setInp({ ...BASE_INPUTS, ...data.current }); loadedCurrent = true; }
+            } else if (data && data.inputs && typeof data.inputs === "object") {
+              const id = (data.name || "imported").replace(/[\s/\\'"]+/g, "_").slice(0, 60);
+              incoming = { [id]: { name: data.name || "Imported", inputs: data.inputs, ts: data.ts || Date.now() } };
+            } else if (data && typeof data === "object" && ("revPerChair" in data || "chairs" in data)) {
+              setInp({ ...BASE_INPUTS, ...data }); loadedCurrent = true;
+            } else if (data && typeof data === "object") { incoming = data; }
+            const merged = { ...JSON.parse(localStorage.getItem("dental_scenarios") || "{}"), ...incoming };
+            localStorage.setItem("dental_scenarios", JSON.stringify(merged)); loadList();
+            const n = Object.keys(incoming).length;
+            flash(n > 0 ? `Imported ${n} scenario${n === 1 ? "" : "s"}${loadedCurrent ? " + model" : ""}` : (loadedCurrent ? "Loaded model from file" : "Nothing to import"));
+          } catch (err) { flash("Import failed — not a valid scenarios file"); }
+        };
+        reader.readAsText(file); e.target.value = "";
+      };
 
       const chartData = m.years.map((y) => ({ year: y.year, Revenue: Math.round(y.revenue), EBITDA: Math.round(y.ebitda), "Net income": Math.round(y.ni) }));
 
@@ -817,6 +851,9 @@
                     style={{ flex: 1, minWidth: 140, background: C.ink, border: `1px solid ${C.lineDk}`, borderRadius: 7, color: C.inv, fontFamily: SANS, fontSize: 13, padding: "8px 11px", outline: "none" }} />
                   <button onClick={saveScenario} style={btn(C.brass, C.ink)}><Save size={14} /> Save</button>
                   <button onClick={() => { setInp(BASE_INPUTS); flash("Reset to base case"); }} style={btn("transparent", C.brassLt, C.lineDk)}><RotateCcw size={14} /> Reset</button>
+                  <button onClick={exportScenarios} title="Download all saved scenarios + current model as a JSON file" style={btn("transparent", C.brassLt, C.lineDk)}><FileText size={14} /> Export</button>
+                  <button onClick={() => fileRef.current && fileRef.current.click()} title="Load scenarios from a JSON file" style={btn("transparent", C.brassLt, C.lineDk)}><FolderOpen size={14} /> Import</button>
+                  <input ref={fileRef} type="file" accept="application/json,.json" onChange={importScenarios} style={{ display: "none" }} />
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {[["Benchmark", 90], ["Conservative", 120], ["Base", 160], ["Upside", 200]].map(([lbl, v]) => (
