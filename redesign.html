@@ -175,7 +175,7 @@
                 <tr><td style={tLb}>5-year IRR (incl. exit)</td><td style={tTd}>{m.irr == null ? "n/a" : pctf(m.irr * 100)}</td><td style={tLb}>Year-5 net income</td><td style={tTd}>{f0(m.y5.ni)}</td></tr>
                 <tr><td style={tLb}>NPV @ {inp.wacc}% WACC</td><td style={tTd}>{f0(m.npv)}</td><td style={tLb}>Cumulative net income Y1–Y5</td><td style={tTd}>{f0(m.cumNI)}</td></tr>
                 <tr><td style={tLb}>Payback (free cash flow)</td><td style={tTd}>{m.payback ? m.payback.toFixed(1) + " yrs" : "—"}</td><td style={tLb}>Exit value ({inp.exitMultiple}× Y5 EBITDA)</td><td style={tTd}>{f0(m.exitValue)}</td></tr>
-                <tr><td style={tLb}>Peak funding need</td><td style={tTd}>{f0(m.peakNeed)} ({m.troughLabel})</td><td style={tLb}>Break-even revenue / chair</td><td style={tTd}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}</td></tr>
+                <tr><td style={tLb}>Peak funding need</td><td style={tTd}>{f0(m.peakNeed)} ({m.troughLabel})</td><td style={tLb}>Break-even / chair · opex base</td><td style={tTd}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}{m.opBreakEvenRev != null ? ` · ${f0(m.opBreakEvenRev)}K` : ""}</td></tr>
               </tbody>
             </table>
             <div style={subT}>Recommendation</div>
@@ -750,6 +750,7 @@
                   <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Break-even revenue / chair</div>
                   <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: C.text }}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}</div>
                   <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 2 }}>{sens.beRev == null ? "profitable across range" : `${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion vs the ${inp.revPerChair}K plan`}</div>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>Opex base (ex dentist share): <b style={{ fontFamily: MONO, color: C.text }}>{m.opBreakEvenRev == null ? "—" : f0(m.opBreakEvenRev) + "K"}</b> · dentists share above</div>
                 </div>
                 <div>
                   <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Funding resilience</div>
@@ -800,6 +801,7 @@
                     <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.text }}>
                       {sens.beRev == null ? "—" : f0(sens.beRev)} <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>SAR'000/mo</span>
                     </div>
+                    <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 2 }}>Operating break-even (ex dentist share): <b style={{ fontFamily: MONO, color: C.text }}>{m.opBreakEvenRev == null ? "—" : f0(m.opBreakEvenRev)}</b> — the per-chair base each dentist shares above</div>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && inp.revPerChair > 0 && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 3 }}>
                       {sens.beRev == null ? "Profitable across the tested range" : `Current ${inp.revPerChair} → ${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion before the project destroys value`}
                     </div>
