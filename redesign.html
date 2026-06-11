@@ -1031,12 +1031,11 @@
                     </div>
                     <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 6 }}>Sets when rent cheques fall due — drives pre-opening cash and the funding trough</div>
                   </div>
-                  <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={0.5} unit="months opex" onChange={(v) => set("minCashMonths", v)} hint={`Liquidity policy floor held above the launch trough — ${f0(m.minCashReserve)}K at ${f0(m.monthlyOpex)}K/mo Y1 opex`} />
                   <Slider label="Contingency" value={inp.capexContingency} min={0} max={2000} step={50} unit="SAR'000" onChange={(v) => set("capexContingency", v)} hint="Typically 5–10% of hard costs" />
                 </div>
                 <div style={{ marginTop: 18, padding: "12px 16px", background: C.ink2, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                   {CAPEX_KEYS.map(k => {
-                    const labels = { capexFitout:"Fit-out", capexChairs:"Chairs", capexImaging:"Imaging", capexIT:"IT", capexWorkingCapital:"W/Cap", capexContingency:"Cont.", capexFurniture:"Furn.", capexRecruitment:"Recruit", capexLicensing:"Legal", capexCivilDefence:"CD", capexConsultants:"PMC", capexCSSD:"CSSD", capexInventory:"Stock" };
+                    const labels = { capexFitout:"Fit-out", capexChairs:"Chairs", capexImaging:"Imaging", capexIT:"IT", capexContingency:"Cont.", capexFurniture:"Furn.", capexRecruitment:"Recruit", capexLicensing:"Legal", capexCivilDefence:"CD", capexConsultants:"PMC", capexCSSD:"CSSD", capexInventory:"Stock" };
                     const v = inp[k] || 0;
                     const pct = totalCapex(inp) > 0 ? v / totalCapex(inp) * 100 : 0;
                     return v > 0 ? (
@@ -1112,6 +1111,7 @@
                   <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.brass, letterSpacing: "-0.03em" }}>{f0(totalCapex(inp))} <span style={{ fontFamily: SANS, fontSize: 12, fontWeight: 400, color: C.sub }}>SAR '000</span></div>
                   <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>See CapEx breakdown below ↓</div>
                 </div>
+                <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={0.5} unit="months opex" onChange={(v) => set("minCashMonths", v)} hint={`Liquidity policy floor held above the launch trough — ${f0(m.minCashReserve)}K at ${f0(m.monthlyOpex)}K/mo Y1 opex`} />
                 <Slider label="Exit multiple" value={inp.exitMultiple} min={0} max={12} step={0.5} unit="× EBITDA" onChange={(v) => set("exitMultiple", v)} hint="Saudi dental comps ~5–7×" />
                 <Slider label="Maintenance CapEx" value={inp.maintenanceCapexPct} min={0} max={10} step={0.5} unit="% of hard assets/yr" onChange={(v) => set("maintenanceCapexPct", v)} hint={`On fit-out & equipment only (${f0(hardCapex(inp))}K base); typical 3–5%`} />
                 <Slider label="Zakat" value={inp.zakatPct} min={0} max={5} step={0.25} unit="% of net income" onChange={(v) => set("zakatPct", v)} hint="Saudi-owned entity; simplified NI-based approximation of the Zakat base" />
