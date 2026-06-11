@@ -693,7 +693,8 @@
       ].join("  ·  ");
       const thesis = `A ${inp.chairs}-chair Riyadh clinic needing SAR ${f0(budget.totalRequired)}K all-in to open and reach self-funding. At ${inp.revPerChair}K/chair/month it matures to ${pctf(m.y5.ebitdaPct)} EBITDA — ${marginOk ? "above" : "below"} the 25–30% KSA benchmark — returning a ${m.irr == null ? "n/a" : pctf(m.irr * 100)} 5-year IRR and ${f0(m.npv)}K NPV at ${inp.wacc}% WACC. ${m.fundingOk ? "The funding plan covers the launch cash trough" : "The funding plan is short of the launch cash trough"}; the result swings most on ${topRisk[0].toLowerCase()}.`;
       const summaryKpis = [
-        ["Capital required", f0(budget.totalRequired), "SAR '000 all-in", C.brass, budget.buffer >= 0 ? `funded · +${f0(budget.buffer)}K buffer` : `SHORT ${f0(Math.abs(budget.buffer))}K`, budget.buffer >= 0 ? C.pos : C.neg],
+        ["Capital required", f0(budget.totalRequired), "SAR '000 · minimum to launch", C.brass, null, null],
+        ["Funding to raise", f0(budget.totalBudget), "SAR '000 · capital deployed", C.brass, budget.buffer >= 0 ? `+${f0(budget.buffer)}K cash buffer` : `SHORT ${f0(Math.abs(budget.buffer))}K`, budget.buffer >= 0 ? C.pos : C.neg],
         ["5-year IRR", m.irr == null ? "n/a" : pctf(m.irr * 100), "incl. exit at " + inp.exitMultiple + "× EBITDA", C.text, null, null],
         ["NPV", f0(m.npv), `@ ${inp.wacc}% WACC, SAR '000`, m.npv < 0 ? C.neg : C.pos, null, null],
         ["Capital payback", m.payback ? m.payback.toFixed(1) + " yrs" : "—", "on free cash flow", C.text, null, null],
