@@ -50,7 +50,7 @@
   <script type="text/babel" src="components.jsx" data-presets="react"></script>
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useMemo, useCallback } = React;
-    const { ComposedChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, ReferenceDot, PieChart, Pie, Legend } = window.Recharts;
+    const { ComposedChart, BarChart, LineChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine, ReferenceDot, ReferenceArea, PieChart, Pie, Legend } = window.Recharts;
 
     /* ---------- presentation components ---------- */
     function SectionHeader({ eyebrow, title, sub, meta }) {
@@ -646,6 +646,7 @@
       const summaryKpis = [
         ["Funding to raise", f0(budget.totalRaise), "SAR '000 · all-in capital", C.brass, `incl. ${f0(budget.minCash)}K min-cash reserve`, C.pos],
         ["5-year IRR", m.irr == null ? "n/a" : pctf(m.irr * 100), "incl. exit at " + inp.exitMultiple + "× EBITDA", C.text, null, null],
+        ["Equity multiple", m.moic.toFixed(2) + "×", "cash returned ÷ invested (MOIC)", C.pos, null, null],
         ["NPV", f0(m.npv), `@ ${inp.wacc}% WACC, SAR '000`, m.npv < 0 ? C.neg : C.pos, null, null],
         ["Capital payback", m.payback ? m.payback.toFixed(1) + " yrs" : "—", "on free cash flow", C.text, null, null],
       ];
@@ -657,6 +658,15 @@
         ["Exit value", f0(m.exitValue), `${inp.exitMultiple}× Y5 EBITDA`, m.exitValue < 0 ? C.neg : C.brass, null, null],
         ["NPV", f0(m.npv), `@ ${inp.wacc}% WACC`, m.npv < 0 ? C.neg : C.pos, null, null],
       ];
+      // —— data for the new charts/panels ——
+      const marginData = m.years.map(y => ({ year: y.year, "Gross %": +y.gpPct.toFixed(1), "EBITDA %": +y.ebitdaPct.toFixed(1), "Net %": +y.niPct.toFixed(1) }));
+      const DONUT_COLORS = { "Materials & lab": "#15263B", "Fixed staff": "#27384E", "Dentist share": "#B4452F", "Lease & housing": "#64707C", "Other opex": "#9DAEC0", "EBITDA (margin)": "#2E7D63" };
+      const costDonut = (y) => [{ name: "Materials & lab", value: Math.round(y.materials) }, { name: "Fixed staff", value: Math.round(y.fixedStaff) }, { name: "Dentist share", value: Math.round(y.share) }, { name: "Lease & housing", value: Math.round(y.lease) }, { name: "Other opex", value: Math.round(y.mkt + y.other + y.insUtil + y.foreign) }, { name: "EBITDA (margin)", value: Math.round(Math.max(0, y.ebitda)) }].filter(d => d.value > 0);
+      const tornado = tornadoData(inp);
+      const compareRows = [{ name: "Current", inputs: inp }, ...saved.map(s => ({ name: s.name, inputs: { ...BASE_INPUTS, ...s.inputs } }))].map(s => { const x = compute(s.inputs); return { name: s.name, raise: x.totalRaise, irr: x.irr, npv: x.npv, pay: x.payback, ebitda: x.y5.ebitdaPct, moic: x.moic, be: x.opBreakEvenRev }; });
+      const [mc, setMc] = useState(null);
+      const [mcRunning, setMcRunning] = useState(false);
+      const runMc = () => { setMcRunning(true); setTimeout(() => { setMc(monteCarlo(inp, 2500)); setMcRunning(false); }, 20); };
 
       if (showStudy) return (
         <StudyDocument inp={inp} m={m} budget={budget} sens={sens} topRisk={topRisk} chartData={chartData} budgetPie={budgetPie} pieColors={PIE_COLORS} onClose={() => setShowStudy(false)} />
@@ -793,6 +803,49 @@
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(330px,1fr))", gap: 18, marginBottom: 22 }}>
+              <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 18px" }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 3px" }}>Margin trajectory</h3>
+                <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginBottom: 8 }}>Gross / EBITDA / Net margin over the 5 years, vs the 25–30% EBITDA benchmark band.</div>
+                <ResponsiveContainer width="100%" height={228}>
+                  <LineChart data={marginData} margin={{ top: 6, right: 12, bottom: 0, left: -14 }}>
+                    <CartesianGrid stroke={C.line} vertical={false} />
+                    <ReferenceArea y1={25} y2={30} fill={C.pos} fillOpacity={0.08} />
+                    <XAxis dataKey="year" tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} axisLine={{ stroke: C.line }} tickLine={false} />
+                    <YAxis tick={{ fontFamily: MONO, fontSize: 10.5, fill: C.sub }} axisLine={false} tickLine={false} unit="%" />
+                    <Tooltip contentStyle={{ fontFamily: MONO, fontSize: 12, borderRadius: 8, border: `1px solid ${C.line}` }} />
+                    <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 11 }} />
+                    <Line type="monotone" dataKey="Gross %" stroke={C.brass} strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="EBITDA %" stroke={C.pos} strokeWidth={2.5} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="Net %" stroke={C.ink2} strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 18px" }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 3px" }}>Cost structure · Year 1 vs Year 5</h3>
+                <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginBottom: 4 }}>Where each revenue riyal goes as the clinic matures — the EBITDA margin widens as fixed costs spread over more revenue.</div>
+                <div className="flex">
+                  {[["Year 1", m.years[0]], ["Year 5", m.y5]].map(([lbl, y]) => (
+                    <div key={lbl} style={{ flex: 1, textAlign: "center" }}>
+                      <div style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: "0.06em", textTransform: "uppercase" }}>{lbl}</div>
+                      <ResponsiveContainer width="100%" height={150}>
+                        <PieChart>
+                          <Pie data={costDonut(y)} dataKey="value" nameKey="name" innerRadius={34} outerRadius={58} paddingAngle={2} stroke="#fff" label={({ percent }) => percent > 0.09 ? `${(percent * 100).toFixed(0)}%` : ""} labelLine={false}>
+                            {costDonut(y).map((d, i) => <Cell key={i} fill={DONUT_COLORS[d.name]} />)}
+                          </Pie>
+                          <Tooltip formatter={(v) => f0(v)} contentStyle={{ fontFamily: MONO, fontSize: 11, borderRadius: 8 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap" style={{ gap: "3px 11px", justifyContent: "center", marginTop: 4 }}>
+                  {costDonut(m.y5).map((d) => (
+                    <span key={d.name} style={{ fontFamily: SANS, fontSize: 9.5, color: C.sub, display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: DONUT_COLORS[d.name] }}></span>{d.name}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
             <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 24 }}>
               <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.line}` }}>
                 <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Sensitivity &amp; Break-Even</h3>
@@ -832,6 +885,21 @@
                     </div>
                   </div>
                 </div>
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub, marginBottom: 6 }}>NPV swing per driver (±20%) — tornado</div>
+                  <ResponsiveContainer width="100%" height={195}>
+                    <BarChart layout="vertical" data={tornado} margin={{ top: 4, right: 18, bottom: 2, left: 74 }} stackOffset="sign">
+                      <CartesianGrid stroke={C.line} horizontal={false} />
+                      <XAxis type="number" tick={{ fontFamily: MONO, fontSize: 10.5, fill: C.sub }} tickFormatter={(v) => f0(v)} axisLine={{ stroke: C.line }} tickLine={false} />
+                      <YAxis type="category" dataKey="label" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} width={72} axisLine={false} tickLine={false} />
+                      <Tooltip formatter={(v) => f0(v) + "K"} contentStyle={{ fontFamily: MONO, fontSize: 11, borderRadius: 8 }} />
+                      <ReferenceLine x={0} stroke={C.ink2} />
+                      <Bar dataKey="lo" fill={C.neg} stackId="a" />
+                      <Bar dataKey="hi" fill={C.pos} stackId="a" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, textAlign: "center", marginTop: 2 }}>Change in NPV vs base ({f0(m.npv)}K) · red = −20% move, green = +20% — the longest bar is the biggest risk to validate first</div>
+                </div>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
                   <thead>
                     <tr style={{ background: C.bone }}>
@@ -856,6 +924,72 @@
                   The driver with the widest spread is the one to validate hardest before committing capital · percentage inputs move ±20% relative (e.g. 13% → 10.4% / 15.6%)
                 </div>
               </div>
+            </div>
+
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 18px", marginBottom: 22 }}>
+              <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 3px" }}>Scenario comparison</h3>
+              <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginBottom: 10 }}>Your current model beside each saved scenario. Save scenarios (Conservative, Base, Upside…) below to line them up here.</div>
+              {compareRows.length > 1 ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr style={{ background: C.ink2 }}>
+                      {["Scenario", "Funding", "IRR", "MOIC", "NPV", "Payback", "Y5 EBITDA%", "Opex BE/chair"].map((h, i) => (
+                        <th key={h} style={{ padding: "8px 12px", textAlign: i === 0 ? "left" : "right", fontFamily: SANS, fontSize: 11, fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {compareRows.map((r, i) => (
+                        <tr key={i} style={{ background: r.name === "Current" ? "#F4EFE3" : "transparent", borderTop: `1px solid ${C.line}` }}>
+                          <td style={{ padding: "7px 12px", textAlign: "left", fontFamily: SANS, fontSize: 12.5, fontWeight: r.name === "Current" ? 700 : 400, color: C.text }}>{r.name}</td>
+                          <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: MONO, fontSize: 12.5 }}>{f0(r.raise)}</td>
+                          <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: MONO, fontSize: 12.5, color: C.pos }}>{r.irr == null ? "n/a" : pctf(r.irr * 100)}</td>
+                          <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: MONO, fontSize: 12.5 }}>{r.moic.toFixed(2)}×</td>
+                          <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: MONO, fontSize: 12.5, color: r.npv < 0 ? C.neg : C.text }}>{f0(r.npv)}</td>
+                          <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: MONO, fontSize: 12.5 }}>{r.pay ? r.pay.toFixed(1) + "y" : "—"}</td>
+                          <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: MONO, fontSize: 12.5 }}>{pctf(r.ebitda)}</td>
+                          <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: MONO, fontSize: 12.5 }}>{r.be == null ? "—" : f0(r.be)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ fontFamily: SANS, fontSize: 12, color: C.sub, fontStyle: "italic", padding: "6px 0" }}>No saved scenarios yet — name one and hit Save below, and it appears here beside the current model.</div>
+              )}
+            </div>
+
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 18px", marginBottom: 24 }}>
+              <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 3 }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Monte Carlo risk</h3>
+                <button className="no-print" onClick={runMc} style={btn(mc ? "transparent" : C.brass, mc ? C.brass : C.ink, mc ? C.line : C.brass)}>{mcRunning ? "Running…" : mc ? "Re-run" : "Run 2,500 trials"}</button>
+              </div>
+              <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginBottom: 12 }}>Probability the project clears its hurdle, given realistic ranges: revenue/chair ±20%, Y1 utilisation ±10pts, materials % ±2pts (triangular).</div>
+              {mc ? (
+                <>
+                  <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 14 }}>
+                    {[["P(NPV > 0)", pctf(mc.pPos * 100), mc.pPos >= 0.8 ? C.pos : C.neg, "value created"], ["IRR · P10", mc.p10 == null ? "—" : pctf(mc.p10), C.text, "downside"], ["IRR · P50", mc.p50 == null ? "—" : pctf(mc.p50), C.brass, "median"], ["IRR · P90", mc.p90 == null ? "—" : pctf(mc.p90), C.pos, "upside"]].map(([l, v, c, s]) => (
+                      <div key={l} style={{ background: C.bone, borderRadius: 8, borderTop: `3px solid ${c}`, padding: "11px 13px" }}>
+                        <div style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub }}>{l}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: c, lineHeight: 1.1 }}>{v}</div>
+                        <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub }}>{s}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={mc.hist} margin={{ top: 6, right: 12, bottom: 2, left: -8 }}>
+                      <CartesianGrid stroke={C.line} vertical={false} />
+                      <XAxis dataKey="x" tick={{ fontFamily: MONO, fontSize: 10, fill: C.sub }} tickFormatter={(v) => f0(v)} axisLine={{ stroke: C.line }} tickLine={false} />
+                      <YAxis tick={{ fontFamily: MONO, fontSize: 10, fill: C.sub }} axisLine={false} tickLine={false} />
+                      <Tooltip formatter={(v) => v + " trials"} labelFormatter={(v) => "NPV ≈ " + f0(v) + "K"} contentStyle={{ fontFamily: MONO, fontSize: 11, borderRadius: 8 }} />
+                      <ReferenceLine x={0} stroke={C.ink2} strokeDasharray="4 3" />
+                      <Bar dataKey="n">{mc.hist.map((d, i) => <Cell key={i} fill={d.neg ? C.neg : C.pos} />)}</Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, textAlign: "center", marginTop: 2 }}>Distribution of NPV across {mc.N.toLocaleString()} trials · red bars = value-destroying outcomes (NPV &lt; 0)</div>
+                </>
+              ) : (
+                <div style={{ fontFamily: SANS, fontSize: 12, color: C.sub, fontStyle: "italic", padding: "6px 0" }}>Click “Run 2,500 trials” to simulate the spread of NPV and IRR under uncertainty.</div>
+              )}
             </div>
 
             {/* Assumptions */}
