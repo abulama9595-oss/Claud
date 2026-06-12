@@ -300,8 +300,9 @@ function compute(inp) {
   else if (cumNI > 0 && y5.ebitda > 0) { verdict = "VIABLE"; vColor = C.brass; }
   else { verdict = "MARGINAL"; vColor = C.neg; }
   const exitValue = inp.exitMultiple * y5.ebitda;
+  const moic = totalRaise > 0 ? (years.reduce((a, y) => a + y.fcf, 0) + exitValue - loan.residual) / totalRaise : 0; // equity multiple: total cash returned ÷ capital invested
 
-  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev };
+  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev, moic };
 }
 function computeIRR(cfs) {
   let lo = -0.95, hi = 5.0;
@@ -310,4 +311,34 @@ function computeIRR(cfs) {
   let mid = 0;
   for (let k = 0; k < 200; k++) { mid = (lo + hi) / 2; if (npv(mid) > 0) lo = mid; else hi = mid; }
   return mid;
+}
+// one-way NPV sensitivity (±20%) per key driver — data for a tornado chart
+function tornadoData(inp) {
+  inp = { ...BASE_INPUTS, ...inp };
+  const base = compute(inp).npv;
+  const drivers = [["Revenue / chair", "revPerChair"], ["Y1 utilization", "rampStart"], ["Materials %", "materialsPct"], ["Profit share", "profitShare"], ["Exit multiple", "exitMultiple"]];
+  return drivers.map(([label, k]) => {
+    const a = compute({ ...inp, [k]: inp[k] * 0.8 }).npv - base;
+    const b = compute({ ...inp, [k]: inp[k] * 1.2 }).npv - base;
+    return { label, lo: Math.round(Math.min(a, b)), hi: Math.round(Math.max(a, b)), swing: Math.abs(b - a) };
+  }).sort((x, y) => y.swing - x.swing);
+}
+// Monte Carlo: triangular distributions on the few uncertain drivers -> P(NPV>0), IRR percentiles, NPV histogram
+function monteCarlo(inp, N) {
+  inp = { ...BASE_INPUTS, ...inp };
+  N = N || 2000;
+  const tri = (min, mode, max) => { if (max <= min) return mode; const u = Math.random(), c = (mode - min) / (max - min); return u < c ? min + Math.sqrt(u * (max - min) * (mode - min)) : max - Math.sqrt((1 - u) * (max - min) * (max - mode)); };
+  const npvs = [], irrs = []; let pos = 0;
+  for (let i = 0; i < N; i++) {
+    const t = compute({ ...inp,
+      revPerChair: tri(inp.revPerChair * 0.8, inp.revPerChair, inp.revPerChair * 1.2),
+      rampStart: tri(Math.max(0, inp.rampStart - 10), inp.rampStart, Math.min(100, inp.rampStart + 10)),
+      materialsPct: tri(Math.max(0, inp.materialsPct - 2), inp.materialsPct, inp.materialsPct + 2) });
+    npvs.push(t.npv); if (t.irr != null) irrs.push(t.irr * 100); if (t.npv > 0) pos++;
+  }
+  const lo = Math.min(...npvs), hi = Math.max(...npvs), bins = 22, w = (hi - lo) / bins || 1;
+  const hist = Array.from({ length: bins }, (_, b) => ({ x: Math.round(lo + b * w), n: 0, neg: lo + (b + 0.5) * w < 0 }));
+  npvs.forEach(v => { const b = Math.min(bins - 1, Math.max(0, Math.floor((v - lo) / w))); hist[b].n++; });
+  const pctl = (arr, p) => { if (!arr.length) return null; const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * a.length))]; };
+  return { N, pPos: pos / N, p10: pctl(irrs, 0.1), p50: pctl(irrs, 0.5), p90: pctl(irrs, 0.9), hist };
 }
