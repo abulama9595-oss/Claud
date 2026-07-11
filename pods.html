@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dental Hygiene Pods · Network Model</title>
+  <script src="vendor/react.js"></script>
+  <script src="vendor/react-dom.js"></script>
+  <script src="vendor/babel.js"></script>
+  <script src="vendor/prop-types.js"></script>
+  <script src="vendor/recharts.js"></script>
+  <!-- shared palette / formatters / IRR from the flagship engine -->
+  <script src="engine.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #F1EDE4; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .items-baseline { align-items: baseline; }
+    .items-start { align-items: flex-start; }
+    .justify-between { justify-content: space-between; }
+    .flex-wrap { flex-wrap: wrap; }
+    .grid { display: grid; }
+    input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
+    input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #DBD4C5; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; margin-top: -5px; background: var(--accent, #B0823A); cursor: pointer; }
+    html { scroll-behavior: smooth; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="components.jsx" data-presets="react"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo } = React;
+    const { ComposedChart, BarChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, LabelList } = window.Recharts;
+
+    /* ============================================================
+       Hygiene-pod network engine — annual, 5 years, SAR '000.
+       Pods are small (1–3 chair) hygiene & screening units in
+       malls / high-footfall locations. Each pod earns hygiene
+       revenue directly AND feeds a consented patient funnel that
+       is captured either as referral/coordination fees or as
+       treatment margin at the group's own hub clinic.
+       ============================================================ */
+    const POD_BASE = {
+      // rollout
+      podsY1: 2, podsPerYear: 3,
+      // pod format & demand
+      chairs: 2, apptsPerChairDay: 10, daysPerMonth: 26, ticket: 280, upsellPct: 15,
+      utilStart: 55, utilRamp: 10, utilMax: 85,
+      screensPerDay: 15,
+      // funnel & database
+      consentPct: 60, needPct: 35, acceptPct: 40, caseValue: 3500,
+      mode: "hub", referralFeePct: 12, hubMarginPct: 30,
+      chartValue: 150, inclDatabase: true,
+      // pod cost structure (SAR '000 / month unless noted)
+      capexPod: 500, rentPod: 15, dentistCost: 28, hygienists: 2, hygSalary: 14,
+      receptionCost: 6, materialsPct: 12, mktPod: 8, ohPod: 10, hqFixed: 60,
+      // capital
+      exitMultiple: 5, zakatPct: 2.5, deprYears: 7,
+    };
+
+    function computePods(p) {
+      p = { ...POD_BASE, ...p };
+      // cohorts: podsY1 open at the start of Y1, podsPerYear at the start of each later year.
+      const cohorts = [p.podsY1, p.podsPerYear, p.podsPerYear, p.podsPerYear, p.podsPerYear];
+      const years = [];
+      let cumCapex = 0, cumCharts = 0, cumFCF = 0, peakNeed = 0, payback = null;
+      for (let i = 0; i < 5; i++) {
+        let podsActive = 0, effPods = 0, patients = 0, screenings = 0, clinicalRev = 0;
+        for (let c = 0; c <= i; c++) {
+          const n = cohorts[c];
+          if (n <= 0) continue;
+          const age = i - c;
+          // opening-year pods trade for ~half the year (staggered openings + fit-out)
+          const open = age === 0 ? 0.5 : 1;
+          const util = Math.min(p.utilMax, p.utilStart + p.utilRamp * age) / 100;
+          const appts = p.chairs * p.apptsPerChairDay * util * p.daysPerMonth * 12 * open;
+          podsActive += n;
+          effPods += n * open;
+          patients += n * appts;
+          screenings += n * p.screensPerDay * p.daysPerMonth * 12 * open;
+          clinicalRev += n * (appts * p.ticket / 1000) * (1 + p.upsellPct / 100);
+        }
+        // consented database: screened walk-ups plus the share of hygiene patients
+        // who booked directly (assume half of hygiene patients originate from screenings)
+        const contacts = screenings + patients * 0.5;
+        const newCharts = contacts * (p.consentPct / 100);
+        cumCharts += newCharts;
+        // treatment funnel: found needing work at the hygiene visit → consented → accepts a plan
+        const cases = patients * (p.needPct / 100) * (p.consentPct / 100) * (p.acceptPct / 100);
+        const caseValueTotal = cases * p.caseValue / 1000;
+        const referralRev = caseValueTotal * (p.referralFeePct / 100);
+        const hubCapture = caseValueTotal * (p.hubMarginPct / 100);
+        const funnelRev = p.mode === "referral" ? referralRev : hubCapture;
+
+        const perPodMo = p.rentPod + p.dentistCost + p.hygienists * p.hygSalary + p.receptionCost + p.mktPod + p.ohPod;
+        const podCosts = perPodMo * 12 * effPods;
+        const materials = clinicalRev * (p.materialsPct / 100);
+        const hq = p.hqFixed * 12;
+        const podEbitda = clinicalRev - materials - podCosts - hq;
+        const ebitda = podEbitda + funnelRev;
+
+        const newPods = cohorts[i] || 0;
+        const capex = newPods * p.capexPod;
+        cumCapex += capex;
+        const dep = cumCapex / p.deprYears;
+        const zakat = Math.max(0, ebitda - dep) * (p.zakatPct / 100);
+        const ni = ebitda - dep - zakat;
+        const fcf = ni + dep - capex;
+        cumFCF += fcf;
+        peakNeed = Math.min(peakNeed, cumFCF);
+        if (payback === null && cumFCF >= 0) payback = i + 1;
+
+        const rev = clinicalRev + funnelRev;
+        const pct = (x) => rev > 0 ? x / rev * 100 : 0;
+        years.push({ year: `Y${i + 1}`, podsActive, newPods, patients, screenings, newCharts, cumCharts, cases, caseValueTotal,
+          clinicalRev, funnelRev, referralRev, hubCapture, revenue: rev, materials, podCosts, hq, podEbitda, ebitda,
+          ebitdaPct: pct(ebitda), dep, zakat, ni, capex, fcf, cumFCF });
+      }
+      const y5 = years[4];
+      const dbValue = cumCharts * p.chartValue / 1000;
+      const exitOps = Math.max(0, y5.ebitda) * p.exitMultiple;
+      const exitValue = exitOps + (p.inclDatabase ? dbValue : 0);
+      const cfs = years.map((y) => y.fcf);
+      cfs[4] += exitValue;
+      const irr = computeIRR(cfs);
+      const funding = Math.max(0, -peakNeed);
+      const moic = funding > 0 ? (cumFCF + exitValue) / funding : null;
+      // steady-state single pod, at maximum utilization (monthly, SAR '000)
+      const mAppts = p.chairs * p.apptsPerChairDay * (p.utilMax / 100) * p.daysPerMonth;
+      const mRev = (mAppts * p.ticket / 1000) * (1 + p.upsellPct / 100);
+      const mCases = mAppts * (p.needPct / 100) * (p.consentPct / 100) * (p.acceptPct / 100);
+      const mFunnel = mCases * p.caseValue / 1000 * ((p.mode === "referral" ? p.referralFeePct : p.hubMarginPct) / 100);
+      const mCosts = p.rentPod + p.dentistCost + p.hygienists * p.hygSalary + p.receptionCost + p.mktPod + p.ohPod + mRev * (p.materialsPct / 100);
+      const mEbitda = mRev + mFunnel - mCosts;
+      const podPayback = mEbitda > 0 ? p.capexPod / (mEbitda * 12) : null;
+      return { years, y5, cumCharts, dbValue, exitOps, exitValue, irr, funding, moic, cumFCF,
+        mature: { appts: mAppts, rev: mRev, funnel: mFunnel, costs: mCosts, ebitda: mEbitda, cases: mCases, payback: podPayback } };
+    }
+
+    function SectionHeader({ eyebrow, title, sub }) {
+      return (
+        <div style={{ marginBottom: 16 }}>
+          {eyebrow && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: C.brass, marginBottom: 4 }}>{eyebrow}</div>}
+          <h2 style={{ fontFamily: SANS, fontSize: 19, fontWeight: 700, color: C.text, letterSpacing: "-0.01em", margin: 0 }}>{title}</h2>
+          {sub && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, maxWidth: 780 }}>{sub}</div>}
+        </div>
+      );
+    }
+    function Kpi({ label, value, sub, accent }) {
+      return (
+        <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: `3px solid ${accent || C.brass}`, borderRadius: 9, padding: "13px 15px" }}>
+          <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub, marginBottom: 5 }}>{label}</div>
+          <div style={{ fontFamily: MONO, fontSize: 23, fontWeight: 700, color: accent || C.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+          {sub && <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 5 }}>{sub}</div>}
+        </div>
+      );
+    }
+    const fP = (n) => Math.round(n).toLocaleString("en-US"); // people / counts
+
+    function App() {
+      const [inp, setInp] = useState({ ...POD_BASE });
+      const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
+      const m = useMemo(() => computePods(inp), [inp]);
+      const totalPods = inp.podsY1 + inp.podsPerYear * 4;
+
+      const chartRev = m.years.map((y) => ({ year: y.year, "Hygiene & retail": Math.round(y.clinicalRev), [inp.mode === "referral" ? "Referral fees" : "Hub treatment capture"]: Math.round(y.funnelRev), EBITDA: Math.round(y.ebitda) }));
+      const funnelKey = inp.mode === "referral" ? "Referral fees" : "Hub treatment capture";
+      const y5f = m.y5;
+      const chartFunnel = [
+        { stage: "Screenings", v: Math.round(y5f.screenings) },
+        { stage: "Hygiene patients", v: Math.round(y5f.patients) },
+        { stage: "Need treatment", v: Math.round(y5f.patients * inp.needPct / 100) },
+        { stage: "Consented (PDPL)", v: Math.round(y5f.patients * inp.needPct / 100 * inp.consentPct / 100) },
+        { stage: "Treatment cases", v: Math.round(y5f.cases) },
+      ];
+      const chartDb = m.years.map((y) => ({ year: y.year, "Consented charts": Math.round(y.cumCharts), "Asset value": Math.round(y.cumCharts * inp.chartValue / 1000) }));
+      const ref5 = m.years.reduce((s, y) => s + y.referralRev, 0);
+      const hub5 = m.years.reduce((s, y) => s + y.hubCapture, 0);
+
+      const pnl = [
+        ["Hygiene & retail revenue", "clinicalRev", "head"],
+        [inp.mode === "referral" ? "Referral / coordination fees" : "Hub treatment capture (EBITDA)", "funnelRev", "head"],
+        ["Materials & consumables", "materials", "neg"],
+        ["Pod staff, rent, marketing & CSSD", "podCosts", "neg"],
+        ["HQ fixed overhead", "hq", "neg"],
+        ["Network EBITDA", "ebitda", "head"],
+        ["Depreciation", "dep", "neg"], ["Zakat", "zakat", "neg"],
+        ["Net income", "ni", "head"],
+        ["CapEx (new pods)", "capex", "neg"],
+        ["Free cash flow", "fcf", "head"],
+      ];
+
+      const modeBtn = (id, label) => (
+        <button onClick={() => set("mode", id)} style={{ ...btn(inp.mode === id ? C.brass : "transparent", inp.mode === id ? C.ink : C.sub, inp.mode === id ? C.brass : C.line), fontSize: 12 }}>{label}</button>
+      );
+
+      return (
+        <div style={{ minHeight: "100vh", background: C.bone }}>
+          {/* header band */}
+          <div style={{ background: C.ink, padding: "26px 4vw 22px" }}>
+            <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+              <div className="flex items-baseline justify-between flex-wrap" style={{ gap: 12 }}>
+                <div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt, marginBottom: 5 }}>Concept model · Riyadh &amp; major malls</div>
+                  <h1 style={{ fontFamily: SANS, fontSize: 24, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em", margin: 0 }}>Dental Hygiene Pods — Network &amp; Patient-Funnel Model</h1>
+                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.invSub, marginTop: 6, maxWidth: 720 }}>
+                    Small hygiene &amp; screening units in high-footfall locations. Each pod earns hygiene revenue and builds a consented patient database; the treatment demand it uncovers is captured either as referral fees or at the group's own hub clinic. Figures in SAR '000. <a href="index.html" style={{ color: C.brassLt }}>← all models</a>
+                  </div>
+                </div>
+                <div className="flex" style={{ gap: 8, alignItems: "center" }}>
+                  <span style={{ fontFamily: SANS, fontSize: 11, color: C.invSub, letterSpacing: "0.06em", textTransform: "uppercase" }}>Funnel capture</span>
+                  {modeBtn("hub", "Own hub clinic")}
+                  {modeBtn("referral", "Referral fees")}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ maxWidth: 1180, margin: "0 auto", padding: "26px 4vw 60px" }}>
+            {/* KPIs */}
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(165px, 1fr))", gap: 12, marginBottom: 30 }}>
+              <Kpi label="Pods by Y5" value={m.y5.podsActive} sub={`${inp.podsY1} pilot + ${inp.podsPerYear}/yr`} />
+              <Kpi label="Y5 revenue" value={f0(m.y5.revenue) + "K"} sub={`${f0(m.y5.clinicalRev)}K hygiene + ${f0(m.y5.funnelRev)}K funnel`} />
+              <Kpi label="Y5 EBITDA" value={f0(m.y5.ebitda) + "K"} sub={pctf(m.y5.ebitdaPct) + " margin"} accent={m.y5.ebitda >= 0 ? C.pos : C.neg} />
+              <Kpi label="Funding need" value={f0(m.funding) + "K"} sub="peak cumulative cash deficit" />
+              <Kpi label="Payback" value={m.years.find((y) => y.cumFCF >= 0) ? m.years.find((y) => y.cumFCF >= 0).year : "> Y5"} sub="network cumulative FCF" />
+              <Kpi label="5-yr IRR" value={m.irr != null ? pctf(m.irr * 100) : "—"} sub={`incl. ${inp.exitMultiple}× exit${inp.inclDatabase ? " + database" : ""}`} accent={m.irr != null && m.irr > 0.2 ? C.pos : C.text} />
+              <Kpi label="Database by Y5" value={fP(m.cumCharts)} sub={`consented charts · ${f0(m.dbValue)}K asset value`} accent={C.brass} />
+            </div>
+
+            {/* controls */}
+            <SectionHeader eyebrow="01 · Assumptions" title="Tune the concept" sub="Everything recomputes live. Defaults describe a 2-chair enclosed unit (~35 m²) with one supervising dentist — the MOH scope-of-practice constraint that a hygienist works under a dentist's prescription is priced in." />
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 34 }}>
+              <Card n="A" title="Rollout & format">
+                <Slider label="Pilot pods (Y1)" value={inp.podsY1} min={1} max={6} step={1} unit="pods" onChange={(v) => set("podsY1", v)} />
+                <Slider label="New pods per year (Y2–Y5)" value={inp.podsPerYear} min={0} max={8} step={1} unit="pods/yr" onChange={(v) => set("podsPerYear", v)} hint={`${totalPods} pods by end of Y5`} />
+                <Slider label="Chairs per pod" value={inp.chairs} min={1} max={3} step={1} unit="chairs" onChange={(v) => set("chairs", v)} />
+                <Slider label="CapEx per pod" value={inp.capexPod} min={250} max={900} step={25} unit="K SAR" onChange={(v) => set("capexPod", v)} hint="fit-out, chair(s), sterilization, IT, licensing" />
+                <Slider label="Hygiene appointments / chair / day" value={inp.apptsPerChairDay} min={4} max={16} step={1} unit="appts" onChange={(v) => set("apptsPerChairDay", v)} hint="30–45 min slots at 100% utilization" />
+                <Slider label="Average hygiene ticket" value={inp.ticket} min={100} max={600} step={10} unit="SAR" onChange={(v) => set("ticket", v)} hint="scaling & polishing, airflow, fluoride, whitening mix" />
+                <Slider label="Retail & whitening upsell" value={inp.upsellPct} min={0} max={40} step={1} unit="%" onChange={(v) => set("upsellPct", v)} />
+              </Card>
+              <Card n="B" title="Utilization & screening">
+                <Slider label="Opening-year utilization" value={inp.utilStart} min={20} max={80} step={5} unit="%" onChange={(v) => set("utilStart", v)} />
+                <Slider label="Utilization ramp" value={inp.utilRamp} min={0} max={20} step={1} unit="pp/yr" onChange={(v) => set("utilRamp", v)} hint="each pod matures with age" />
+                <Slider label="Mature utilization cap" value={inp.utilMax} min={50} max={95} step={5} unit="%" onChange={(v) => set("utilMax", v)} />
+                <Slider label="Free screenings / pod / day" value={inp.screensPerDay} min={0} max={40} step={1} unit="people" onChange={(v) => set("screensPerDay", v)} hint="the intraoral-camera walk-up funnel — the data acquisition engine" />
+                <Slider label="Working days / month" value={inp.daysPerMonth} min={22} max={30} step={1} unit="days" onChange={(v) => set("daysPerMonth", v)} />
+              </Card>
+              <Card n="C" title="Funnel, consent & capture">
+                <Slider label="Found needing treatment" value={inp.needPct} min={10} max={60} step={1} unit="%" onChange={(v) => set("needPct", v)} hint="share of hygiene patients diagnosed with further work" />
+                <Slider label="PDPL consent opt-in" value={inp.consentPct} min={10} max={95} step={5} unit="%" onChange={(v) => set("consentPct", v)} hint="explicit opt-in to share records / be contacted — nothing moves without it" />
+                <Slider label="Accepts a treatment plan" value={inp.acceptPct} min={10} max={80} step={5} unit="%" onChange={(v) => set("acceptPct", v)} />
+                <Slider label="Average treatment case value" value={inp.caseValue} min={1000} max={10000} step={250} unit="SAR" onChange={(v) => set("caseValue", v)} />
+                {inp.mode === "referral"
+                  ? <Slider label="Referral / coordination fee" value={inp.referralFeePct} min={3} max={25} step={1} unit="%" onChange={(v) => set("referralFeePct", v)} hint="of case value — structure as a marketing agreement, not per-head commission" />
+                  : <Slider label="Hub margin on treatment" value={inp.hubMarginPct} min={10} max={50} step={1} unit="%" onChange={(v) => set("hubMarginPct", v)} hint="EBITDA the hub clinic keeps on funnel-sourced cases" />}
+                <Slider label="Value per consented chart" value={inp.chartValue} min={0} max={500} step={10} unit="SAR" onChange={(v) => set("chartValue", v)} hint="what an acquirer pays per active consented patient record" />
+              </Card>
+              <Card n="D" title="Pod cost structure (per pod / month)">
+                <Slider label="Mall rent" value={inp.rentPod} min={5} max={40} step={1} unit="K SAR" onChange={(v) => set("rentPod", v)} />
+                <Slider label="Supervising dentist (loaded)" value={inp.dentistCost} min={15} max={45} step={1} unit="K SAR" onChange={(v) => set("dentistCost", v)} hint="the binding regulatory cost — hygienists need dentist supervision" />
+                <Slider label="Hygienists" value={inp.hygienists} min={1} max={4} step={1} unit="staff" onChange={(v) => set("hygienists", v)} />
+                <Slider label="Hygienist salary (loaded)" value={inp.hygSalary} min={8} max={22} step={0.5} unit="K SAR" onChange={(v) => set("hygSalary", v)} />
+                <Slider label="Reception / CS" value={inp.receptionCost} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionCost", v)} />
+                <Slider label="Materials & consumables" value={inp.materialsPct} min={5} max={25} step={1} unit="% rev" onChange={(v) => set("materialsPct", v)} />
+                <Slider label="Marketing per pod" value={inp.mktPod} min={0} max={25} step={1} unit="K SAR" onChange={(v) => set("mktPod", v)} />
+                <Slider label="Central CSSD / QA / IT per pod" value={inp.ohPod} min={0} max={25} step={1} unit="K SAR" onChange={(v) => set("ohPod", v)} hint="shared sterilization hub & compliance" />
+                <Slider label="HQ fixed (network)" value={inp.hqFixed} min={0} max={200} step={5} unit="K SAR/mo" onChange={(v) => set("hqFixed", v)} />
+                <Slider label="Exit multiple (Y5 EBITDA)" value={inp.exitMultiple} min={0} max={10} step={0.5} unit="×" onChange={(v) => set("exitMultiple", v)} />
+                <label className="flex items-center" style={{ gap: 8, fontFamily: SANS, fontSize: 12.5, color: C.text, cursor: "pointer", marginTop: 4 }}>
+                  <input type="checkbox" checked={inp.inclDatabase} onChange={(e) => set("inclDatabase", e.target.checked)} />
+                  Include database asset value in the exit
+                </label>
+              </Card>
+            </div>
+
+            {/* charts */}
+            <SectionHeader eyebrow="02 · Build-out" title="Network revenue & EBITDA" sub="Stacked bars: hygiene revenue plus funnel capture. New pods trade ~half of their opening year." />
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px", marginBottom: 26 }}>
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={chartRev} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                  <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 12, fill: C.sub }} />
+                  <YAxis tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} />
+                  <Tooltip formatter={(v) => f0(v) + "K"} contentStyle={{ fontFamily: SANS, fontSize: 12, border: `1px solid ${C.line}` }} />
+                  <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+                  <Bar dataKey="Hygiene & retail" stackId="r" fill={C.ink2} radius={[0, 0, 0, 0]} />
+                  <Bar dataKey={funnelKey} stackId="r" fill={C.brass} radius={[4, 4, 0, 0]} />
+                  <Line dataKey="EBITDA" stroke={C.pos} strokeWidth={2.5} dot={{ r: 3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 34 }}>
+              <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px" }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 10px 6px" }}>Year-5 patient funnel · people / yr</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={chartFunnel} layout="vertical" margin={{ top: 0, right: 60, left: 30, bottom: 0 }}>
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="stage" width={130} tick={{ fontFamily: SANS, fontSize: 11.5, fill: C.text }} />
+                    <Tooltip formatter={(v) => fP(v)} contentStyle={{ fontFamily: SANS, fontSize: 12, border: `1px solid ${C.line}` }} />
+                    <Bar dataKey="v" fill={C.brass} radius={[0, 4, 4, 0]}>
+                      {chartFunnel.map((d, i) => <Cell key={i} fill={i === chartFunnel.length - 1 ? C.pos : i % 2 ? C.brassLt : C.brass} />)}
+                      <LabelList dataKey="v" position="right" formatter={fP} style={{ fontFamily: MONO, fontSize: 11, fill: C.text }} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px" }}>
+                <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 10px 6px" }}>Consented database growth</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <ComposedChart data={chartDb} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                    <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 12, fill: C.sub }} />
+                    <YAxis yAxisId="l" tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} />
+                    <YAxis yAxisId="r" orientation="right" tick={{ fontFamily: MONO, fontSize: 11, fill: C.brass }} />
+                    <Tooltip formatter={(v, n) => n === "Asset value" ? f0(v) + "K SAR" : fP(v)} contentStyle={{ fontFamily: SANS, fontSize: 12, border: `1px solid ${C.line}` }} />
+                    <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+                    <Area yAxisId="l" dataKey="Consented charts" fill={C.ink2} fillOpacity={0.15} stroke={C.ink2} strokeWidth={2} />
+                    <Line yAxisId="r" dataKey="Asset value" stroke={C.brass} strokeWidth={2.5} dot={{ r: 3 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* strategy comparison + mature pod */}
+            <SectionHeader eyebrow="03 · The strategic question" title="Sell the funnel, or own it?" sub="Five-year value of the same uncovered treatment demand under each capture model — before considering PDPL exposure and MOH fee-splitting risk, which both sit on the referral side." />
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 34 }}>
+              <div style={{ background: inp.mode === "referral" ? C.paper : C.ink, border: `1px solid ${inp.mode === "referral" ? C.line : C.ink}`, borderRadius: 10, padding: "18px 20px" }}>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 8 }}>Referral fees (5-yr)</div>
+                <div style={{ fontFamily: MONO, fontSize: 27, fontWeight: 700, color: inp.mode === "referral" ? C.text : C.inv }}>{f0(ref5)}K</div>
+                <div style={{ fontFamily: SANS, fontSize: 11.5, color: inp.mode === "referral" ? C.sub : C.invSub, marginTop: 6, lineHeight: 1.55 }}>{inp.referralFeePct}% coordination fee on consented cases routed to partner centers. Requires airtight consent architecture and a legal opinion on fee-splitting.</div>
+              </div>
+              <div style={{ background: inp.mode === "hub" ? C.ink : C.paper, border: `1px solid ${inp.mode === "hub" ? C.ink : C.line}`, borderRadius: 10, padding: "18px 20px" }}>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brassLt, marginBottom: 8 }}>Own hub clinic (5-yr)</div>
+                <div style={{ fontFamily: MONO, fontSize: 27, fontWeight: 700, color: inp.mode === "hub" ? C.inv : C.text }}>{f0(hub5)}K</div>
+                <div style={{ fontFamily: SANS, fontSize: 11.5, color: inp.mode === "hub" ? C.invSub : C.sub, marginTop: 6, lineHeight: 1.55 }}>{inp.hubMarginPct}% EBITDA kept on the same cases treated in-group — {hub5 > 0 && ref5 > 0 ? (hub5 / ref5).toFixed(1) + "× the referral take" : "—"}. Data never leaves the group; PDPL consent still required for recall marketing.</div>
+              </div>
+              <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 20px" }}>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 8 }}>Mature pod · monthly</div>
+                <div style={{ fontFamily: MONO, fontSize: 13, lineHeight: 2 }}>
+                  <div className="flex justify-between"><span style={{ fontFamily: SANS, color: C.sub }}>Hygiene &amp; retail</span><span>{f0(m.mature.rev)}K</span></div>
+                  <div className="flex justify-between"><span style={{ fontFamily: SANS, color: C.sub }}>Funnel capture</span><span>{f0(m.mature.funnel)}K</span></div>
+                  <div className="flex justify-between"><span style={{ fontFamily: SANS, color: C.sub }}>All-in costs</span><span>({f0(m.mature.costs)}K)</span></div>
+                  <div className="flex justify-between" style={{ borderTop: `1px solid ${C.line}`, fontWeight: 700 }}><span style={{ fontFamily: SANS }}>Pod EBITDA</span><span style={{ color: m.mature.ebitda >= 0 ? C.pos : C.neg }}>{f0(m.mature.ebitda)}K</span></div>
+                </div>
+                <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 8 }}>{m.mature.payback ? `Pays back its ${f0(inp.capexPod)}K CapEx in ${m.mature.payback.toFixed(1)} yrs` : "Does not pay back at these settings"} · at {inp.utilMax}% utilization</div>
+              </div>
+            </div>
+
+            {/* P&L table */}
+            <SectionHeader eyebrow="04 · Financials" title="Five-Year Network P&L" sub="SAR '000. Funnel capture is shown as its own line — in hub mode it is the EBITDA contribution earned at the hub, not pod revenue." />
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...th, textAlign: "left", fontFamily: SANS }}>Line item</th>
+                      {m.years.map((y) => <th key={y.year} style={th}>{y.year}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ background: "#F3EFE6" }}>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 700 }}>Active pods (new)</td>
+                      {m.years.map((y) => <td key={y.year} style={{ ...td, fontWeight: 700 }}>{y.podsActive} <span style={{ color: C.sub, fontWeight: 400 }}>(+{y.newPods})</span></td>)}
+                    </tr>
+                    {pnl.map(([label, key, kind]) => (
+                      <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
+                        <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "neg" ? C.sub : C.text }}>{label}</td>
+                        {m.years.map((y) => {
+                          const v = y[key];
+                          const loss = (key === "ebitda" || key === "ni" || key === "fcf") && v < 0;
+                          return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: loss ? C.neg : kind === "neg" ? C.sub : C.text }}>{kind === "neg" ? `(${f0(Math.abs(v))})` : f0(v)}</td>;
+                        })}
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>Cumulative FCF</td>
+                      {m.years.map((y) => <td key={y.year} style={{ ...td, color: y.cumFCF < 0 ? C.neg : C.pos }}>{f0(y.cumFCF)}</td>)}
+                    </tr>
+                    <tr>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>Consented database (cum.)</td>
+                      {m.years.map((y) => <td key={y.year} style={{ ...td, color: C.brass }}>{fP(y.cumCharts)}</td>)}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ padding: "10px 18px", fontFamily: SANS, fontSize: 11, color: C.sub, borderTop: `1px solid ${C.line}` }}>
+                Exit at end of Y5: {inp.exitMultiple}× EBITDA = {f0(m.exitOps)}K{inp.inclDatabase ? ` + database asset ${f0(m.dbValue)}K` : ""} = <b>{f0(m.exitValue)}K</b> · funding need {f0(m.funding)}K · MOIC {m.moic ? m.moic.toFixed(1) + "×" : "—"}.
+              </div>
+            </div>
+
+            {/* compliance note */}
+            <div style={{ background: C.ink, borderRadius: 10, padding: "18px 22px", fontFamily: SANS, fontSize: 12.5, color: C.invSub, lineHeight: 1.7 }}>
+              <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.brassLt, marginBottom: 6 }}>Compliance guardrails baked into this model</div>
+              Dental records are <b style={{ color: C.inv }}>sensitive personal data under the Saudi PDPL</b> — nothing in the funnel moves without the explicit opt-in modelled by the consent slider, and raw records are never sold (Art. 35: up to 2 yrs / SAR 3M for unlawful disclosure). Each pod is a licensed MOH facility with a supervising dentist; sterilization runs through a central CSSD. The referral model additionally needs a legal opinion on MOH fee-splitting rules — the hub model avoids both issues by keeping treatment, and the data, in-group.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
