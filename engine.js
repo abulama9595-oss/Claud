@@ -41,8 +41,8 @@ const BASE_INPUTS = {
   clinicDays: 6, dentistDays: 6,
   // senior tier: no salary — paid seniorProdPct % on the selected basis, optionally floored by a
   // monthly minimum guarantee per senior (SAR '000). 0 seniors = legacy model.
-  // seniorRevPerChair: SAR'000 a chair earns per month at full utilization on senior days —
-  // an independent rate, NOT linked to revPerChair (which prices salaried-dentist days).
+  // seniorRevPerChair: each senior's full monthly book (SAR'000) — earned regardless of days
+  // worked (they bring their own caseload); independent of revPerChair (salaried production).
   // seniorPayBasis: "gross" = % of own collected production · "netmat" = % net of materials & lab
   //                 · "profit" = % of session profit after materials + allocated operating costs.
   seniorCount: 0, seniorDays: 3, seniorProdPct: 40, seniorMinMo: 0,
@@ -138,29 +138,31 @@ function loanSchedule(inp) {
 /* ---------- engine ---------- */
 function compute(inp) {
   inp = { ...BASE_INPUTS, ...inp }; // saved scenarios may predate newer inputs
-  // Revenue is DENTIST-driven: each dentist produces revenue on their working days at their
-  // tier's rate — revPerChair is the monthly production of a full-time salaried dentist (one
-  // who works every clinic day), seniorRevPerChair the same for a full-time senior; part-timers
-  // scale by days worked. Production is hard-capped by chair capacity (chairs × clinic days):
-  // dentist-days beyond the chairs available sit idle and produce nothing. Revenue per chair is
-  // a DERIVED output (prodCapMo / chairs), not an input.
+  // Revenue is DENTIST-driven. Salaried tier: revPerChair is the monthly production of a
+  // full-time salaried dentist (working every clinic day); part-timers scale by days worked.
+  // Senior tier: seniorRevPerChair is each senior's FULL monthly book, earned regardless of
+  // how many days they attend — they bring their own caseload, and days worked only determine
+  // chair occupancy and cost allocation. Production is hard-capped by chair capacity
+  // (chairs × clinic days): dentist-days beyond the chairs available sit idle, trimming the
+  // pool pro-rata. Revenue per chair is a DERIVED output (prodCapMo / chairs), not an input.
   const cov = rosterCoverage(inp), capU = Math.min(1, cov);
   const sFracD = seniorDayFrac(inp);
-  const senDays = (inp.seniorCount || 0) * (inp.seniorDays || 0);
-  const salDays = inp.dentistCount * (inp.dentistDays ?? 6);
   const supplied = dentistDaysSupplied(inp);
   const senRate = inp.seniorRevPerChair ?? (inp.seniorRevMult != null ? inp.revPerChair * inp.seniorRevMult : inp.revPerChair); // legacy scenarios saved a multiplier
-  const wRev = salDays * inp.revPerChair + senDays * senRate; // weekly dentist-days × FTE-monthly rates
-  const blendedRev = supplied > 0 ? wRev / supplied : inp.revPerChair;
-  const sFracW = wRev > 0 ? senDays * senRate / wRev : 0;
+  const clinicDaysWk = inp.clinicDays ?? 6;
+  const salProdMo = clinicDaysWk > 0 ? inp.dentistCount * inp.revPerChair * ((inp.dentistDays ?? 6) / clinicDaysWk) : 0;
+  const senProdMo = (inp.seniorCount || 0) * senRate; // full income regardless of days worked
+  const prodPoolMo = salProdMo + senProdMo;
+  const sFracW = prodPoolMo > 0 ? senProdMo / prodPoolMo : 0;
   // the capacity cap: only min(supplied, chair-days) dentist-days can actually produce
   const usedDays = Math.min(supplied, chairDaysOpen(inp));
   const idleDentistDays = Math.max(0, supplied - chairDaysOpen(inp));
   const usedFactor = supplied > 0 ? usedDays / supplied : 0;
-  const clinicDaysWk = inp.clinicDays ?? 6;
-  const prodCapMo = clinicDaysWk > 0 ? usedFactor * wRev / clinicDaysWk : 0; // SAR'000/month at 100% booking
+  const prodCapMo = prodPoolMo * usedFactor; // SAR'000/month at 100% booking
   // demand ramp is expressed vs chair capacity; min(ramp, coverage) caps billing at what the
-  // roster can produce — equivalent to prodCapMo × booking share of the staffed days
+  // roster can produce. revScaler converts the chair-utilization path into billings so that
+  // full staffed booking (util = coverage) yields exactly prodCapMo.
+  const revScaler = capU > 0 ? prodCapMo / capU : 0;
   const rev = Array.from({length: 5}, (_, i) => Math.min(capU, (inp.rampStart / 100) * Math.pow(1 + inp.rampGrowth / 100, i)));
   // materials % steps down linearly from (mature + Y1 premium) in Y1 to mature in Y5
   const matSched = Array.from({length: 5}, (_, i) => inp.materialsPct + inp.materialsY1Premium * (1 - i / 4));
@@ -177,7 +179,7 @@ function compute(inp) {
 
   const years = [];
   for (let i = 0; i < 5; i++) {
-    const revenue = blendedRev * Math.pow(1 + inp.revenueGrowth / 100, i) * 12 * inp.chairs * rev[i];
+    const revenue = revScaler * Math.pow(1 + inp.revenueGrowth / 100, i) * 12 * rev[i];
     const denials = revenue * (inp.insuredPct / 100) * (inp.rejectionPct / 100);
     const materials = (revenue * matSched[i]) / 100;
     const gp = revenue - denials - materials;
@@ -254,7 +256,7 @@ function compute(inp) {
   const Bop = Array.from({ length: 24 }, (_, j) => {
     const util = j < 12 ? uOpen + (uEnd - uOpen) * j / 11 : uEnd + (u2End - uEnd) * (j - 12) / 11;
     const yi = j < 12 ? 0 : 1;
-    return blendedRev * Math.pow(1 + inp.revenueGrowth / 100, yi) * inp.chairs * util / 100;
+    return revScaler * Math.pow(1 + inp.revenueGrowth / 100, yi) * util / 100;
   });
   const Bat = (t) => { // billings interpolated at fractional month t (0 before operations)
     if (t <= -1) return 0;
@@ -382,7 +384,7 @@ function compute(inp) {
   const exitValue = inp.exitMultiple * y5.ebitda;
   const moic = totalRaise > 0 ? (years.reduce((a, y) => a + y.fcf, 0) + exitValue - loan.residual) / totalRaise : 0; // equity multiple: total cash returned ÷ capital invested
 
-  return { years, y5, cumNI, payback, irr, npv, perDentistMo, perSeniorMo, coverage: cov, seniorFracDays: sFracD, seniorFracRev: sFracW, blendedRev, prodCapMo, revPerChairFull: inp.chairs > 0 ? prodCapMo / inp.chairs : 0, usedDays, idleDentistDays, usedFactor, util: rev, dentistDays: dentistDaysSupplied(inp), chairDays: chairDaysOpen(inp), saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev, moic };
+  return { years, y5, cumNI, payback, irr, npv, perDentistMo, perSeniorMo, coverage: cov, seniorFracDays: sFracD, seniorFracRev: sFracW, prodCapMo, revPerChairFull: inp.chairs > 0 ? prodCapMo / inp.chairs : 0, usedDays, idleDentistDays, usedFactor, util: rev, dentistDays: dentistDaysSupplied(inp), chairDays: chairDaysOpen(inp), saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev, moic };
 }
 function computeIRR(cfs) {
   let lo = -0.95, hi = 5.0;
