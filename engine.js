@@ -205,14 +205,22 @@ function compute(inp) {
     // seniorRev = collected production attributed to seniors (weighted by the case-mix multiplier);
     // seniorCost = the real cost of their sessions (their materials + operating costs per chair-day
     // occupied), tracked on every basis so the deal box can show the clinic's margin on them.
+    const sharedOps = allocFixedBase * STAFF_RAMP[i] + lease + mkt + other + insUtil + foreign; // clinic operating costs excl. dentist salaries & senior pay
     const seniorRev = (revenue - denials) * sFracW;
-    const seniorCost = materials * sFracW + (allocFixedBase * STAFF_RAMP[i] + lease + mkt + other + insUtil + foreign) * sFracD;
+    const seniorCost = materials * sFracW + sharedOps * sFracD; // their materials + share of operating costs by occupied chair-days
     const seniorBase = inp.seniorPayBasis === "profit" ? Math.max(0, seniorRev - seniorCost)
       : inp.seniorPayBasis === "netmat" ? Math.max(0, seniorRev - materials * sFracW)
       : seniorRev;
     const seniorPay = Math.max(seniorBase * (inp.seniorProdPct / 100), (inp.seniorCount || 0) * (inp.seniorMinMo || 0) * 12);
-    const preshare = gp - fixedStaff - lease - mkt - other - insUtil - foreign - seniorPay;
-    const share = preshare > 0 ? (preshare * inp.profitShare) / 100 : 0;
+    // Salaried profit share is earned on the profit of the salaried dentists' OWN production:
+    // their collected production, less their salary and their share of clinic costs (materials on
+    // their production + operating costs by their occupied chair-days). The residual margin the
+    // clinic keeps on senior books accrues to the owner (EBITDA), not this pool. With no seniors
+    // this reduces exactly to 35% of whole-clinic operating profit (unchanged).
+    const dentistSalaryY = dentistBaseAnnual * (1 + inp.gosiPct / 100) * STAFF_RAMP[i];
+    const salariedProfit = (revenue - denials) * (1 - sFracW) - materials * (1 - sFracW) - dentistSalaryY - sharedOps * (1 - sFracD);
+    const share = salariedProfit > 0 ? (salariedProfit * inp.profitShare) / 100 : 0;
+    const preshare = gp - fixedStaff - lease - mkt - other - insUtil - foreign - seniorPay; // whole-clinic operating profit before the salaried share
     const ebitda = preshare - share;
     const dep = annualDepreciation(inp);
     const interest = loan.perYear[i].interest;      // clinical-equipment finance interest (below EBITDA)
@@ -224,7 +232,7 @@ function compute(inp) {
     const fcf = ni + dep - maintCapex - principal;   // levered (equity) FCF — interest is in ni, principal subtracted here
     // guard margins against a zero-revenue year (revPerChair / chairs / rampStart can all be 0) so the UI never shows NaN%/Infinity%
     const pct = (x) => revenue > 0 ? x / revenue * 100 : 0;
-    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, seniorRev, seniorCost, seniorPay, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, interest, principal, zakat, ni, niPct: pct(ni), fcf });
+    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, seniorRev, seniorCost, seniorPay, salariedProfit, dentistSalaryY, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, interest, principal, zakat, ni, niPct: pct(ni), fcf });
   }
   const y5 = years[4];
   const y1 = years[0];
@@ -295,7 +303,11 @@ function compute(inp) {
       : mSeniorRev;
     const mSenior = Math.max(mSeniorBase * (inp.seniorProdPct / 100), (inp.seniorCount || 0) * (inp.seniorMinMo || 0));
     const mPre = B * (1 - sIns * rRej) - (B * matSched[yi]) / 100 - fixedAcc - mSenior;
-    const mShare = mPre > 0 ? mPre * inp.profitShare / 100 : 0;
+    // salaried share settles monthly on the salaried tier's own-production profit (mirrors the annual figure)
+    const mDentSalary = dentistBaseAnnual * (1 + inp.gosiPct / 100) * STAFF_RAMP[yi] / 12;
+    const mSharedOps = (allocFixedBase * STAFF_RAMP[yi] + yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12;
+    const mSalProfit = B * (1 - sIns * rRej) * (1 - sFracW) - (B * matSched[yi] / 100) * (1 - sFracW) - mDentSalary - mSharedOps * (1 - sFracD);
+    const mShare = mSalProfit > 0 ? mSalProfit * inp.profitShare / 100 : 0;
     win.senior[yi] += mSenior;
     // share accrues on P&L profit; cash adds back accrued rent & insurance, shifts insured collections by the lag, pays cheques when due
     const collAdj = sIns * (1 - rRej) * (Bat(j - dLag) - B);
