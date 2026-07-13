@@ -55,7 +55,11 @@
       retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
       // opex per pod / month (SAR '000)
       rentPod: 15, dentistSalary: 30, podsPerDentist: 2, gosiPct: 11, hygienists: 2, hygSalary: 14, receptionCost: 6,
-      materialsPct: 12, mktPod: 8, ohPod: 10, hqFixed: 45,
+      materialsPct: 12,
+      // HQ / central — the network is run centrally: management, marketing, operations (CSSD/QA), IT (SAR '000 / mo)
+      hqMgmt: 22, hqOffice: 8, hqIt: 6, hqProf: 4, mktPerPod: 8, opsPerPod: 7,
+      // HQ / central one-time CapEx (SAR '000)
+      hqCxOffice: 350, hqCxIt: 200, hqCxBrand: 150, hqCxSetup: 120,
       // capex per pod (SAR '000) — breakdown, summed to the per-pod build cost
       cxFitout: 170, cxEquip: 165, cxSterile: 40, cxItBrand: 50, cxRetail: 40, cxLicensing: 18, cxContingency: 27,
       // patient-funnel & data upside (single On/Off)
@@ -76,15 +80,29 @@
       ["cxContingency", "Pre-opening & contingency"],
     ];
     const capexPerPod = (p) => CX_KEYS.reduce((s, [k]) => s + (p[k] || 0), 0);
+    // HQ / central one-time CapEx
+    const HQ_CX_KEYS = [
+      ["hqCxOffice", "Central office & CSSD / sterilization hub"],
+      ["hqCxIt", "IT / ERP / practice-management platform"],
+      ["hqCxBrand", "Brand, website & launch campaign"],
+      ["hqCxSetup", "Pre-opening HQ team & setup"],
+    ];
+    const hqCapexTotal = (p) => HQ_CX_KEYS.reduce((s, [k]) => s + (p[k] || 0), 0);
     // one supervising dentist covers podsPerDentist pods; per-pod cost = monthly salary loaded with GOSI,
     // then split across the pods that dentist covers
     const dentistPerPod = (p) => p.dentistSalary * (1 + (p.gosiPct || 0) / 100) / Math.max(1, p.podsPerDentist || 1);
-    // fixed monthly opex per pod (excludes variable materials & retail COGS)
-    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + p.receptionCost + p.mktPod + p.ohPod;
+    // DIRECT fixed monthly opex per pod (rent, supervising dentist, hygienists, reception) — marketing &
+    // central overhead are managed at HQ, not the pod
+    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + p.receptionCost;
+    // HQ monthly opex: a fixed central base (mgmt, office, IT, professional) + a per-active-pod component
+    // (central marketing & central operations / CSSD / QA)
+    const hqFixedMo = (p) => p.hqMgmt + p.hqOffice + p.hqIt + p.hqProf;
+    const hqPerPodMo = (p) => p.mktPerPod + p.opsPerPod;
 
     function computePods(p) {
       p = { ...POD_BASE, ...p };
       const capexPod = capexPerPod(p);
+      const hqCapex = hqCapexTotal(p);
       const F = !!p.inclFunnel;
       // cohorts: podsY1 open at the start of Y1, podsPerYear at the start of each later year.
       const cohorts = [p.podsY1, p.podsPerYear, p.podsPerYear, p.podsPerYear, p.podsPerYear];
@@ -120,15 +138,16 @@
         const newCharts = contacts * (p.consentPct / 100);
         cumCharts += newCharts;
         // costs
-        const materials = serviceRev * (p.materialsPct / 100);           // hygiene consumables on service revenue
-        const retailCogs = retailRev * (1 - p.retailMarginPct / 100);     // cost of goods sold on retail
-        const podFixed = podFixedMo(p) * 12 * effPods;                    // rent, staff, marketing, overhead
-        const hq = p.hqFixed * 12;                                        // network HQ / management
-        const opEbitda = podRev - materials - retailCogs - podFixed - hq; // operating EBITDA before funnel
+        const materials = serviceRev * (p.materialsPct / 100);              // hygiene consumables on service revenue
+        const retailCogs = retailRev * (1 - p.retailMarginPct / 100);        // cost of goods sold on retail
+        const podDirect = podFixedMo(p) * 12 * effPods;                      // rent, supervising dentist, hygienists, reception
+        const podContribution = podRev - materials - retailCogs - podDirect; // pod-level EBITDA, before HQ
+        const hq = hqFixedMo(p) * 12 + hqPerPodMo(p) * 12 * effPods;          // central HQ: fixed base + marketing/ops per active pod
+        const opEbitda = podContribution - hq;                               // operating EBITDA before funnel
         const ebitda = opEbitda + funnelRev;
 
         const newPods = cohorts[i] || 0;
-        const capex = newPods * capexPod;
+        const capex = newPods * capexPod + (i === 0 ? hqCapex : 0);           // HQ CapEx deployed at launch (Y1)
         cumCapex += capex;
         const dep = cumCapex / p.deprYears;
         const zakat = Math.max(0, ebitda - dep) * (p.zakatPct / 100);
@@ -141,7 +160,7 @@
         const pct = (x) => totalRev > 0 ? x / totalRev * 100 : 0;
         years.push({ year: `Y${i + 1}`, podsActive, newPods, appts, screenings, newCharts, cumCharts, cases,
           serviceRev, retailRev, podRev, funnelRev, referralRev, hubCapture, revenue: totalRev,
-          materials, retailCogs, podFixed, hq, opEbitda, ebitda, ebitdaPct: pct(ebitda), dep, zakat, ni, capex, fcf, cumFCF });
+          materials, retailCogs, podDirect, podContribution, hq, opEbitda, ebitda, ebitdaPct: pct(ebitda), dep, zakat, ni, capex, fcf, cumFCF });
       }
       const y5 = years[4];
       const dbValue = F ? cumCharts * p.chartValue / 1000 : 0;
@@ -160,7 +179,7 @@
       // operations self-fund later pods); plus a minimum-cash reserve sized off mature network fixed opex.
       const totalPods = p.podsY1 + p.podsPerYear * 4;
       const launchLiquidity = Math.max(0, -peakNeed);
-      const matureNetworkFixedMo = totalPods * podFixedMo(p) + p.hqFixed; // mature monthly fixed opex, whole network
+      const matureNetworkFixedMo = totalPods * (podFixedMo(p) + hqPerPodMo(p)) + hqFixedMo(p); // mature monthly fixed opex, whole network
       const minCashReserve = Math.max(0, p.minCashMonths) * matureNetworkFixedMo;
       const capitalToRaise = launchLiquidity + minCashReserve; // external cash required (expansion self-funds beyond this)
       const selfFunded = Math.max(0, totalCapex - launchLiquidity); // capex met from operating cash over the plan
@@ -176,11 +195,12 @@
       const mMaterials = mService * (p.materialsPct / 100);
       const mRetailCogs = mRetail * (1 - p.retailMarginPct / 100);
       const mCosts = podFixedMo(p) + mMaterials + mRetailCogs;
-      const mEbitda = mService + mRetail + mFunnel - mCosts;
+      const mEbitda = mService + mRetail + mFunnel - mCosts; // pod contribution (before HQ)
       const podPayback = mEbitda > 0 ? capexPod / (mEbitda * 12) : null;
       return { years, y5, cumCharts, dbValue, inclDb, exitOps, exitValue, irr, moic, cumFCF,
-        totalCapex, capexPod, totalPods, matureNetworkFixedMo, launchLiquidity, minCashReserve, capitalToRaise, selfFunded,
-        mature: { appts: mAppts, service: mService, retail: mRetail, funnel: mFunnel, materials: mMaterials, retailCogs: mRetailCogs, fixed: podFixedMo(p), costs: mCosts, ebitda: mEbitda, cases: mCases, payback: podPayback } };
+        totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqPerPodMo: hqPerPodMo(p),
+        launchLiquidity, minCashReserve, capitalToRaise, selfFunded,
+        mature: { appts: mAppts, service: mService, retail: mRetail, funnel: mFunnel, materials: mMaterials, retailCogs: mRetailCogs, fixed: podFixedMo(p), hqPerPod: hqPerPodMo(p), costs: mCosts, ebitda: mEbitda, cases: mCases, payback: podPayback } };
     }
 
     function SectionHeader({ eyebrow, title, sub }) {
@@ -242,8 +262,9 @@
         ["Pod revenue", "podRev", "head"],
         ["Consumables & lab", "materials", "neg"],
         ["Retail COGS", "retailCogs", "neg"],
-        ["Pod fixed opex (staff · rent · mktg · overhead)", "podFixed", "neg"],
-        ["HQ fixed overhead", "hq", "neg"],
+        ["Pod direct opex (dentist · hygienists · rent · reception)", "podDirect", "neg"],
+        ["Pod contribution", "podContribution", "head"],
+        ["HQ / central opex (mgmt · marketing · ops · IT)", "hq", "neg"],
         ...(F ? [["Operating EBITDA", "opEbitda", "head"], [inp.mode === "referral" ? "Referral / coordination fees" : "Hub treatment capture", "funnelRev", "pos"]] : []),
         ["Network EBITDA", "ebitda", "head"],
         ["Depreciation", "dep", "neg"], ["Zakat", "zakat", "neg"],
@@ -319,11 +340,9 @@
                 <Slider label="Hygienist salary (loaded)" value={inp.hygSalary} min={8} max={22} step={0.5} unit="K SAR" onChange={(v) => set("hygSalary", v)} />
                 <Slider label="Reception / retail assistant" value={inp.receptionCost} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionCost", v)} />
                 <Slider label="Consumables & lab" value={inp.materialsPct} min={5} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
-                <Slider label="Marketing per pod" value={inp.mktPod} min={0} max={25} step={1} unit="K SAR" onChange={(v) => set("mktPod", v)} />
-                <Slider label="Central overhead per pod (CSSD/QA/IT)" value={inp.ohPod} min={0} max={25} step={1} unit="K SAR" onChange={(v) => set("ohPod", v)} hint="shared sterilization hub & compliance" />
-                <Slider label="HQ fixed (network)" value={inp.hqFixed} min={0} max={200} step={5} unit="K SAR/mo" onChange={(v) => set("hqFixed", v)} />
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 6 }}>Marketing &amp; central overhead are run at HQ (card E) — not charged to the pod.</div>
               </Card>
-              <Card n="D" title="CapEx per pod & capital">
+              <Card n="D" title="Pod CapEx & capital">
                 {CX_KEYS.map(([k, label]) => (
                   <Slider key={k} label={label} value={inp[k]} min={0} max={k === "cxFitout" || k === "cxEquip" ? 300 : 120} step={5} unit="K SAR" onChange={(v) => set(k, v)} />
                 ))}
@@ -331,8 +350,24 @@
                 <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={1} unit="mo opex" onChange={(v) => set("minCashMonths", v)} hint="network fixed opex held as a buffer" />
                 <Slider label="Exit multiple (Y5 EBITDA)" value={inp.exitMultiple} min={0} max={10} step={0.5} unit="×" onChange={(v) => set("exitMultiple", v)} />
               </Card>
+              <Card n="E" title="HQ / central — monthly OpEx">
+                <Slider label="Management team" value={inp.hqMgmt} min={0} max={80} step={1} unit="K SAR/mo" onChange={(v) => set("hqMgmt", v)} hint="ops, finance, clinical lead — runs the whole network" />
+                <Slider label="Office rent & admin" value={inp.hqOffice} min={0} max={40} step={1} unit="K SAR/mo" onChange={(v) => set("hqOffice", v)} />
+                <Slider label="IT / ERP / software" value={inp.hqIt} min={0} max={30} step={1} unit="K SAR/mo" onChange={(v) => set("hqIt", v)} />
+                <Slider label="Professional & compliance" value={inp.hqProf} min={0} max={30} step={1} unit="K SAR/mo" onChange={(v) => set("hqProf", v)} hint="legal, accounting, MOH/PDPL compliance" />
+                <div style={{ ...bSub, marginTop: 8 }}><span>Fixed HQ base / mo</span><span style={bVal}>{f0(m.hqFixedMo)}K</span></div>
+                <Slider label="Central marketing / pod" value={inp.mktPerPod} min={0} max={25} step={1} unit="K SAR/mo" onChange={(v) => set("mktPerPod", v)} hint="brand & local campaigns, managed centrally, scales with the network" />
+                <Slider label="Central operations / pod (CSSD/QA)" value={inp.opsPerPod} min={0} max={25} step={1} unit="K SAR/mo" onChange={(v) => set("opsPerPod", v)} hint="shared sterilization hub, quality & clinical governance" />
+                <div style={{ ...bSub, marginTop: 8 }}><span>HQ opex at {totalPods} pods / mo</span><span style={bVal}>{f0(m.matureNetworkFixedMo - totalPods * m.mature.fixed)}K</span></div>
+              </Card>
+              <Card n="F" title="HQ / central — CapEx">
+                {HQ_CX_KEYS.map(([k, label]) => (
+                  <Slider key={k} label={label} value={inp[k]} min={0} max={600} step={10} unit="K SAR" onChange={(v) => set(k, v)} />
+                ))}
+                <div style={{ ...bSub, marginTop: 8 }}><span>Total HQ CapEx</span><span style={bVal}>{f0(m.hqCapex)}K</span></div>
+              </Card>
               {F && (
-                <Card n="E" title="Patient-funnel & data upside">
+                <Card n="G" title="Patient-funnel & data upside">
                   <Slider label="Free screenings / pod / day" value={inp.screensPerDay} min={0} max={40} step={1} unit="people" onChange={(v) => set("screensPerDay", v)} hint="intraoral-camera walk-up funnel — the data engine" />
                   <Slider label="Found needing treatment" value={inp.needPct} min={10} max={60} step={1} unit="%" onChange={(v) => set("needPct", v)} hint="share of hygiene patients diagnosed with further work" />
                   <Slider label="PDPL consent opt-in" value={inp.consentPct} min={10} max={95} step={5} unit="%" onChange={(v) => set("consentPct", v)} hint="explicit opt-in — nothing moves without it" />
@@ -369,8 +404,8 @@
             </div>
 
             {/* capital & cost structure */}
-            <SectionHeader eyebrow="03 · Capital & cost structure" title="CapEx, OpEx & funding" sub="What it costs to build one pod, what it costs to run one each month, and the cash an investor must put in to launch the network." />
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, marginBottom: 20 }}>
+            <SectionHeader eyebrow="03 · Capital & cost structure" title="CapEx, OpEx & funding" sub="What it costs to build and run a pod, what the central HQ costs to build and run, and the cash an investor must put in to launch the network." />
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 16, marginBottom: 20 }}>
               {/* CapEx per pod */}
               <div style={card}>
                 <div style={bTitle}>1 · CapEx per pod (SAR '000)</div>
@@ -378,32 +413,53 @@
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label}</span><span style={bVal}>{f0(inp[k])}</span></div>
                 ))}
                 <div style={bSub}><span>Build cost per pod</span><span style={bVal}>{f0(m.capexPod)}</span></div>
-                <div style={{ ...bRow, marginTop: 6 }}><span style={{ color: C.sub }}>× {totalPods} pods by Y5</span><span style={bVal}>{f0(m.totalCapex)}</span></div>
+                <div style={{ ...bRow, marginTop: 6 }}><span style={{ color: C.sub }}>× {totalPods} pods by Y5</span><span style={bVal}>{f0(m.capexPod * totalPods)}</span></div>
               </div>
-              {/* OpEx per pod / month */}
+              {/* Pod OpEx (direct) */}
               <div style={card}>
-                <div style={bTitle}>2 · Mature pod OpEx (SAR '000 / month)</div>
+                <div style={bTitle}>2 · Pod direct OpEx (SAR '000 / month)</div>
                 <div style={bRow}><span style={{ color: C.sub }}>Mall rent</span><span style={bVal}>{f0(inp.rentPod)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Supervising dentist (loaded ÷ {inp.podsPerDentist})</span><span style={bVal}>{f0(inp.dentistSalary * (1 + inp.gosiPct / 100) / inp.podsPerDentist)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Hygienists ({inp.hygienists})</span><span style={bVal}>{f0(inp.hygienists * inp.hygSalary)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Reception / retail assistant</span><span style={bVal}>{f0(inp.receptionCost)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Marketing</span><span style={bVal}>{f0(inp.mktPod)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Central overhead (CSSD/QA/IT)</span><span style={bVal}>{f0(inp.ohPod)}</span></div>
-                <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Fixed opex / pod</span><span style={bVal}>{f0(m.mature.fixed)}</span></div>
+                <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Direct fixed / pod</span><span style={bVal}>{f0(m.mature.fixed)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>+ Consumables ({inp.materialsPct}% svc)</span><span style={bVal}>{f0(m.mature.materials)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>+ Retail COGS</span><span style={bVal}>{f0(m.mature.retailCogs)}</span></div>
-                <div style={bSub}><span>All-in / pod (mature)</span><span style={bVal}>{f0(m.mature.costs)}</span></div>
-                <div style={{ ...bRow, marginTop: 6 }}><span style={{ color: C.sub }}>Network fixed opex + HQ / mo</span><span style={bVal}>{f0(m.matureNetworkFixedMo)}</span></div>
+                <div style={bSub}><span>All-in direct / pod (mature)</span><span style={bVal}>{f0(m.mature.costs)}</span></div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8 }}>Excludes marketing &amp; central overhead — those sit at HQ (panels 3–4).</div>
+              </div>
+              {/* HQ CapEx */}
+              <div style={card}>
+                <div style={bTitle}>3 · HQ / central CapEx (SAR '000)</div>
+                {HQ_CX_KEYS.map(([k, label]) => (
+                  <div key={k} style={bRow}><span style={{ color: C.sub }}>{label}</span><span style={bVal}>{f0(inp[k])}</span></div>
+                ))}
+                <div style={bSub}><span>Total HQ CapEx (one-time)</span><span style={bVal}>{f0(m.hqCapex)}</span></div>
+                <div style={{ ...bRow, marginTop: 6 }}><span style={{ color: C.sub }}>Deployed at launch (Y1)</span><span style={bVal}>{f0(m.hqCapex)}</span></div>
+              </div>
+              {/* HQ OpEx */}
+              <div style={card}>
+                <div style={bTitle}>4 · HQ / central OpEx (SAR '000 / month)</div>
+                <div style={bRow}><span style={{ color: C.sub }}>Management team</span><span style={bVal}>{f0(inp.hqMgmt)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Office rent & admin</span><span style={bVal}>{f0(inp.hqOffice)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>IT / ERP / software</span><span style={bVal}>{f0(inp.hqIt)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Professional & compliance</span><span style={bVal}>{f0(inp.hqProf)}</span></div>
+                <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Fixed HQ base / mo</span><span style={bVal}>{f0(m.hqFixedMo)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>+ Central marketing / pod</span><span style={bVal}>{f0(inp.mktPerPod)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>+ Central operations / pod</span><span style={bVal}>{f0(inp.opsPerPod)}</span></div>
+                <div style={bSub}><span>HQ opex at {totalPods} pods / mo</span><span style={bVal}>{f0(m.hqFixedMo + totalPods * m.hqPerPodMo)}</span></div>
               </div>
               {/* Funding */}
               <div style={card}>
-                <div style={bTitle}>3 · Funding — sources & uses</div>
-                <div style={bRow}><span style={{ color: C.sub }}>Pilot CapEx (Y1, {inp.podsY1} pods)</span><span style={bVal}>{f0(inp.podsY1 * m.capexPod)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Launch liquidity (peak deficit)</span><span style={bVal}>{f0(m.launchLiquidity)}</span></div>
+                <div style={bTitle}>5 · Funding — sources & uses</div>
+                <div style={bRow}><span style={{ color: C.sub }}>Total CapEx by Y5 (pods + HQ)</span><span style={bVal}>{f0(m.totalCapex)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>· incl. HQ CapEx (Y1)</span><span style={bVal}>{f0(m.hqCapex)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>· self-funded from operations</span><span style={bVal}>{f0(m.selfFunded)}</span></div>
+                <div style={{ ...bRow, marginTop: 4 }}><span style={{ color: C.sub }}>Launch liquidity (peak deficit)</span><span style={bVal}>{f0(m.launchLiquidity)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Minimum-cash reserve ({inp.minCashMonths}mo)</span><span style={bVal}>{f0(m.minCashReserve)}</span></div>
                 <div style={bSub}><span>Capital to raise</span><span style={bVal}>{f0(m.capitalToRaise)}</span></div>
-                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 10, lineHeight: 1.5 }}>
-                  Expansion self-funds from operating cash: of the {f0(m.totalCapex)}K total CapEx deployed by Y5, ~{f0(m.selfFunded)}K is met from operations. MOIC ({m.moic ? m.moic.toFixed(1) + "×" : "—"}) is measured on the full {f0(m.totalCapex)}K deployed, not the raise.
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>
+                  Capital to raise = launch liquidity + reserve; expansion self-funds from operating cash. MOIC ({m.moic ? m.moic.toFixed(1) + "×" : "—"}) is measured on the full {f0(m.totalCapex)}K deployed.
                 </div>
               </div>
             </div>
@@ -417,12 +473,13 @@
                     <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>Hygiene &amp; whitening</span><span>{f0(m.mature.service)}K</span></div>
                     <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>Retail products</span><span>{f0(m.mature.retail)}K</span></div>
                     {F && <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>Funnel capture</span><span>{f0(m.mature.funnel)}K</span></div>}
-                    <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>All-in costs</span><span>({f0(m.mature.costs)}K)</span></div>
-                    <div className="flex justify-between" style={{ gap: 30, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}><span style={{ fontFamily: SANS }}>Pod EBITDA</span><span style={{ color: m.mature.ebitda >= 0 ? C.pos : C.neg }}>{f0(m.mature.ebitda)}K</span></div>
+                    <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>Direct costs</span><span>({f0(m.mature.costs)}K)</span></div>
+                    <div className="flex justify-between" style={{ gap: 30, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}><span style={{ fontFamily: SANS }}>Pod contribution (pre-HQ)</span><span style={{ color: m.mature.ebitda >= 0 ? C.pos : C.neg }}>{f0(m.mature.ebitda)}K</span></div>
+                    <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>less HQ central / pod</span><span>({f0(m.mature.hqPerPod)}K)</span></div>
                   </div>
                 </div>
                 <div style={{ fontFamily: SANS, fontSize: 12, color: C.sub, maxWidth: 320, lineHeight: 1.6 }}>
-                  {m.mature.payback ? <>A mature pod pays back its <b style={{ color: C.text }}>{f0(m.capexPod)}K</b> build cost in <b style={{ color: C.text }}>{m.mature.payback.toFixed(1)} yrs</b> at {inp.utilMax}% utilization.</> : "At these settings a pod does not pay back — raise utilization, ticket, retail attach, or lower costs."}
+                  {m.mature.payback ? <>A mature pod's <b style={{ color: C.text }}>{f0(m.mature.ebitda)}K/mo</b> contribution pays back its <b style={{ color: C.text }}>{f0(m.capexPod)}K</b> build cost in <b style={{ color: C.text }}>{m.mature.payback.toFixed(1)} yrs</b> at {inp.utilMax}% utilization, before the shared HQ layer (mgmt, marketing, ops, IT).</> : "At these settings a pod does not cover its own direct costs — raise utilization, ticket, retail attach, or lower costs."}
                 </div>
               </div>
             </div>
