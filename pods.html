@@ -123,11 +123,19 @@
       const dbValue = cumCharts * p.chartValue / 1000;
       const exitOps = Math.max(0, y5.ebitda) * p.exitMultiple;
       const exitValue = exitOps + (p.inclDatabase ? dbValue : 0);
-      const cfs = years.map((y) => y.fcf);
-      cfs[4] += exitValue;
+      // returns on a clinic-consistent basis: cohort capital is deployed at the START of each year (t = i)
+      // and that year's operating cash is collected at the END of the year (t = i+1), with the exit at t = 5 —
+      // so the investment precedes its returns. The old vector placed Y1 at t = 0 with no upfront outlay, which
+      // compressed the timeline ~1 year and overstated IRR.
+      const totalCapex = cumCapex; // all cohorts deployed across the 5 years
+      const cfs = [0, 0, 0, 0, 0, 0];
+      years.forEach((y, i) => { cfs[i] -= y.capex; cfs[i + 1] += y.ni + y.dep; }); // ni + dep = operating cash before capex
+      cfs[5] += exitValue;
       const irr = computeIRR(cfs);
-      const funding = Math.max(0, -peakNeed);
-      const moic = funding > 0 ? (cumFCF + exitValue) / funding : null;
+      const funding = Math.max(0, -peakNeed); // peak external cash need if later pods are self-funded (reported as-is)
+      // equity multiple on TOTAL capital deployed (not the rolling deficit), comparable to the clinic model's MOIC
+      const totalReturned = years.reduce((a, y) => a + y.ni + y.dep, 0) + exitValue; // operating cash before capex + exit
+      const moic = totalCapex > 0 && totalReturned > 0 ? totalReturned / totalCapex : null; // "—" when nothing is returned
       // steady-state single pod, at maximum utilization (monthly, SAR '000)
       const mAppts = p.chairs * p.apptsPerChairDay * (p.utilMax / 100) * p.daysPerMonth;
       const mRev = (mAppts * p.ticket / 1000) * (1 + p.upsellPct / 100);
@@ -136,7 +144,7 @@
       const mCosts = p.rentPod + p.dentistCost + p.hygienists * p.hygSalary + p.receptionCost + p.mktPod + p.ohPod + mRev * (p.materialsPct / 100);
       const mEbitda = mRev + mFunnel - mCosts;
       const podPayback = mEbitda > 0 ? p.capexPod / (mEbitda * 12) : null;
-      return { years, y5, cumCharts, dbValue, exitOps, exitValue, irr, funding, moic, cumFCF,
+      return { years, y5, cumCharts, dbValue, exitOps, exitValue, irr, funding, moic, cumFCF, totalCapex,
         mature: { appts: mAppts, rev: mRev, funnel: mFunnel, costs: mCosts, ebitda: mEbitda, cases: mCases, payback: podPayback } };
     }
 
@@ -390,7 +398,7 @@
                 </table>
               </div>
               <div style={{ padding: "10px 18px", fontFamily: SANS, fontSize: 11, color: C.sub, borderTop: `1px solid ${C.line}` }}>
-                Exit at end of Y5: {inp.exitMultiple}× EBITDA = {f0(m.exitOps)}K{inp.inclDatabase ? ` + database asset ${f0(m.dbValue)}K` : ""} = <b>{f0(m.exitValue)}K</b> · funding need {f0(m.funding)}K · MOIC {m.moic ? m.moic.toFixed(1) + "×" : "—"}.
+                Exit at end of Y5: {inp.exitMultiple}× EBITDA = {f0(m.exitOps)}K{inp.inclDatabase ? ` + database asset ${f0(m.dbValue)}K` : ""} = <b>{f0(m.exitValue)}K</b> · funding need {f0(m.funding)}K · MOIC {m.moic ? m.moic.toFixed(1) + "×" : "—"} on {f0(m.totalCapex)}K total capital deployed.
               </div>
             </div>
 
