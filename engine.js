@@ -239,20 +239,24 @@ function compute(inp) {
   const cumNI = years.reduce((a, y) => a + y.ni, 0);
   // representative Year-1 monthly operating cost, used to size the minimum-cash policy
   const monthlyOpex = (y1.fixedStaff + y1.lease + y1.mkt + y1.other + y1.insUtil + y1.foreign + y1.materials + y1.seniorPay + y1.share) / 12;
-  // operating break-even revenue per chair/month: the revPerChair at which mature (Y5) operating profit BEFORE the dentist
-  // profit share = 0 — the clinic just covers its running costs (excl. share, capital, depreciation & finance). Above this a
-  // profit pool exists and dentists earn their share; use it as the per-chair threshold each dentist must clear before sharing.
-  // Senior production pay is variable with collections, so it lowers the margin rather than adding to fixed cost
-  // (the optional minimum guarantee is ignored here — near break-even it is a second-order refinement).
+  // operating break-even: the salaried revPerChair (full-time dentist's monthly production) at which
+  // mature (Y5) operating profit BEFORE the salaried profit share = 0 — the clinic just covers its
+  // running costs (excl. share, capital, depreciation & finance). Above it a profit pool exists and
+  // the salaried tier earns its share. At a fixed roster, Y5 operating profit is LINEAR in revPerChair:
+  //   preshare = R·(collFrac − materials%) − fcMature − seniorPay,  R = 12·(1+g)^4·(kSal·revPerChair + senProdMo)
+  // where kSal = salaried production supplied per unit of revPerChair (FTE-equivalent after part-time
+  // days & the chair-capacity cap), and both senProdMo and the senior pay tied to the seniors' own
+  // book are CONSTANTS in revPerChair — so senior pay sits on the fixed side, not in the margin.
+  // Inverting for revPerChair gives the exact threshold (correct under any staffing, part-time roster
+  // and senior mix; the earlier per-chair form was only right when kSal happened to equal chairs).
   const collFrac = 1 - (inp.insuredPct / 100) * (inp.rejectionPct / 100); // collected share of billings
   const fcMature = y5.fixedStaff + y5.lease + y5.mkt + y5.other + y5.insUtil + y5.foreign;
-  // senior pay drag on the contribution margin, by basis; under "profit" their pay vanishes at
-  // break-even (their session profit is ~0 there), so the drag is 0 (guarantee ignored here)
-  const seniorDrag = inp.seniorPayBasis === "profit" ? 0
-    : inp.seniorPayBasis === "netmat" ? sFracW * (collFrac - matSched[4] / 100) * (inp.seniorProdPct / 100)
-    : sFracW * collFrac * (inp.seniorProdPct / 100);
-  const matMargin = collFrac - matSched[4] / 100 - seniorDrag; // revenue left after denials, materials & senior pay
-  const opBreakEvenRev = (matMargin > 0 && inp.chairs > 0) ? (fcMature / matMargin) / (Math.pow(1 + inp.revenueGrowth / 100, 4) * 12 * inp.chairs) : null;
+  const contrib = collFrac - matSched[4] / 100;                       // contribution margin after denials & materials
+  const kSal = inp.dentistCount * ((inp.dentistDays ?? 6) / clinicDaysWk) * salariedRealization;
+  const matureRev = 12 * Math.pow(1 + inp.revenueGrowth / 100, 4);    // Y5 annualization of monthly production
+  const opBreakEvenRev = (contrib > 0 && kSal > 0 && inp.chairs > 0)
+    ? Math.max(0, ((fcMature + y5.seniorPay) / (contrib * matureRev) - senProdMo) / kSal)
+    : null;
 
   // Pre-opening (fit-out, F months) + 24 operating months (Y1–Y2) cash engine.
   // Rent cheques follow the selected payment terms; the lease year runs from fit-out start (grace: from opening).
