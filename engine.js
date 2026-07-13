@@ -36,6 +36,16 @@ const LEASE_ESC  = [1.0, 1.018, 1.035, 1.059, 1.082];
 const BASE_INPUTS = {
   revPerChair: 160, chairs: 10, rampStart: 50, rampGrowth: 50, revenueGrowth: 0,
   dentistCount: 10, dentistBase: 10000, profitShare: 35,
+  // roster: a "day" is one full clinic shift (e.g. 2–10pm). Chairs offer clinicDays slots/week;
+  // each salaried dentist covers dentistDays, each production-paid senior covers seniorDays.
+  clinicDays: 6, dentistDays: 6,
+  // senior tier: no salary — paid seniorProdPct % on the selected basis, optionally floored by a
+  // monthly minimum guarantee per senior (SAR '000). 0 seniors = legacy model.
+  // seniorRevMult: revenue a senior day generates vs a salaried dentist's day (case-mix premium).
+  // seniorPayBasis: "gross" = % of own collected production · "netmat" = % net of materials & lab
+  //                 · "profit" = % of session profit after materials + allocated operating costs.
+  seniorCount: 0, seniorDays: 3, seniorProdPct: 40, seniorMinMo: 0,
+  seniorRevMult: 1.5, seniorPayBasis: "gross",
   nursesPerChair: 1.5, chairsideSalary: 6000,
   generalStaffCount: 4, generalStaffSalary: 5500, adminManagerSalary: 15000,
   medicalSupportCount: 2, medicalSupportSalary: 5000, janitorCount: 3, janitorSalary: 900, driverCount: 1, driverSalary: 1500,
@@ -59,6 +69,19 @@ const BASE_INPUTS = {
 const CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","capexContingency","capexFurniture","capexLicensing","capexCivilDefence","capexConsultants","capexCSSD","capexInventory"];
 // expatriate headcount is derived: chairside staff (rounded up) + medical support + janitors + drivers — all typically expat roles in KSA
 const expatCount = (inp) => Math.ceil(inp.chairs * inp.nursesPerChair) + (inp.medicalSupportCount || 0) + (inp.janitorCount || 0) + (inp.driverCount || 0);
+// dentist-day roster: chairs are no longer 1:1 with dentists — several dentists can share a chair
+// on different weekdays. Coverage caps achievable utilization; senior production pay is attributed
+// by each tier's share of supplied dentist-days.
+const dentistDaysSupplied = (inp) => inp.dentistCount * (inp.dentistDays ?? 6) + (inp.seniorCount || 0) * (inp.seniorDays || 0);
+const chairDaysOpen = (inp) => inp.chairs * (inp.clinicDays ?? 6);
+const rosterCoverage = (inp) => chairDaysOpen(inp) > 0 ? dentistDaysSupplied(inp) / chairDaysOpen(inp) : 0;
+const seniorDayFrac = (inp) => { const t = dentistDaysSupplied(inp); return t > 0 ? ((inp.seniorCount || 0) * (inp.seniorDays || 0)) / t : 0; };
+const totalDentists = (inp) => inp.dentistCount + (inp.seniorCount || 0);
+const SENIOR_BASIS_LABEL = {
+  gross: "of their own collected production",
+  netmat: "of their production net of materials & lab",
+  profit: "of the profit attributable to their sessions",
+};
 // annual cost (SAR'000) of the dedicated support roles, added to the fixed staff base
 const supportStaffAnnual = (inp) => ((inp.medicalSupportCount * inp.medicalSupportSalary + inp.janitorCount * inp.janitorSalary + inp.driverCount * inp.driverSalary) * 12) / 1000;
 // pre-opening expenses are derived from the same inputs the cash engine charges before opening day:
@@ -70,7 +93,7 @@ const preOpeningCost = (inp) => {
   const fixedBase = (chairsideAnnual + dentistBaseAnnual + generalStaffAnnual + supportStaffAnnual(inp)) * (1 + inp.gosiPct / 100);
   const perExpat = (inp.levyPerMonth * 12 + inp.iqamaPerYear) / 1000;
   const y1StaffAnnual = fixedBase * STAFF_RAMP[0] + Math.round(expatCount(inp) * STAFF_RAMP[0]) * perExpat;
-  const prepaidIns = inp.insuranceCCHI * STAFF_RAMP[0] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
+  const prepaidIns = inp.insuranceCCHI * STAFF_RAMP[0] + (totalDentists(inp) * inp.malpracticePerDentist) / 1000;
   return (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp) + 2 * (y1StaffAnnual / 12) + prepaidIns + (inp.capexRecruitment || 0);
 };
 // share of the first lease year paid before opening, by payment terms and fit-out length
@@ -114,7 +137,18 @@ function loanSchedule(inp) {
 /* ---------- engine ---------- */
 function compute(inp) {
   inp = { ...BASE_INPUTS, ...inp }; // saved scenarios may predate newer inputs
-  const rev = Array.from({length: 5}, (_, i) => Math.min(1.0, (inp.rampStart / 100) * Math.pow(1 + inp.rampGrowth / 100, i)));
+  // roster coverage caps achievable utilization: you can't fill chair-days no dentist covers
+  const cov = rosterCoverage(inp), capU = Math.min(1, cov);
+  // seniors occupy sFracD of chair-time but generate sFracW of revenue (their days carry a
+  // case-mix multiplier); blendMult is the clinic-wide revenue uplift from that case-mix
+  const sFracD = seniorDayFrac(inp);
+  const mult = inp.seniorRevMult ?? 1;
+  const rawSeniorDays = (inp.seniorCount || 0) * (inp.seniorDays || 0);
+  const supplied = dentistDaysSupplied(inp);
+  const wTotal = supplied - rawSeniorDays + rawSeniorDays * mult;
+  const sFracW = wTotal > 0 ? rawSeniorDays * mult / wTotal : 0;
+  const blendMult = supplied > 0 ? wTotal / supplied : 1;
+  const rev = Array.from({length: 5}, (_, i) => Math.min(capU, (inp.rampStart / 100) * Math.pow(1 + inp.rampGrowth / 100, i)));
   // materials % steps down linearly from (mature + Y1 premium) in Y1 to mature in Y5
   const matSched = Array.from({length: 5}, (_, i) => inp.materialsPct + inp.materialsY1Premium * (1 - i / 4));
   const chairsideAnnual = (inp.chairs * inp.nursesPerChair * inp.chairsideSalary * 12) / 1000;
@@ -124,10 +158,13 @@ function compute(inp) {
   const perExpat = (inp.levyPerMonth * 12 + inp.iqamaPerYear) / 1000;
   const loan = loanSchedule(inp);            // clinical-equipment asset-finance schedule (all zeros when financePct = 0)
   const finPrincipal = financedPrincipal(inp);
+  // operating costs allocatable to senior sessions under the "profit" pay basis — everything
+  // except the salaried dentists' own compensation (materials are added separately on their revenue)
+  const allocFixedBase = fixedBase - dentistBaseAnnual * (1 + inp.gosiPct / 100);
 
   const years = [];
   for (let i = 0; i < 5; i++) {
-    const revenue = inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, i) * 12 * inp.chairs * rev[i];
+    const revenue = inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, i) * 12 * inp.chairs * rev[i] * blendMult;
     const denials = revenue * (inp.insuredPct / 100) * (inp.rejectionPct / 100);
     const materials = (revenue * matSched[i]) / 100;
     const gp = revenue - denials - materials;
@@ -136,10 +173,20 @@ function compute(inp) {
     const mkt = inp.marketing * MKT_RAMP[i];
     const other = inp.otherOpex * OTHER_RAMP[i];
     // CCHI scales with headcount, malpractice with dentist count, utilities/waste with activity
-    const insUtil = inp.insuranceCCHI * STAFF_RAMP[i] + (inp.dentistCount * inp.malpracticePerDentist) / 1000 + inp.utilitiesWaste * OTHER_RAMP[i];
+    const insUtil = inp.insuranceCCHI * STAFF_RAMP[i] + (totalDentists(inp) * inp.malpracticePerDentist) / 1000 + inp.utilitiesWaste * OTHER_RAMP[i];
     const expatsY = Math.round(expatCount(inp) * STAFF_RAMP[i]);
     const foreign = expatsY * perExpat;
-    const preshare = gp - fixedStaff - lease - mkt - other - insUtil - foreign;
+    // senior tier: % on the selected basis, floored by the optional monthly guarantee.
+    // seniorRev = collected production attributed to seniors (weighted by the case-mix multiplier);
+    // seniorCost = the real cost of their sessions (their materials + operating costs per chair-day
+    // occupied), tracked on every basis so the deal box can show the clinic's margin on them.
+    const seniorRev = (revenue - denials) * sFracW;
+    const seniorCost = materials * sFracW + (allocFixedBase * STAFF_RAMP[i] + lease + mkt + other + insUtil + foreign) * sFracD;
+    const seniorBase = inp.seniorPayBasis === "profit" ? Math.max(0, seniorRev - seniorCost)
+      : inp.seniorPayBasis === "netmat" ? Math.max(0, seniorRev - materials * sFracW)
+      : seniorRev;
+    const seniorPay = Math.max(seniorBase * (inp.seniorProdPct / 100), (inp.seniorCount || 0) * (inp.seniorMinMo || 0) * 12);
+    const preshare = gp - fixedStaff - lease - mkt - other - insUtil - foreign - seniorPay;
     const share = preshare > 0 ? (preshare * inp.profitShare) / 100 : 0;
     const ebitda = preshare - share;
     const dep = annualDepreciation(inp);
@@ -152,18 +199,26 @@ function compute(inp) {
     const fcf = ni + dep - maintCapex - principal;   // levered (equity) FCF — interest is in ni, principal subtracted here
     // guard margins against a zero-revenue year (revPerChair / chairs / rampStart can all be 0) so the UI never shows NaN%/Infinity%
     const pct = (x) => revenue > 0 ? x / revenue * 100 : 0;
-    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, interest, principal, zakat, ni, niPct: pct(ni), fcf });
+    years.push({ year: `Y${i + 1}`, revenue, denials, materials, gp, gpPct: pct(gp), fixedStaff, lease, mkt, other, insUtil, foreign, seniorRev, seniorCost, seniorPay, preshare, share, ebitda, ebitdaPct: pct(ebitda), dep, interest, principal, zakat, ni, niPct: pct(ni), fcf });
   }
   const y5 = years[4];
   const y1 = years[0];
   const cumNI = years.reduce((a, y) => a + y.ni, 0);
   // representative Year-1 monthly operating cost, used to size the minimum-cash policy
-  const monthlyOpex = (y1.fixedStaff + y1.lease + y1.mkt + y1.other + y1.insUtil + y1.foreign + y1.materials + y1.share) / 12;
+  const monthlyOpex = (y1.fixedStaff + y1.lease + y1.mkt + y1.other + y1.insUtil + y1.foreign + y1.materials + y1.seniorPay + y1.share) / 12;
   // operating break-even revenue per chair/month: the revPerChair at which mature (Y5) operating profit BEFORE the dentist
   // profit share = 0 — the clinic just covers its running costs (excl. share, capital, depreciation & finance). Above this a
   // profit pool exists and dentists earn their share; use it as the per-chair threshold each dentist must clear before sharing.
+  // Senior production pay is variable with collections, so it lowers the margin rather than adding to fixed cost
+  // (the optional minimum guarantee is ignored here — near break-even it is a second-order refinement).
+  const collFrac = 1 - (inp.insuredPct / 100) * (inp.rejectionPct / 100); // collected share of billings
   const fcMature = y5.fixedStaff + y5.lease + y5.mkt + y5.other + y5.insUtil + y5.foreign;
-  const matMargin = 1 - (inp.insuredPct / 100) * (inp.rejectionPct / 100) - matSched[4] / 100; // revenue left after denials & materials
+  // senior pay drag on the contribution margin, by basis; under "profit" their pay vanishes at
+  // break-even (their session profit is ~0 there), so the drag is 0 (guarantee ignored here)
+  const seniorDrag = inp.seniorPayBasis === "profit" ? 0
+    : inp.seniorPayBasis === "netmat" ? sFracW * (collFrac - matSched[4] / 100) * (inp.seniorProdPct / 100)
+    : sFracW * collFrac * (inp.seniorProdPct / 100);
+  const matMargin = collFrac - matSched[4] / 100 - seniorDrag; // revenue left after denials, materials & senior pay
   const opBreakEvenRev = (matMargin > 0 && inp.chairs > 0) ? (fcMature / matMargin) / (Math.pow(1 + inp.revenueGrowth / 100, 4) * 12 * inp.chairs) : null;
 
   // Pre-opening (fit-out, F months) + 24 operating months (Y1–Y2) cash engine.
@@ -174,17 +229,19 @@ function compute(inp) {
   // Insured billings are collected with a payment delay, net of rejections; cash patients pay at visit.
   const F = Math.max(1, Math.round(inp.fitoutMonths));
   const vatCapex = vatOnCapex(inp);
-  const uEnd = Math.min(100, inp.rampStart * 1.5);
-  const uOpen = Math.max(0, 2 * inp.rampStart - uEnd);
-  const u2End = Math.max(0, Math.min(100, 2 * rev[1] * 100 - uEnd));
+  // monthly ramp derives from the coverage-capped annual utilizations so the 12-month averages still foot
+  const r1 = rev[0] * 100;
+  const uEnd = Math.min(capU * 100, r1 * 1.5);
+  const uOpen = Math.max(0, 2 * r1 - uEnd);
+  const u2End = Math.max(0, Math.min(capU * 100, 2 * rev[1] * 100 - uEnd));
   const sIns = inp.insuredPct / 100, rRej = inp.rejectionPct / 100, dLag = inp.insurerDelayMo;
-  const prepaid = (yi) => inp.insuranceCCHI * STAFF_RAMP[yi] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
+  const prepaid = (yi) => inp.insuranceCCHI * STAFF_RAMP[yi] + (totalDentists(inp) * inp.malpracticePerDentist) / 1000;
   const mStaff = (y1.fixedStaff + y1.foreign) / 12;
   // gross billings per operating month (j = 0..23)
   const Bop = Array.from({ length: 24 }, (_, j) => {
     const util = j < 12 ? uOpen + (uEnd - uOpen) * j / 11 : uEnd + (u2End - uEnd) * (j - 12) / 11;
     const yi = j < 12 ? 0 : 1;
-    return inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, yi) * inp.chairs * util / 100;
+    return inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, yi) * inp.chairs * util / 100 * blendMult;
   });
   const Bat = (t) => { // billings interpolated at fractional month t (0 before operations)
     if (t <= -1) return 0;
@@ -199,14 +256,22 @@ function compute(inp) {
     if (inp.rentTerms === "semiannual") return (j + F) % 6 === 0 ? years[Math.min(2, Math.floor((j + F) / 12))].lease / 2 : 0;
     return j === 12 - F ? years[1].lease : j === 24 - F ? years[2].lease : 0; // annual, upfront from fit-out start
   };
-  const win = { coll: [0, 0], share: [0, 0], rent: [0, 0], mat: [0, 0], debt: [0, 0] }; // per-operating-year cash sums for the statement
+  const win = { coll: [0, 0], share: [0, 0], senior: [0, 0], rent: [0, 0], mat: [0, 0], debt: [0, 0] }; // per-operating-year cash sums for the statement
   const opCf = Array.from({ length: 24 }, (_, j) => {
     const yi = j < 12 ? 0 : 1;
     const yr = years[yi];
     const B = Bop[j];
     const fixedAcc = (yr.fixedStaff + yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12;
-    const mPre = B * (1 - sIns * rRej) - (B * matSched[yi]) / 100 - fixedAcc;
+    // senior pay is settled monthly on that month's collected billings under the selected basis (or the guarantee)
+    const mSeniorRev = B * (1 - sIns * rRej) * sFracW;
+    const mSeniorBase = inp.seniorPayBasis === "profit"
+      ? Math.max(0, mSeniorRev - (B * matSched[yi] / 100) * sFracW - (allocFixedBase * STAFF_RAMP[yi] / 12 + (yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12) * sFracD)
+      : inp.seniorPayBasis === "netmat" ? Math.max(0, mSeniorRev - (B * matSched[yi] / 100) * sFracW)
+      : mSeniorRev;
+    const mSenior = Math.max(mSeniorBase * (inp.seniorProdPct / 100), (inp.seniorCount || 0) * (inp.seniorMinMo || 0));
+    const mPre = B * (1 - sIns * rRej) - (B * matSched[yi]) / 100 - fixedAcc - mSenior;
     const mShare = mPre > 0 ? mPre * inp.profitShare / 100 : 0;
+    win.senior[yi] += mSenior;
     // share accrues on P&L profit; cash adds back accrued rent & insurance, shifts insured collections by the lag, pays cheques when due
     const collAdj = sIns * (1 - rRej) * (Bat(j - dLag) - B);
     const rDue = rentDue(j);
@@ -269,7 +334,8 @@ function compute(inp) {
     ["Cash payments", null, "section"],
     ["Rent cheques (per payment terms)", [-preRent, -win.rent[0], -win.rent[1]], "row"],
     ["Staff & payroll (incl. GOSI)", [-preStaff, -years[0].fixedStaff, -years[1].fixedStaff], "row"],
-    ["Dentist profit share", [null, -win.share[0], -win.share[1]], "row"],
+    ["Salaried dentist profit share", [null, -win.share[0], -win.share[1]], "row"],
+    ...((inp.seniorCount || 0) > 0 ? [["Senior dentists (production pay)", [null, -win.senior[0], -win.senior[1]], "row"]] : []),
     ["Materials & lab", [null, -win.mat[0], -win.mat[1]], "row"],
     ["Insurance premiums (CCHI & malpractice)", [-prepaid(0), -prepaid(1), null], "row"],
     ["VAT on CapEx (15%, paid with invoices)", [-vatCapex, null, null], "row"],
@@ -294,6 +360,7 @@ function compute(inp) {
   const irr = computeIRR(cfs);
   const npv = cfs.reduce((a, cf, i) => a + cf / Math.pow(1 + inp.wacc / 100, i), 0);
   const perDentistMo = inp.dentistCount > 0 ? (dentistBaseAnnual + y5.share) / inp.dentistCount / 12 : 0;
+  const perSeniorMo = (inp.seniorCount || 0) > 0 ? y5.seniorPay / inp.seniorCount / 12 : 0; // mature monthly take per senior — the recruiting test
   const saudization = inp.dentistBase < 9000;
   let verdict, vColor;
   if (cumNI > 0 && y5.ebitdaPct >= 25 && payback && payback <= 4.5) { verdict = "STRONG"; vColor = C.pos; }
@@ -302,7 +369,7 @@ function compute(inp) {
   const exitValue = inp.exitMultiple * y5.ebitda;
   const moic = totalRaise > 0 ? (years.reduce((a, y) => a + y.fcf, 0) + exitValue - loan.residual) / totalRaise : 0; // equity multiple: total cash returned ÷ capital invested
 
-  return { years, y5, cumNI, payback, irr, npv, perDentistMo, saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev, moic };
+  return { years, y5, cumNI, payback, irr, npv, perDentistMo, perSeniorMo, coverage: cov, seniorFracDays: sFracD, seniorFracRev: sFracW, blendMult, dentistDays: dentistDaysSupplied(inp), chairDays: chairDaysOpen(inp), saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev, moic };
 }
 function computeIRR(cfs) {
   let lo = -0.95, hi = 5.0;

@@ -90,7 +90,7 @@
       const visitsDay = inp.revPerChair * 1000 / 500 / 26;
       const visitsYear = Math.round(inp.chairs * visitsDay * 26 * 12);
       const expat = expatCount(inp);
-      const staffTotal = inp.dentistCount + Math.ceil(inp.chairs * inp.nursesPerChair) + inp.medicalSupportCount + inp.janitorCount + inp.driverCount + inp.generalStaffCount + 1;
+      const staffTotal = totalDentists(inp) + Math.ceil(inp.chairs * inp.nursesPerChair) + inp.medicalSupportCount + inp.janitorCount + inp.driverCount + inp.generalStaffCount + 1;
       const saudiPct = staffTotal > 0 ? Math.max(0, Math.round(100 * (staffTotal - expat) / staffTotal)) : 0;
       const selfFund = (m.monthly.find(d => d.month.startsWith("M") && d["Cumulative"] >= 0) || {}).month;
       const cushion = sens.beRev != null && inp.revPerChair > 0 ? Math.round(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair) : null;
@@ -268,12 +268,13 @@
           {/* ——— Page 5 · Business Model ——— */}
           <Pg n={5}>
             <h2 style={secT}>4. Business Model &amp; Operating Plan</h2>
-            <p style={para}>The clinic operates {inp.chairs} operatories on a one-dentist-per-chair model ({inp.dentistCount} dentists), offering general and family dentistry with specialty services (orthodontics, prosthodontics, paediatric, implantology) under a single-shift, 26-day operating month. Dentist remuneration combines a base salary of SAR {f0(inp.dentistBase)}/month with a pooled profit share of {inp.profitShare}% of operating profit — aligning clinical earnings with clinic performance and limiting fixed-cost exposure during the ramp; mature dentist earnings equate to ≈SAR {m.perDentistMo.toFixed(1)}K/month.</p>
+            <p style={para}>The clinic operates {inp.chairs} operatories on a rostered dentist-day model — chairs are open {inp.clinicDays} days/week (one full shift per day) and covered by {inp.dentistCount} salaried dentist{inp.dentistCount === 1 ? "" : "s"} at {inp.dentistDays} days/week each{inp.seniorCount > 0 ? ` plus ${inp.seniorCount} senior dentist${inp.seniorCount === 1 ? "" : "s"} on production-only terms at ${inp.seniorDays} days/week each` : ""}, a roster coverage of {pctf(m.coverage * 100)} — offering general and family dentistry with specialty services (orthodontics, prosthodontics, paediatric, implantology) under a single-shift, 26-day operating month. Salaried dentists combine a base of SAR {f0(inp.dentistBase)}/month with a pooled profit share of {inp.profitShare}% of operating profit (mature earnings ≈SAR {m.perDentistMo.toFixed(1)}K/month){inp.seniorCount > 0 ? `; senior dentists draw no salary and earn ${inp.seniorProdPct}% ${SENIOR_BASIS_LABEL[inp.seniorPayBasis]} (≈SAR ${m.perSeniorMo.toFixed(1)}K/month at maturity, with their days assumed to generate ${inp.seniorRevMult}× a salaried dentist's day on case-mix)` : ""} — aligning clinical earnings with clinic performance and limiting fixed-cost exposure during the ramp.</p>
             <div style={subT}>4.1 Organisation &amp; staffing ({staffTotal} FTE at maturity)</div>
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
               <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Role</th><th style={tTh}>Headcount</th><th style={tTh}>Avg salary (SAR/mo)</th><th style={{ ...tTh, textAlign: "left" }}>Notes</th></tr></thead>
               <tbody>
-                <tr><td style={tLb}>Dentists</td><td style={tTd}>{inp.dentistCount}</td><td style={tTd}>{f0(inp.dentistBase)}</td><td style={tLb}>+ {inp.profitShare}% pooled profit share; ≥SAR 9,000 GOSI floor for Saudization</td></tr>
+                <tr><td style={tLb}>Dentists (salaried)</td><td style={tTd}>{inp.dentistCount}</td><td style={tTd}>{f0(inp.dentistBase)}</td><td style={tLb}>+ {inp.profitShare}% pooled profit share; ≥SAR 9,000 GOSI floor for Saudization</td></tr>
+                {inp.seniorCount > 0 && <tr><td style={tLb}>Senior dentists (production)</td><td style={tTd}>{inp.seniorCount}</td><td style={tTd}>—</td><td style={tLb}>No salary; {inp.seniorProdPct}% {SENIOR_BASIS_LABEL[inp.seniorPayBasis]}, {inp.seniorDays} days/week each; covered by clinic malpractice policy</td></tr>}
                 <tr><td style={tLb}>Chairside staff</td><td style={tTd}>{Math.ceil(inp.chairs * inp.nursesPerChair)}</td><td style={tTd}>{f0(inp.chairsideSalary)}</td><td style={tLb}>{inp.nursesPerChair}/chair — nurses &amp; assistants</td></tr>
                 <tr><td style={tLb}>Medical support (CSSD / X-ray)</td><td style={tTd}>{inp.medicalSupportCount}</td><td style={tTd}>{f0(inp.medicalSupportSalary)}</td><td style={tLb}>Sterilisation &amp; imaging technicians</td></tr>
                 <tr><td style={tLb}>Reception, billing &amp; admin</td><td style={tTd}>{inp.generalStaffCount} + 1</td><td style={tTd}>{f0(inp.generalStaffSalary)} / {f0(inp.adminManagerSalary)}</td><td style={tLb}>Incl. administration manager</td></tr>
@@ -314,7 +315,7 @@
             </ResponsiveContainer>
             <div style={subT}>Commentary</div>
             <div style={bull}>• Year-1 revenue of SAR {f0(m.years[0].revenue)}K reflects the {inp.rampStart}% opening utilisation; maturity is reached in Year 3 at SAR {f0(m.years[2].revenue)}K.</div>
-            <div style={bull}>• Cost structure at maturity: materials &amp; lab {inp.materialsPct}% of revenue; premises SAR {f0(inp.clinicRent + inp.staffHousing)}K (≈{pctf(100 * (inp.clinicRent + inp.staffHousing) / Math.max(1, m.y5.revenue / 1.082))} of mature revenue, within the ≤10% norm); dentist compensation ≈{pctf(100 * (m.y5.fixedStaff * 0 + m.y5.share + inp.dentistCount * inp.dentistBase * 12 / 1000) / m.y5.revenue)} of revenue, production-linked.</div>
+            <div style={bull}>• Cost structure at maturity: materials &amp; lab {inp.materialsPct}% of revenue; premises SAR {f0(inp.clinicRent + inp.staffHousing)}K (≈{pctf(100 * (inp.clinicRent + inp.staffHousing) / Math.max(1, m.y5.revenue / 1.082))} of mature revenue, within the ≤10% norm); dentist compensation ≈{pctf(100 * (m.y5.share + m.y5.seniorPay + inp.dentistCount * inp.dentistBase * 12 / 1000) / Math.max(1, m.y5.revenue))} of revenue, production-linked.</div>
             <div style={bull}>• Depreciation is derived from the CapEx schedule (SAR {f0(annualDepreciation(inp))}K p.a.); Zakat at {inp.zakatPct}% of net income (Saudi-owned entity); maintenance CapEx at {inp.maintenanceCapexPct}% of hard assets p.a. is deducted in free cash flow.</div>
             <div style={bull}>• Claims denied of SAR {f0(m.y5.denials)}K p.a. at maturity reflects the {inp.rejectionPct}% rejection assumption on the insured book.</div>
           </Pg>
@@ -443,7 +444,9 @@
               <tbody>
                 {[
                   ["Revenue per chair / month · chairs", `SAR ${inp.revPerChair}K · ${inp.chairs}`],
-                  ["Dentists · base · profit share", `${inp.dentistCount} · SAR ${f0(inp.dentistBase)}/mo · ${inp.profitShare}%`],
+                  ["Salaried dentists · base · profit share", `${inp.dentistCount} · SAR ${f0(inp.dentistBase)}/mo · ${inp.profitShare}%`],
+                  ...(inp.seniorCount > 0 ? [["Senior dentists · days/wk · share · basis · case-mix", `${inp.seniorCount} · ${inp.seniorDays} · ${inp.seniorProdPct}% · ${inp.seniorPayBasis} · ${inp.seniorRevMult}×${inp.seniorMinMo > 0 ? ` · min ${f0(inp.seniorMinMo)}K/mo` : ""}`]] : []),
+                  ["Roster coverage (dentist-days / chair-days)", `${f0(m.dentistDays)} / ${f0(m.chairDays)} · ${pctf(m.coverage * 100)}`],
                   ["Y1 utilisation · ramp growth · price growth", `${inp.rampStart}% · ${inp.rampGrowth}%/yr · ${inp.revenueGrowth}%/yr`],
                   ["Insured share · rejections · collection lag", `${inp.insuredPct}% · ${inp.rejectionPct}% · ${inp.insurerDelayMo} mo`],
                   ["Materials & lab (mature)", `${inp.materialsPct}% of revenue`],
@@ -498,7 +501,9 @@
         { id: "breakeven", label: "break-even", kw: ["break-even", "break even", "breakeven", "minimum revenue", "lowest revenue"],
           answer: `Two break-evens:\n• Value break-even — revenue/chair where NPV = 0: ${sens.beRev == null ? "below the tested range (profitable across it)" : k(sens.beRev) + "/chair/mo"}. Your plan is ${inp.revPerChair}K${cushion != null ? `, a ${cushion}% cushion` : ""}.\n• Operating break-even — revenue/chair to cover opex (excl. dentist share): ${m.opBreakEvenRev == null ? "—" : k(m.opBreakEvenRev) + "/chair/mo"}. That's the base each dentist earns above.` },
         { id: "share", label: "profit share", kw: ["profit share", "dentist pay", "dentist salary", "per dentist", "dentist compensation", "how are dentists paid", "pooled"],
-          answer: `Dentists earn a base salary plus a pooled profit share of ${inp.profitShare}% of operating profit (paid only when profit is positive).\n\nAcross ${inp.dentistCount} dentists that's about SAR ${m.perDentistMo.toFixed(1)}K per dentist per month by year 5. The year-5 profit-share pool is ${k(m.y5.share)}.` },
+          answer: inp.seniorCount > 0
+            ? `Two tiers. ${inp.dentistCount} salaried dentists earn a base salary plus a pooled ${inp.profitShare}% of operating profit — about SAR ${m.perDentistMo.toFixed(1)}K each per month by year 5 (Y5 pool ${k(m.y5.share)}). ${inp.seniorCount} senior dentists draw no salary and earn ${inp.seniorProdPct}% ${SENIOR_BASIS_LABEL[inp.seniorPayBasis]} — about SAR ${m.perSeniorMo.toFixed(1)}K each per month at maturity (Y5 total ${k(m.y5.seniorPay)}). Their days are assumed to generate ${inp.seniorRevMult}× a salaried day's revenue.\n\nSeniors cover ${inp.seniorDays} days/week each; roster coverage is ${pc(m.coverage * 100)} of chair-days.`
+            : `Dentists earn a base salary plus a pooled profit share of ${inp.profitShare}% of operating profit (paid only when profit is positive).\n\nAcross ${inp.dentistCount} dentists that's about SAR ${m.perDentistMo.toFixed(1)}K per dentist per month by year 5. The year-5 profit-share pool is ${k(m.y5.share)}.` },
         { id: "materials", label: "materials", kw: ["materials", "lab", "consumables", "cost of goods", "supplies"],
           answer: `Materials & lab cost runs at ${pc(inp.materialsPct)} of revenue${inp.materialsY1Premium ? ` (with a Y1 premium of ${inp.materialsY1Premium} pts)` : ""} — consumables, lab work and implant components.\n\nIt's one of the larger sensitivity levers: a couple of points moves EBITDA noticeably.` },
         { id: "ramp", label: "utilization", kw: ["utilization", "utilisation", "ramp", "occupancy", "chairs full", "capacity", "patient volume"],
@@ -611,7 +616,7 @@
           ["Revenue per chair", "revPerChair"],
           ["Y1 utilization", "rampStart"],
           ["Materials & lab %", "materialsPct"],
-          ["Dentist profit share", "profitShare"],
+          ["Salaried profit share", "profitShare"],
           ["Exit multiple", "exitMultiple"],
         ];
         const rows = drivers.map(([label, k]) => [label, compute({ ...inp, [k]: inp[k] * 0.8 }).npv, compute({ ...inp, [k]: inp[k] * 1.2 }).npv]);
@@ -712,7 +717,7 @@
         const preOpen = preOpeningCost(inp);
         const vat = vatOnCapex(inp);
         const rentCheque1 = (inp.clinicRent + inp.staffHousing) * LEASE_ESC[0] * rentUpfrontFactor(inp);
-        const insPrem = inp.insuranceCCHI * STAFF_RAMP[0] + (inp.dentistCount * inp.malpracticePerDentist) / 1000;
+        const insPrem = inp.insuranceCCHI * STAFF_RAMP[0] + (totalDentists(inp) * inp.malpracticePerDentist) / 1000;
         const staffOnboard = preOpen - rentCheque1 - insPrem;
         const capexInvest = m.investCapex;                         // all CapEx lines (WC reserve no longer guessed)
         const opShortfall = Math.max(0, m.peakNeed - preOpen - vat);
@@ -727,7 +732,7 @@
         const totalRaise = m.totalRaise;
         const totalRequired = totalRaise, totalBudget = totalRaise, buffer = minCash;
         const by1 = m.years[0];
-        const opexY1 = by1.fixedStaff + by1.share + by1.materials + by1.lease + by1.mkt + by1.other + by1.insUtil + by1.foreign;
+        const opexY1 = by1.fixedStaff + by1.share + by1.seniorPay + by1.materials + by1.lease + by1.mkt + by1.other + by1.insUtil + by1.foreign;
         const netRevY1 = by1.revenue - by1.denials;
         return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, hardAssets, softCosts, inventory, contingency, launchLiquidity, minCash, wcDerived, totalRaise, totalRequired, totalBudget, buffer, opexY1, netRevY1, ebitdaY1: by1.ebitda };
       })();
@@ -757,7 +762,8 @@
         ["Revenue", "revenue", "head"], ["Claims denied", "denials", "neg"], ["Materials & lab", "materials", "neg"], ["Gross profit", "gp", "sub"],
         ["Fixed staff (incl. dentist base)", "fixedStaff", "neg"], ["Lease & housing", "lease", "neg"],
         ["Marketing", "mkt", "neg"], ["Other OpEx", "other", "neg"], ["Insurance, utilities & waste", "insUtil", "neg"], ["Foreign-labour fees", "foreign", "neg"],
-        ["Operating profit b/f share", "preshare", "sub"], ["Dentist profit share", "share", "neg"],
+        ...(inp.seniorCount > 0 ? [["Senior dentists (production pay)", "seniorPay", "neg"]] : []),
+        ["Operating profit b/f share", "preshare", "sub"], ["Salaried dentist profit share", "share", "neg"],
         ["EBITDA", "ebitda", "head"], ["Depreciation", "dep", "neg"],
         ...(m.financedPrincipal > 0 ? [["Equipment finance interest", "interest", "neg"]] : []),
         ["Zakat", "zakat", "neg"], ["Net income", "ni", "head"],
@@ -794,14 +800,14 @@
         ["Year-5 revenue", f0(m.y5.revenue), "SAR '000", C.brass, null, null],
         ["Year-5 EBITDA", f0(m.y5.ebitda), pctf(m.y5.ebitdaPct) + " margin", m.y5.ebitda < 0 ? C.neg : C.brass, marginOk ? "vs 25–30% benchmark ✓" : "below 25% benchmark", marginOk ? C.pos : C.neg],
         ["Cumulative net income", f0(m.cumNI), "Y1–Y5, SAR '000", m.cumNI < 0 ? C.neg : C.pos, null, null],
-        ["Dentist pay (Y5)", "SAR " + m.perDentistMo.toFixed(1) + "K", "per dentist / month", m.perDentistMo < 12 ? C.neg : C.text, null, null],
+        ["Dentist pay (Y5)", "SAR " + m.perDentistMo.toFixed(1) + "K", inp.seniorCount > 0 ? `salaried / mo · seniors earn ${m.perSeniorMo.toFixed(1)}K` : "per dentist / month", m.perDentistMo < 12 ? C.neg : C.text, null, null],
         ["Exit value", f0(m.exitValue), `${inp.exitMultiple}× Y5 EBITDA`, m.exitValue < 0 ? C.neg : C.brass, null, null],
         ["NPV", f0(m.npv), `@ ${inp.wacc}% WACC`, m.npv < 0 ? C.neg : C.pos, null, null],
       ];
       // —— data for the new charts/panels ——
       const marginData = m.years.map(y => ({ year: y.year, "Gross %": +y.gpPct.toFixed(1), "EBITDA %": +y.ebitdaPct.toFixed(1), "Net %": +y.niPct.toFixed(1) }));
       const DONUT_COLORS = { "Materials & lab": "#15263B", "Fixed staff": "#27384E", "Dentist share": "#B4452F", "Lease & housing": "#64707C", "Other opex": "#9DAEC0", "EBITDA (margin)": "#2E7D63" };
-      const costDonut = (y) => [{ name: "Materials & lab", value: Math.round(y.materials) }, { name: "Fixed staff", value: Math.round(y.fixedStaff) }, { name: "Dentist share", value: Math.round(y.share) }, { name: "Lease & housing", value: Math.round(y.lease) }, { name: "Other opex", value: Math.round(y.mkt + y.other + y.insUtil + y.foreign) }, { name: "EBITDA (margin)", value: Math.round(Math.max(0, y.ebitda)) }].filter(d => d.value > 0);
+      const costDonut = (y) => [{ name: "Materials & lab", value: Math.round(y.materials) }, { name: "Fixed staff", value: Math.round(y.fixedStaff) }, { name: "Dentist share", value: Math.round(y.share + y.seniorPay) }, { name: "Lease & housing", value: Math.round(y.lease) }, { name: "Other opex", value: Math.round(y.mkt + y.other + y.insUtil + y.foreign) }, { name: "EBITDA (margin)", value: Math.round(Math.max(0, y.ebitda)) }].filter(d => d.value > 0);
       const tornado = tornadoData(inp);
       const compareRows = [{ name: "Current", inputs: inp }, ...saved.map(s => ({ name: s.name, inputs: { ...BASE_INPUTS, ...s.inputs } }))].map(s => { const x = compute(s.inputs); return { name: s.name, raise: x.totalRaise, irr: x.irr, npv: x.npv, pay: x.payback, ebitda: x.y5.ebitdaPct, moic: x.moic, be: x.opBreakEvenRev }; });
       const [mc, setMc] = useState(null);
@@ -1186,13 +1192,71 @@
             <div className="grid" style={{ gap: 14, gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", marginBottom: 22 }}>
               <Card title="Revenue & Capacity" n="01">
                 <Slider label="Revenue per chair / month" value={inp.revPerChair} min={0} max={260} step={5} unit="SAR'000" onChange={(v) => set("revPerChair", v)} danger={inp.revPerChair * 1000 / 500 / 26 > 15} hint={`≈ ${(inp.revPerChair * 1000 / 500 / 26).toFixed(1)} patients/chair/day (${Math.round(inp.revPerChair * 1000 / 500)}/mo) @ SAR 500 avg ticket · realistic max ~15/day single shift`} />
-                <Slider label="Operatories (chairs)" value={inp.chairs} min={0} max={20} step={1} unit="chairs" onChange={(v) => setInp((p) => ({ ...p, chairs: v, dentistCount: v }))} hint="Linked 1:1 to dentists — changing either keeps them equal" />
+                <Slider label="Operatories (chairs)" value={inp.chairs} min={0} max={20} step={1} unit="chairs" onChange={(v) => set("chairs", v)} hint="Chairs are rostered by dentist-days — see Dentist Roster & Pay" />
+                <Slider label="Clinic days per week" value={inp.clinicDays} min={4} max={7} step={1} unit="days" onChange={(v) => set("clinicDays", v)} hint="One full shift per day (e.g. 2–10pm) — each open day is one chair-day to cover" />
               </Card>
 
-              <Card title="Dentist Compensation" n="02">
-                <Slider label="Number of dentists" value={inp.dentistCount} min={0} max={20} step={1} unit="" onChange={(v) => setInp((p) => ({ ...p, dentistCount: v, chairs: v }))} hint="Linked 1:1 to operatories — changing either keeps them equal" />
+              <Card title="Dentist Roster & Pay" n="02">
+                <Slider label="Salaried dentists" value={inp.dentistCount} min={0} max={20} step={1} unit="" onChange={(v) => set("dentistCount", v)} hint={`Salary + pooled profit share · each covers ${inp.dentistDays} chair-days/week`} />
+                <Slider label="Days per salaried dentist / week" value={inp.dentistDays} min={1} max={7} step={1} unit="days" onChange={(v) => set("dentistDays", v)} />
                 <Slider label="Base salary (each)" value={inp.dentistBase} min={0} max={25000} step={250} unit="SAR/mo" onChange={(v) => set("dentistBase", v)} danger={inp.dentistBase < 9000} hint={inp.dentistBase < 9000 ? "Below SAR 9,000 → Saudi dentists won't count for Saudization" : "Meets the SAR 9,000 Saudization floor"} />
-                <Slider label="Profit share (pooled)" value={inp.profitShare} min={0} max={60} step={1} unit="%" onChange={(v) => set("profitShare", v)} hint="% of operating profit, split across dentists" />
+                <Slider label="Profit share (salaried pool)" value={inp.profitShare} min={0} max={60} step={1} unit="%" onChange={(v) => set("profitShare", v)} hint="% of operating profit (after senior production pay), split across salaried dentists" />
+                <Slider label="Senior dentists (no salary)" value={inp.seniorCount} min={0} max={20} step={1} unit="" onChange={(v) => set("seniorCount", v)} hint="Paid a % of their own production only — can be part-time or full-time" />
+                {inp.seniorCount > 0 && (<>
+                  <Slider label="Days per senior / week" value={inp.seniorDays} min={1} max={7} step={1} unit="days" onChange={(v) => set("seniorDays", v)} hint={inp.seniorDays >= (inp.clinicDays || 6) ? "Full-time senior — every clinic day, still no salary" : "Day slots across the week — several seniors can share one chair"} />
+                  <Slider label="Senior productivity multiplier" value={inp.seniorRevMult} min={1} max={3} step={0.05} unit="×" onChange={(v) => set("seniorRevMult", v)} hint="Revenue a senior day generates vs a salaried dentist's day (implant / ortho / cosmetic case-mix)" />
+                  <div style={{ margin: "2px 0 10px" }}>
+                    <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, fontWeight: 500, marginBottom: 5 }}>Senior pay basis</div>
+                    <div className="flex" style={{ gap: 6, flexWrap: "wrap" }}>
+                      {[["gross", "% of production"], ["netmat", "% net of materials"], ["profit", "% of session profit"]].map(([id, lb]) => (
+                        <button key={id} onClick={() => set("seniorPayBasis", id)} style={{ ...btn(inp.seniorPayBasis === id ? C.brass : "transparent", inp.seniorPayBasis === id ? "#fff" : C.sub, inp.seniorPayBasis === id ? C.brass : C.line), padding: "5px 9px", fontSize: 11.5 }}>{lb}</button>
+                      ))}
+                    </div>
+                    <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 4 }}>
+                      {inp.seniorPayBasis === "gross" ? "Market standard; simplest to agree — but the clinic bears all session costs."
+                        : inp.seniorPayBasis === "netmat" ? "Senior shares the lab & materials bill their case-mix drives — the common middle ground."
+                        : "Senior shares all session costs (materials + allocated operating costs per chair-day). Expect a higher % and monthly allocation debates."}
+                    </div>
+                  </div>
+                  <Slider label="Senior share" value={inp.seniorProdPct} min={0} max={80} step={1} unit="%" onChange={(v) => set("seniorProdPct", v)} hint={`% ${SENIOR_BASIS_LABEL[inp.seniorPayBasis]}`} />
+                  <Slider label="Min guarantee per senior" value={inp.seniorMinMo} min={0} max={40} step={1} unit="K SAR/mo" onChange={(v) => set("seniorMinMo", v)} hint="Optional floor — whichever is higher, the % basis or this" />
+                  <div style={{ marginTop: 10, background: C.bone, borderRadius: 7, padding: "9px 12px" }}>
+                    <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sub, marginBottom: 6 }}>Senior deal economics · per senior / month at maturity</div>
+                    {(() => {
+                      const perMo = (v) => inp.seniorCount > 0 ? v / inp.seniorCount / 12 : 0;
+                      const prod = perMo(m.y5.seniorRev), cost = perMo(m.y5.seniorCost), pay = perMo(m.y5.seniorPay);
+                      const margin = prod - cost - pay;
+                      const row = { display: "flex", justifyContent: "space-between", padding: "1.5px 0", fontFamily: SANS, fontSize: 11.5, color: C.text };
+                      return (<>
+                        <div style={row}><span style={{ color: C.sub }}>Production they generate</span><span style={{ fontFamily: MONO }}>{f0(prod)}K</span></div>
+                        <div style={row}><span style={{ color: C.sub }}>True cost of their sessions</span><span style={{ fontFamily: MONO }}>({f0(cost)}K)</span></div>
+                        <div style={row}><span style={{ color: C.sub }}>Their pay</span><span style={{ fontFamily: MONO }}>({f0(pay)}K)</span></div>
+                        <div style={{ ...row, borderTop: `1px solid ${C.line}`, marginTop: 3, paddingTop: 4, fontWeight: 700 }}><span>Clinic keeps</span><span style={{ fontFamily: MONO, color: margin >= 0 ? C.pos : C.neg }}>{f0(margin)}K</span></div>
+                        {margin < 0 && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.neg, marginTop: 3 }}>You are subsidizing each senior — lower the share %, raise the multiplier case-mix, or renegotiate.</div>}
+                      </>);
+                    })()}
+                  </div>
+                </>)}
+                {(() => {
+                  const needY1 = Math.min(1, inp.rampStart / 100), needY5 = Math.min(1, (inp.rampStart / 100) * Math.pow(1 + inp.rampGrowth / 100, 4));
+                  const capped = m.coverage < needY5 - 1e-9, short = m.coverage < needY1 - 1e-9, idle = m.coverage > 1.001;
+                  const col = short ? C.neg : capped ? C.brass : C.pos;
+                  return (
+                    <div style={{ marginTop: 10, background: C.bone, borderRadius: 7, padding: "9px 12px", borderLeft: `3px solid ${col}` }}>
+                      <div className="flex justify-between items-baseline">
+                        <span style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sub }}>Roster coverage</span>
+                        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: col }}>{pctf(m.coverage * 100)}</span>
+                      </div>
+                      <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>
+                        {f0(m.dentistDays)} dentist-days supplied vs {f0(m.chairDays)} chair-days open per week.{" "}
+                        {short ? `Understaffed: utilization is capped at ${pctf(m.coverage * 100)} — below even the Y1 plan of ${pctf(needY1 * 100)}.`
+                          : capped ? `Caps growth: the ramp wants ${pctf(needY5 * 100)} by Y5 but the roster only covers ${pctf(m.coverage * 100)}.`
+                          : idle ? "More dentist-days than chair-days — some clinical time is unused."
+                          : "Roster covers the full utilization plan."}
+                      </div>
+                    </div>
+                  );
+                })()}
               </Card>
 
               <Card title="Revenue Ramp & Growth" n="03">
@@ -1203,10 +1267,12 @@
                   <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sub, marginBottom: 6 }}>Resulting utilization by year</div>
                   <div style={{ display: "flex", gap: 4 }}>
                     {Array.from({length: 5}, (_, i) => {
-                      const pct = Math.min(100, inp.rampStart * Math.pow(1 + inp.rampGrowth / 100, i));
+                      const want = Math.min(100, inp.rampStart * Math.pow(1 + inp.rampGrowth / 100, i));
+                      const pct = Math.min(m.coverage * 100, want);
+                      const capped = pct < want - 1e-9;
                       return (
                         <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                          <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, color: C.brass }}>{pct.toFixed(0)}%</div>
+                          <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, color: capped ? C.neg : C.brass }}>{pct.toFixed(0)}%</div>
                           <div style={{ fontFamily: SANS, fontSize: 10, color: C.sub }}>Y{i+1}</div>
                         </div>
                       );
@@ -1411,7 +1477,8 @@
                   <div>
                     <div style={bTitle}>3 · Year-1 OpEx (funded by revenue)</div>
                     <div style={bRow}><span style={{ color: C.sub }}>Staff (incl. dentist base)</span><span style={bVal}>{f0(m.years[0].fixedStaff)}</span></div>
-                    <div style={bRow}><span style={{ color: C.sub }}>Dentist profit share</span><span style={bVal}>{f0(m.years[0].share)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Salaried dentist profit share</span><span style={bVal}>{f0(m.years[0].share)}</span></div>
+                    {inp.seniorCount > 0 && <div style={bRow}><span style={{ color: C.sub }}>Senior dentists (production pay)</span><span style={bVal}>{f0(m.years[0].seniorPay)}</span></div>}
                     <div style={bRow}><span style={{ color: C.sub }}>Materials &amp; lab</span><span style={bVal}>{f0(m.years[0].materials)}</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Lease &amp; housing (accrual)</span><span style={bVal}>{f0(m.years[0].lease)}</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Marketing (launch-weighted)</span><span style={bVal}>{f0(m.years[0].mkt)}</span></div>
@@ -1642,7 +1709,8 @@
                   {[
                     ["Revenue per chair / month", inp.revPerChair + "K SAR"],
                     ["Operatories (chairs)", inp.chairs],
-                    ["Dentists · base salary · profit share", `${inp.dentistCount} · ${f0(inp.dentistBase)} SAR/mo · ${inp.profitShare}%`],
+                    ["Salaried dentists · base · profit share", `${inp.dentistCount} · ${f0(inp.dentistBase)} SAR/mo · ${inp.profitShare}%`],
+                    ...(inp.seniorCount > 0 ? [["Senior dentists · days/wk · share · basis · case-mix", `${inp.seniorCount} · ${inp.seniorDays} · ${inp.seniorProdPct}% · ${inp.seniorPayBasis} · ${inp.seniorRevMult}×`]] : []),
                     ["Y1 utilization · ramp growth", `${inp.rampStart}% · ${inp.rampGrowth}%/yr`],
                     ["Insured share · rejection · delay", `${inp.insuredPct}% · ${inp.rejectionPct}% · ${inp.insurerDelayMo} mo`],
                     ["Materials & lab (mature)", inp.materialsPct + "%"],
