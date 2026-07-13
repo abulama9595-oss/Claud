@@ -109,7 +109,7 @@ const HARD_CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","c
 const hardCapex = (inp) => HARD_CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0);
 // straight-line useful lives (years): fit-out & fire systems 10, clinical equipment & furniture 7, IT 4
 const DEP_LIVES = { capexFitout: 10, capexCivilDefence: 10, capexChairs: 7, capexImaging: 7, capexCSSD: 7, capexFurniture: 7, capexIT: 4 };
-const annualDepreciation = (inp) => Object.entries(DEP_LIVES).reduce((s, [k, life]) => s + (inp[k] || 0) / life, 0);
+const annualDepreciation = (inp, yr = 0) => Object.entries(DEP_LIVES).reduce((s, [k, life]) => s + (yr < life ? (inp[k] || 0) / life : 0), 0);
 // asset finance: the clinical/medical equipment that can be financed via a loan / hire-purchase
 const FINANCE_KEYS = ["capexChairs","capexImaging","capexCSSD"];
 const financeableBase = (inp) => FINANCE_KEYS.reduce((s, k) => s + (inp[k] || 0), 0);
@@ -222,7 +222,7 @@ function compute(inp) {
     const share = salariedProfit > 0 ? (salariedProfit * inp.profitShare) / 100 : 0;
     const preshare = gp - fixedStaff - lease - mkt - other - insUtil - foreign - seniorPay; // whole-clinic operating profit before the salaried share
     const ebitda = preshare - share;
-    const dep = annualDepreciation(inp);
+    const dep = annualDepreciation(inp, i);
     const interest = loan.perYear[i].interest;      // clinical-equipment finance interest (below EBITDA)
     const principal = loan.perYear[i].principal;     // finance principal repayment (cash flow, not P&L)
     const nibz = ebitda - dep - interest;

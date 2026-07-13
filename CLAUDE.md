@@ -43,7 +43,8 @@ Any engine change **must leave the default scenario (and 0-senior scenarios) bit
 node -e "eval(require('fs').readFileSync('engine.js','utf8')); const m=compute({});
 console.log(Math.round(m.totalRaise), m.irr, Math.round(m.npv), m.years.map(y=>Math.round(y.ebitda)))"
 ```
-Default must give: totalRaise **9033**, IRR **~0.6717**, NPV **32981**, verdict **STRONG**, Y5 EBITDA **6875**.
+Default must give: totalRaise **9033**, IRR **~0.6717**, NPV **32980**, verdict **STRONG**, Y5 EBITDA **6875**.
+(NPV was 32981 before the Y5 IT-depreciation fix — IT has a 4-year life, so Y5 dep drops 455→405, raising Y5 zakat ~1.25 and nudging NPV down ~0.7.)
 There is a saved baseline JSON in the scratchpad during a session; re-capture one at the start of new work.
 
 ## Git & deploy workflow
