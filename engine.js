@@ -254,9 +254,12 @@ function compute(inp) {
   const contrib = collFrac - matSched[4] / 100;                       // contribution margin after denials & materials
   const kSal = inp.dentistCount * ((inp.dentistDays ?? 6) / clinicDaysWk) * salariedRealization;
   const matureRev = 12 * Math.pow(1 + inp.revenueGrowth / 100, 4);    // Y5 annualization of monthly production
-  const opBreakEvenRev = (contrib > 0 && kSal > 0 && inp.chairs > 0)
-    ? Math.max(0, ((fcMature + y5.seniorPay) / (contrib * matureRev) - senProdMo) / kSal)
+  // solve preshare = 0 for revPerChair; null when there is no positive threshold — either revPerChair has
+  // no leverage (no salaried production) or the senior books alone already cover opex (candidate ≤ 0)
+  const beCandidate = (contrib > 0 && kSal > 0 && inp.chairs > 0)
+    ? ((fcMature + y5.seniorPay) / (contrib * matureRev) - senProdMo) / kSal
     : null;
+  const opBreakEvenRev = (beCandidate != null && beCandidate > 0) ? beCandidate : null;
 
   // Pre-opening (fit-out, F months) + 24 operating months (Y1–Y2) cash engine.
   // Rent cheques follow the selected payment terms; the lease year runs from fit-out start (grace: from opening).
