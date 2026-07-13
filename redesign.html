@@ -273,7 +273,7 @@
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
               <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Role</th><th style={tTh}>Headcount</th><th style={tTh}>Avg salary (SAR/mo)</th><th style={{ ...tTh, textAlign: "left" }}>Notes</th></tr></thead>
               <tbody>
-                <tr><td style={tLb}>Dentists (salaried)</td><td style={tTd}>{inp.dentistCount}</td><td style={tTd}>{f0(inp.dentistBase)}</td><td style={tLb}>+ {inp.profitShare}% pooled profit share; ≥SAR 9,000 GOSI floor for Saudization</td></tr>
+                <tr><td style={tLb}>Dentists (salaried)</td><td style={tTd}>{inp.dentistCount}</td><td style={tTd}>{f0(inp.dentistBase)}</td><td style={tLb}>+ {inp.profitShare}% profit share on own production; ≥SAR 9,000 GOSI floor for Saudization</td></tr>
                 {inp.seniorCount > 0 && <tr><td style={tLb}>Senior dentists (production)</td><td style={tTd}>{inp.seniorCount}</td><td style={tTd}>—</td><td style={tLb}>No salary; {inp.seniorProdPct}% {SENIOR_BASIS_LABEL[inp.seniorPayBasis]}, {inp.seniorDays} days/week each; covered by clinic malpractice policy</td></tr>}
                 <tr><td style={tLb}>Chairside staff</td><td style={tTd}>{Math.ceil(inp.chairs * inp.nursesPerChair)}</td><td style={tTd}>{f0(inp.chairsideSalary)}</td><td style={tLb}>{inp.nursesPerChair}/chair — nurses &amp; assistants</td></tr>
                 <tr><td style={tLb}>Medical support (CSSD / X-ray)</td><td style={tTd}>{inp.medicalSupportCount}</td><td style={tTd}>{f0(inp.medicalSupportSalary)}</td><td style={tLb}>Sterilisation &amp; imaging technicians</td></tr>
@@ -363,7 +363,7 @@
                 {m.peakNeed > 0 && <ReferenceDot x={m.troughLabel} y={-m.peakNeed} r={4} fill={C.neg} stroke="#fff" strokeWidth={1.5} label={{ value: `trough ${f0(-m.peakNeed)}`, position: "bottom", fontFamily: MONO, fontSize: 9.5, fontWeight: 700, fill: C.neg }} />}
               </ComposedChart>
             </ResponsiveContainer>
-            <p style={{ ...para, marginTop: 8 }}>The deepest cash position of SAR {f0(m.peakNeed)}K occurs in {m.troughLabel}{inp.rentTerms === "annual" ? ", driven by the second annual rent cheque falling due before the demand ramp completes" : ""}. {m.fundingOk ? `The pre-opening and working-capital budget of SAR ${f0(m.fundingBudget)}K covers this requirement with SAR ${f0(m.fundingBudget - m.peakNeed)}K headroom` : `The allocated budget of SAR ${f0(m.fundingBudget)}K does not cover this requirement; an additional SAR ${f0(m.peakNeed - m.fundingBudget)}K should be reserved`}{selfFund ? `; the operation becomes durably cash-positive from ${selfFund}` : ""}.</p>
+            <p style={{ ...para, marginTop: 8 }}>The deepest cash position of SAR {f0(m.peakNeed)}K occurs in {m.troughLabel}. {m.fundingOk ? `The pre-opening and working-capital budget of SAR ${f0(m.fundingBudget)}K covers this requirement with SAR ${f0(m.fundingBudget - m.peakNeed)}K headroom` : `The allocated budget of SAR ${f0(m.fundingBudget)}K does not cover this requirement; an additional SAR ${f0(m.peakNeed - m.fundingBudget)}K should be reserved`}{selfFund ? `; the operation becomes durably cash-positive from ${selfFund}` : ""}.</p>
           </Pg>
 
           {/* ——— Page 8 · Risk ——— */}
@@ -521,7 +521,7 @@
         { id: "zakat", label: "zakat", kw: ["zakat", "tax", "religious levy"],
           answer: `Zakat is modelled at ${pc(inp.zakatPct, 1)} — the KSA levy that applies in place of corporate income tax for GCC-owned entities. It's charged below EBITDA, before net income.` },
         { id: "depreciation", label: "depreciation", kw: ["depreciation", "amortisation", "amortization", "non-cash", "asset life", "capex write"],
-          answer: `Depreciation spreads equipment and fit-out cost over its useful life; year-5 depreciation is ${k(m.y5.dep)}.\n\nIt's a non-cash charge — it lowers net income and zakat but not cash flow, which is why EBITDA (before depreciation) is higher than net income. Maintenance capex is set at ${pc(inp.maintenanceCapexPct)} of revenue.` },
+          answer: `Depreciation spreads equipment and fit-out cost over its useful life; year-5 depreciation is ${k(m.y5.dep)}.\n\nIt's a non-cash charge — it lowers net income and zakat but not cash flow, which is why EBITDA (before depreciation) is higher than net income. Maintenance capex is set at ${pc(inp.maintenanceCapexPct)} of the depreciable (hard) asset base.` },
         { id: "financing", label: "financing", kw: ["financing", "finance", "loan", "debt", "hire purchase", "asset finance", "leverage", "borrow"],
           answer: m.financedPrincipal > 0
             ? `Clinical equipment is part-financed: ${pc(inp.financePct)} of the financeable base, i.e. ${k(m.financedPrincipal)} borrowed at ${inp.financeRate}% over ${inp.financeTermYears} yrs (the remaining ${k(m.downPayment)} is the equity-funded share, paid upfront). The year-5 exit nets off any residual balance.`
@@ -907,7 +907,7 @@
                 <div>
                   <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Break-even / dentist (incl. {inp.wacc}% return)</div>
                   <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: C.text }}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}</div>
-                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 2 }}>{sens.beRev == null ? "profitable across range" : `${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion vs the ${inp.revPerChair}K plan`}</div>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && inp.revPerChair > 0 && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 2 }}>{sens.beRev == null || !(inp.revPerChair > 0) ? "—" : `${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion vs the ${inp.revPerChair}K plan`}</div>
                 </div>
                 <div>
                   <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Operating break-even / chair</div>
@@ -1008,7 +1008,7 @@
                     </div>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 2 }}>Revenue that recovers all capital and earns the {inp.wacc}% required return over 5 years</div>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && inp.revPerChair > 0 && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 3 }}>
-                      {sens.beRev == null ? "Profitable across the tested range" : `Current ${inp.revPerChair} → ${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion before the project destroys value`}
+                      {sens.beRev == null || !(inp.revPerChair > 0) ? "—" : `Current ${inp.revPerChair} → ${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion before the project destroys value`}
                     </div>
                   </div>
                   <div style={{ background: C.bone, borderRadius: 8, padding: "12px 16px" }}>
@@ -1207,7 +1207,7 @@
               </Card>
 
               <Card title="Dentist Roster & Pay" n="02">
-                <Slider label="Salaried dentists" value={inp.dentistCount} min={0} max={20} step={1} unit="" onChange={(v) => set("dentistCount", v)} hint={`Salary + pooled profit share · each covers ${inp.dentistDays} chair-days/week`} />
+                <Slider label="Salaried dentists" value={inp.dentistCount} min={0} max={20} step={1} unit="" onChange={(v) => set("dentistCount", v)} hint={`Salary + profit share on own production · each covers ${inp.dentistDays} chair-days/week`} />
                 <Slider label="Days per salaried dentist / week" value={inp.dentistDays} min={1} max={7} step={1} unit="days" onChange={(v) => set("dentistDays", v)} />
                 <Slider label="Base salary (each)" value={inp.dentistBase} min={0} max={25000} step={250} unit="SAR/mo" onChange={(v) => set("dentistBase", v)} danger={inp.dentistBase < 9000} hint={inp.dentistBase < 9000 ? "Below SAR 9,000 → Saudi dentists won't count for Saudization" : "Meets the SAR 9,000 Saudization floor"} />
                 <Slider label="Profit share (salaried pool)" value={inp.profitShare} min={0} max={60} step={1} unit="%" onChange={(v) => set("profitShare", v)} hint="% of the profit from salaried dentists' OWN production, after their salary and their share of clinic costs — not a cut of the whole-clinic pool" />
@@ -1642,7 +1642,7 @@
                 <div>
                   <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Operating Cash Flow · Monthly</h3>
                   <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 3 }}>
-                    Each bar is that month's net operating cash (Years 1–2, pre-opening excluded). Red bars are when big cheques fall due — annual rent (M7 &amp; M19) and insurance renewal (M12). · SAR '000
+                    Each bar is that month's net operating cash (Years 1–2, pre-opening excluded). Red bars mark months when large lump-sum payments fall due — rent cheques (per the selected payment terms) and the M12 insurance renewal. · SAR '000
                   </div>
                 </div>
               </div>
@@ -1765,7 +1765,7 @@
             </div>
 
             <div className="print-section" style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, lineHeight: 1.6, paddingBottom: 30 }}>
-              Indicative model for planning, not investment or legal advice. Dentist pay = base salary + {inp.profitShare}% of operating profit (pooled, paid only when profit is positive). Benchmarks: Riyadh rents & 2025 rent freeze (SAT Real Estate, Knight Frank); salaries (PayScale, SalaryExpert, Paylab); Saudization 55% from 27 Jan 2026 & SAR 9,000 floor (Arab News, HRSD); expat levy SAR 800/mo + iqama/permit fees (MHRSD 2026 schedules). Validate all figures with local quotations before committing capital.
+              Indicative model for planning, not investment or legal advice. Dentist pay = base salary + {inp.profitShare}% of the profit on their own production (paid only when positive). Benchmarks: Riyadh rents & 2025 rent freeze (SAT Real Estate, Knight Frank); salaries (PayScale, SalaryExpert, Paylab); Saudization 55% from 27 Jan 2026 & SAR 9,000 floor (Arab News, HRSD); expat levy SAR 800/mo + iqama/permit fees (MHRSD 2026 schedules). Validate all figures with local quotations before committing capital.
             </div>
           </div>
 
