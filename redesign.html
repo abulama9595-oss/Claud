@@ -87,7 +87,7 @@
       const TOTAL_PAGES = 10;
       const today = new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
       const F = inp.fitoutMonths;
-      const visitsDay = inp.revPerChair * 1000 / 500 / 26;
+      const visitsDay = (m.revPerChairFull || 0) * 1000 / 500 / 26; // derived per-chair yield drives the visit estimate
       const visitsYear = Math.round(inp.chairs * visitsDay * 26 * 12);
       const expat = expatCount(inp);
       const staffTotal = totalDentists(inp) + Math.ceil(inp.chairs * inp.nursesPerChair) + inp.medicalSupportCount + inp.janitorCount + inp.driverCount + inp.generalStaffCount + 1;
@@ -164,7 +164,7 @@
           <Pg n={2}>
             <h2 style={secT}>1. Executive Summary</h2>
             <p style={para}>This study assesses the commercial and financial feasibility of establishing a {inp.chairs}-operatory private dental clinic in the northern growth corridor of Riyadh, Kingdom of Saudi Arabia. The assessment integrates a market review, a location screening, a five-year financial model with monthly cash simulation of the launch period, and a quantified risk analysis. All figures are stated in SAR '000 unless noted otherwise.</p>
-            <p style={para}>The clinic requires total funding of <b>SAR {f0(budget.totalRequired)}K</b>, comprising SAR {f0(budget.capexInvest)}K of capital expenditure, SAR {f0(budget.launchLiquidity)}K of launch liquidity (pre-opening cash, recoverable VAT and the operating ramp to self-funding{selfFund ? `, achieved in ${selfFund}` : ""}), and a SAR {f0(budget.minCash)}K minimum-cash reserve ({inp.minCashMonths} months of operating cost). At a planned revenue of SAR {inp.revPerChair}K per chair per month — equivalent to {visitsDay.toFixed(1)} patient visits per chair per day at an average ticket of SAR 500 — the clinic matures to revenue of SAR {f0(m.y5.revenue)}K with an EBITDA margin of {pctf(m.y5.ebitdaPct)} by Year 5, {m.y5.ebitdaPct >= 25 ? "within or above" : "below"} the 25–30% range observed for well-run Saudi dental groups.</p>
+            <p style={para}>The clinic requires total funding of <b>SAR {f0(budget.totalRequired)}K</b>, comprising SAR {f0(budget.capexInvest)}K of capital expenditure, SAR {f0(budget.launchLiquidity)}K of launch liquidity (pre-opening cash, recoverable VAT and the operating ramp to self-funding{selfFund ? `, achieved in ${selfFund}` : ""}), and a SAR {f0(budget.minCash)}K minimum-cash reserve ({inp.minCashMonths} months of operating cost). At a planned production of SAR {inp.revPerChair}K per full-time dentist per month (a derived chair yield of SAR {f0(m.revPerChairFull)}K/chair) — equivalent to {visitsDay.toFixed(1)} patient visits per chair per day at an average ticket of SAR 500 — the clinic matures to revenue of SAR {f0(m.y5.revenue)}K with an EBITDA margin of {pctf(m.y5.ebitdaPct)} by Year 5, {m.y5.ebitdaPct >= 25 ? "within or above" : "below"} the 25–30% range observed for well-run Saudi dental groups.</p>
             <p style={para}>On these assumptions the project returns a five-year IRR of <b>{m.irr == null ? "n/a" : pctf(m.irr * 100)}</b> (including a terminal sale at {inp.exitMultiple}× Year-5 EBITDA) and a net present value of <b>SAR {f0(m.npv)}K</b> at a {inp.wacc}% discount rate, with capital payback in {m.payback ? m.payback.toFixed(1) : "—"} years on free cash flow. Cumulative net income over the five-year horizon is SAR {f0(m.cumNI)}K after Zakat. The funding plan {m.fundingOk ? `covers the peak cash requirement of SAR ${f0(m.peakNeed)}K (${m.troughLabel}) with headroom of SAR ${f0(m.fundingBudget - m.peakNeed)}K` : `is short of the peak cash requirement of SAR ${f0(m.peakNeed)}K (${m.troughLabel}) by SAR ${f0(m.peakNeed - m.fundingBudget)}K`}.</p>
             <div style={subT}>Key indicators</div>
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
@@ -175,7 +175,7 @@
                 <tr><td style={tLb}>5-year IRR (incl. exit)</td><td style={tTd}>{m.irr == null ? "n/a" : pctf(m.irr * 100)}</td><td style={tLb}>Year-5 net income</td><td style={tTd}>{f0(m.y5.ni)}</td></tr>
                 <tr><td style={tLb}>NPV @ {inp.wacc}% WACC</td><td style={tTd}>{f0(m.npv)}</td><td style={tLb}>Cumulative net income Y1–Y5</td><td style={tTd}>{f0(m.cumNI)}</td></tr>
                 <tr><td style={tLb}>Payback (free cash flow)</td><td style={tTd}>{m.payback ? m.payback.toFixed(1) + " yrs" : "—"}</td><td style={tLb}>Exit value ({inp.exitMultiple}× Y5 EBITDA)</td><td style={tTd}>{f0(m.exitValue)}</td></tr>
-                <tr><td style={tLb}>Peak funding need</td><td style={tTd}>{f0(m.peakNeed)} ({m.troughLabel})</td><td style={tLb}>Break-even / chair (incl. {inp.wacc}% return) · opex-only</td><td style={tTd}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}{m.opBreakEvenRev != null ? ` · ${f0(m.opBreakEvenRev)}K` : ""}</td></tr>
+                <tr><td style={tLb}>Peak funding need</td><td style={tTd}>{f0(m.peakNeed)} ({m.troughLabel})</td><td style={tLb}>Break-even / dentist (incl. {inp.wacc}% return) · opex-only / chair</td><td style={tTd}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}{m.opBreakEvenRev != null ? ` · ${f0(m.opBreakEvenRev)}K` : ""}</td></tr>
               </tbody>
             </table>
             <div style={subT}>Recommendation</div>
@@ -268,7 +268,7 @@
           {/* ——— Page 5 · Business Model ——— */}
           <Pg n={5}>
             <h2 style={secT}>4. Business Model &amp; Operating Plan</h2>
-            <p style={para}>The clinic operates {inp.chairs} operatories on a rostered dentist-day model — chairs are open {inp.clinicDays} days/week (one full shift per day) and covered by {inp.dentistCount} salaried dentist{inp.dentistCount === 1 ? "" : "s"} at {inp.dentistDays} days/week each{inp.seniorCount > 0 ? ` plus ${inp.seniorCount} senior dentist${inp.seniorCount === 1 ? "" : "s"} on production-only terms at ${inp.seniorDays} days/week each` : ""}, a roster coverage of {pctf(m.coverage * 100)} — offering general and family dentistry with specialty services (orthodontics, prosthodontics, paediatric, implantology) under a single-shift, 26-day operating month. Salaried dentists combine a base of SAR {f0(inp.dentistBase)}/month with a pooled profit share of {inp.profitShare}% of operating profit (mature earnings ≈SAR {m.perDentistMo.toFixed(1)}K/month){inp.seniorCount > 0 ? `; senior dentists draw no salary and earn ${inp.seniorProdPct}% ${SENIOR_BASIS_LABEL[inp.seniorPayBasis]} (≈SAR ${m.perSeniorMo.toFixed(1)}K/month at maturity, with their chair-days priced independently at SAR ${f0(inp.seniorRevPerChair)}K/chair/month vs SAR ${f0(inp.revPerChair)}K on salaried days)` : ""} — aligning clinical earnings with clinic performance and limiting fixed-cost exposure during the ramp.</p>
+            <p style={para}>The clinic operates {inp.chairs} operatories on a rostered dentist-day model — chairs are open {inp.clinicDays} days/week (one full shift per day) and covered by {inp.dentistCount} salaried dentist{inp.dentistCount === 1 ? "" : "s"} at {inp.dentistDays} days/week each{inp.seniorCount > 0 ? ` plus ${inp.seniorCount} senior dentist${inp.seniorCount === 1 ? "" : "s"} on production-only terms at ${inp.seniorDays} days/week each` : ""}, a roster coverage of {pctf(m.coverage * 100)} — offering general and family dentistry with specialty services (orthodontics, prosthodontics, paediatric, implantology) under a single-shift, 26-day operating month. Salaried dentists combine a base of SAR {f0(inp.dentistBase)}/month with a pooled profit share of {inp.profitShare}% of operating profit (mature earnings ≈SAR {m.perDentistMo.toFixed(1)}K/month){inp.seniorCount > 0 ? `; senior dentists draw no salary and earn ${inp.seniorProdPct}% ${SENIOR_BASIS_LABEL[inp.seniorPayBasis]} (≈SAR ${m.perSeniorMo.toFixed(1)}K/month at maturity, with a full-time senior producing SAR ${f0(inp.seniorRevPerChair)}K/month vs SAR ${f0(inp.revPerChair)}K for a full-time salaried dentist)` : ""} — aligning clinical earnings with clinic performance and limiting fixed-cost exposure during the ramp.</p>
             <div style={subT}>4.1 Organisation &amp; staffing ({staffTotal} FTE at maturity)</div>
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
               <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Role</th><th style={tTh}>Headcount</th><th style={tTh}>Avg salary (SAR/mo)</th><th style={{ ...tTh, textAlign: "left" }}>Notes</th></tr></thead>
@@ -284,7 +284,7 @@
             <div style={bull}>• Expatriate headcount (derived): <b>{expat}</b> — drives work-permit levies (SAR {inp.levyPerMonth}/mo) and iqama fees (SAR {f0(inp.iqamaPerYear)}/yr); indicative Saudization ≈{saudiPct}% of total FTE.</div>
             <div style={bull}>• Payroll burden: GOSI &amp; benefits load of {inp.gosiPct}% on the fixed staff base; mandatory CCHI health insurance (SAR {f0(inp.insuranceCCHI)}K p.a.) and malpractice cover (SAR {f0(inp.malpracticePerDentist)}/dentist/yr).</div>
             <div style={subT}>4.2 Revenue model &amp; payor mix</div>
-            <div style={bull}>• Capacity-led model: SAR {inp.revPerChair}K/chair/month at maturity = {visitsDay.toFixed(1)} visits/chair/day at SAR 500 average ticket ({visitsDay > 15 ? "above" : "within"} the ~15/day single-shift ceiling).</div>
+            <div style={bull}>• Production-led model: SAR {inp.revPerChair}K per full-time dentist per month, chair-capped to a derived SAR {f0(m.revPerChairFull)}K/chair at maturity = {visitsDay.toFixed(1)} visits/chair/day at SAR 500 average ticket ({visitsDay > 15 ? "above" : "within"} the ~15/day single-shift ceiling).</div>
             <div style={bull}>• Utilisation ramp: {inp.rampStart}% (Y1) → {rampY2.toFixed(0)}% (Y2) → 100% by Y3; price escalation {inp.revenueGrowth}% p.a.</div>
             <div style={bull}>• Payor mix: {inp.insuredPct}% insurer-billed ({inp.insurerDelayMo}-month collection lag, {inp.rejectionPct}% rejections modelled), balance self-pay at point of service.</div>
             <div style={bull}>• Regulatory pathway: MOH/SEHA facility licence, Civil Defence approval, SFDA-compliant radiology, SCFHS credentialing of clinicians, CHI insurer empanelment from opening.</div>
@@ -378,7 +378,7 @@
                 ))}
               </tbody>
             </table>
-            <div style={bull}>• Break-even revenue: <b>{sens.beRev == null ? "below tested range" : `SAR ${f0(sens.beRev)}K/chair/month`}</b> (NPV = 0, incl. the {inp.wacc}% required return){cushion != null ? ` — a ${cushion}% cushion below plan` : ""}. Operating break-even (opex only, ex dentist share): <b>{m.opBreakEvenRev == null ? "—" : `SAR ${f0(m.opBreakEvenRev)}K/chair/month`}</b> — the base above which the dentist profit pool accrues. Lowest Year-1 utilisation the funding survives: <b>{sens.minUtil == null ? ">100%" : sens.minUtil + "%"}</b> (plan: {inp.rampStart}%).</div>
+            <div style={bull}>• Break-even revenue: <b>{sens.beRev == null ? "below tested range" : `SAR ${f0(sens.beRev)}K/dentist/month`}</b> (NPV = 0, incl. the {inp.wacc}% required return){cushion != null ? ` — a ${cushion}% cushion below plan` : ""}. Operating break-even (opex only, ex dentist share): <b>{m.opBreakEvenRev == null ? "—" : `SAR ${f0(m.opBreakEvenRev)}K/chair/month`}</b> — the base above which the dentist profit pool accrues. Lowest Year-1 utilisation the funding survives: <b>{sens.minUtil == null ? ">100%" : sens.minUtil + "%"}</b> (plan: {inp.rampStart}%).</div>
             <div style={subT}>7.2 Principal risks &amp; mitigations</div>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr><th style={{ ...tTh, textAlign: "left" }}>Risk</th><th style={tTh}>L / I</th><th style={{ ...tTh, textAlign: "left" }}>Mitigation (as modelled)</th></tr></thead>
@@ -443,9 +443,9 @@
             <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 12 }}>
               <tbody>
                 {[
-                  ["Revenue per chair / month · chairs", `SAR ${inp.revPerChair}K · ${inp.chairs}`],
+                  ["Revenue per dentist (FTE) / month · derived per chair · chairs", `SAR ${inp.revPerChair}K · ${f0(m.revPerChairFull)}K · ${inp.chairs}`],
                   ["Salaried dentists · base · profit share", `${inp.dentistCount} · SAR ${f0(inp.dentistBase)}/mo · ${inp.profitShare}%`],
-                  ...(inp.seniorCount > 0 ? [["Senior dentists · days/wk · share · basis · rev/chair", `${inp.seniorCount} · ${inp.seniorDays} · ${inp.seniorProdPct}% · ${inp.seniorPayBasis} · ${f0(inp.seniorRevPerChair)}K/chair${inp.seniorMinMo > 0 ? ` · min ${f0(inp.seniorMinMo)}K/mo` : ""}`]] : []),
+                  ...(inp.seniorCount > 0 ? [["Senior dentists · days/wk · share · basis · rev (FTE)", `${inp.seniorCount} · ${inp.seniorDays} · ${inp.seniorProdPct}% · ${inp.seniorPayBasis} · ${f0(inp.seniorRevPerChair)}K${inp.seniorMinMo > 0 ? ` · min ${f0(inp.seniorMinMo)}K/mo` : ""}`]] : []),
                   ["Roster coverage (dentist-days / chair-days)", `${f0(m.dentistDays)} / ${f0(m.chairDays)} · ${pctf(m.coverage * 100)}`],
                   ["Y1 utilisation · ramp growth · price growth", `${inp.rampStart}% · ${inp.rampGrowth}%/yr · ${inp.revenueGrowth}%/yr`],
                   ["Insured share · rejections · collection lag", `${inp.insuredPct}% · ${inp.rejectionPct}% · ${inp.insurerDelayMo} mo`],
@@ -499,10 +499,10 @@
         { id: "ebitda", label: "ebitda", kw: ["ebitda", "margin", "operating profit", "profitability", "benchmark"],
           answer: `Year-5 EBITDA is ${k(m.y5.ebitda)}, a ${pc(m.y5.ebitdaPct)} margin — ${marginOk ? "at or above" : "below"} the 25–30% KSA benchmark for a mature clinic.\n\nEBITDA is earnings before interest, zakat and depreciation — the cash-generating profit of operations, before financing and accounting charges.` },
         { id: "breakeven", label: "break-even", kw: ["break-even", "break even", "breakeven", "minimum revenue", "lowest revenue"],
-          answer: `Two break-evens:\n• Value break-even — revenue/chair where NPV = 0: ${sens.beRev == null ? "below the tested range (profitable across it)" : k(sens.beRev) + "/chair/mo"}. Your plan is ${inp.revPerChair}K${cushion != null ? `, a ${cushion}% cushion` : ""}.\n• Operating break-even — revenue/chair to cover opex (excl. dentist share): ${m.opBreakEvenRev == null ? "—" : k(m.opBreakEvenRev) + "/chair/mo"}. That's the base each dentist earns above.` },
+          answer: `Two break-evens:\n• Value break-even — revenue per full-time dentist where NPV = 0: ${sens.beRev == null ? "below the tested range (profitable across it)" : k(sens.beRev) + "/dentist/mo"}. Your plan is ${inp.revPerChair}K${cushion != null ? `, a ${cushion}% cushion` : ""}.\n• Operating break-even — revenue/chair to cover opex (excl. dentist share): ${m.opBreakEvenRev == null ? "—" : k(m.opBreakEvenRev) + "/chair/mo"}. That's the base each dentist earns above.` },
         { id: "share", label: "profit share", kw: ["profit share", "dentist pay", "dentist salary", "per dentist", "dentist compensation", "how are dentists paid", "pooled"],
           answer: inp.seniorCount > 0
-            ? `Two tiers. ${inp.dentistCount} salaried dentists earn a base salary plus a pooled ${inp.profitShare}% of operating profit — about SAR ${m.perDentistMo.toFixed(1)}K each per month by year 5 (Y5 pool ${k(m.y5.share)}). ${inp.seniorCount} senior dentists draw no salary and earn ${inp.seniorProdPct}% ${SENIOR_BASIS_LABEL[inp.seniorPayBasis]} — about SAR ${m.perSeniorMo.toFixed(1)}K each per month at maturity (Y5 total ${k(m.y5.seniorPay)}). Their chair-days are priced independently: SAR ${f0(inp.seniorRevPerChair)}K/chair/month vs SAR ${f0(inp.revPerChair)}K on salaried days.\n\nSeniors cover ${inp.seniorDays} days/week each; roster coverage is ${pc(m.coverage * 100)} of chair-days.`
+            ? `Two tiers. ${inp.dentistCount} salaried dentists earn a base salary plus a pooled ${inp.profitShare}% of operating profit — about SAR ${m.perDentistMo.toFixed(1)}K each per month by year 5 (Y5 pool ${k(m.y5.share)}). ${inp.seniorCount} senior dentists draw no salary and earn ${inp.seniorProdPct}% ${SENIOR_BASIS_LABEL[inp.seniorPayBasis]} — about SAR ${m.perSeniorMo.toFixed(1)}K each per month at maturity (Y5 total ${k(m.y5.seniorPay)}). Rates are independent: a full-time senior produces SAR ${f0(inp.seniorRevPerChair)}K/month vs SAR ${f0(inp.revPerChair)}K for a full-time salaried dentist; part-timers scale by days.\n\nSeniors cover ${inp.seniorDays} days/week each; roster coverage is ${pc(m.coverage * 100)} of chair-days.`
             : `Dentists earn a base salary plus a pooled profit share of ${inp.profitShare}% of operating profit (paid only when profit is positive).\n\nAcross ${inp.dentistCount} dentists that's about SAR ${m.perDentistMo.toFixed(1)}K per dentist per month by year 5. The year-5 profit-share pool is ${k(m.y5.share)}.` },
         { id: "materials", label: "materials", kw: ["materials", "lab", "consumables", "cost of goods", "supplies"],
           answer: `Materials & lab cost runs at ${pc(inp.materialsPct)} of revenue${inp.materialsY1Premium ? ` (with a Y1 premium of ${inp.materialsY1Premium} pts)` : ""} — consumables, lab work and implant components.\n\nIt's one of the larger sensitivity levers: a couple of points moves EBITDA noticeably.` },
@@ -511,7 +511,7 @@
         { id: "exit", label: "exit", kw: ["exit", "sale", "exit multiple", "terminal value", "selling the clinic", "exit value"],
           answer: `Exit value is ${k(m.exitValue)}, modelled as ${inp.exitMultiple}× year-5 EBITDA (${k(m.y5.ebitda)}).\n\nIt's a year-5 sale assumption and drives a big share of both IRR and MOIC — the second-most-tested lever after revenue.` },
         { id: "sensitivity", label: "sensitivity", kw: ["sensitivity", "biggest risk", "biggest driver", "what matters most", "tornado", "most sensitive", "riskiest", "swing"],
-          answer: `The result swings most on ${top[0].toLowerCase()}: a ±20% move changes NPV by about ${topSwing}. That's the assumption to validate first.\n\nThe model stress-tests revenue/chair, Y1 utilization, materials %, profit share and the exit multiple.` },
+          answer: `The result swings most on ${top[0].toLowerCase()}: a ±20% move changes NPV by about ${topSwing}. That's the assumption to validate first.\n\nThe model stress-tests revenue/dentist, Y1 utilization, materials %, profit share and the exit multiple.` },
         { id: "trough", label: "cash trough", kw: ["cash trough", "lowest cash", "peak need", "peak funding", "deepest", "cash low point", "run out of cash"],
           answer: `The cash-flow trough — the lowest the balance gets before the clinic self-funds — is about ${k(m.peakNeed)} around ${m.troughLabel}.\n\nThat's exactly what the launch liquidity (${k(budget.launchLiquidity)}) is sized to cover.` },
         { id: "saudization", label: "saudization", kw: ["saudization", "saudisation", "gosi", "quota", "nitaqat", "saudi dentist", "9000", "local hire"],
@@ -527,7 +527,7 @@
             ? `Clinical equipment is part-financed: ${pc(inp.financePct)} of the financeable base, i.e. ${k(m.financedPrincipal)} borrowed at ${inp.financeRate}% over ${inp.financeTermYears} yrs (the remaining ${k(m.downPayment)} is the equity-funded share, paid upfront). The year-5 exit nets off any residual balance.`
             : `The model is all-equity — no equipment financing (financePct is 0). You can switch on asset finance to cut the upfront raise, at the cost of interest.` },
         { id: "revenue", label: "revenue per chair", kw: ["revenue per chair", "rev per chair", "revenue", "topline", "top line", "sales", "fees per chair"],
-          answer: `Revenue per chair is ${inp.revPerChair}K/chair/month across ${inp.chairs} chairs — the single biggest driver in the model. Year-5 revenue is ${k(m.y5.revenue)}.\n\nIt's the first assumption to pressure-test against local pricing and realistic patient volumes.` },
+          answer: `Revenue is dentist-driven: each full-time dentist produces ${inp.revPerChair}K/month (seniors ${f0(inp.seniorRevPerChair)}K at full-time), capped by ${inp.chairs} chairs \u00d7 ${inp.clinicDays} days — a derived ${f0(m.revPerChairFull)}K/chair/month. Year-5 revenue is ${k(m.y5.revenue)}.\n\nIt's the first assumption to pressure-test against local pricing and realistic patient volumes.` },
         { id: "cumni", label: "cumulative net income", kw: ["cumulative net income", "cumulative profit", "total profit", "cumni", "5 year profit", "net income"],
           answer: `Cumulative net income over years 1–5 is ${k(m.cumNI)}. ${m.cumNI > 0 ? "Positive cumulative profit is the first hurdle for a non-MARGINAL verdict." : "It's still negative across 5 years, which caps the verdict at MARGINAL."}` },
       ];
@@ -613,7 +613,7 @@
       // sensitivity & break-even: one-way ±20% swings on the drivers that matter, plus two break-even points
       const sens = useMemo(() => {
         const drivers = [
-          ["Revenue per chair", "revPerChair"],
+          ["Revenue / dentist (FTE)", "revPerChair"],
           ["Y1 utilization", "rampStart"],
           ["Materials & lab %", "materialsPct"],
           ["Salaried profit share", "profitShare"],
@@ -788,7 +788,7 @@
         m.payback ? `${m.payback.toFixed(1)}-yr payback` : `no payback in 5 yrs`,
         `${f0(budget.minCash)}K min-cash reserve (${inp.minCashMonths} mo opex)`,
       ].join("  ·  ");
-      const thesis = `A ${inp.chairs}-chair Riyadh clinic needing SAR ${f0(budget.totalRaise)}K all-in to open and reach self-funding. At ${inp.revPerChair}K/chair/month it matures to ${pctf(m.y5.ebitdaPct)} EBITDA — ${marginOk ? "above" : "below"} the 25–30% KSA benchmark — returning a ${m.irr == null ? "n/a" : pctf(m.irr * 100)} 5-year IRR and ${f0(m.npv)}K NPV at ${inp.wacc}% WACC. ${m.fundingOk ? "The funding plan covers the launch cash trough" : "The funding plan is short of the launch cash trough"}; the result swings most on ${topRisk[0].toLowerCase()}.`;
+      const thesis = `A ${inp.chairs}-chair Riyadh clinic needing SAR ${f0(budget.totalRaise)}K all-in to open and reach self-funding. At ${inp.revPerChair}K/dentist/month (${f0(m.revPerChairFull)}K/chair derived) it matures to ${pctf(m.y5.ebitdaPct)} EBITDA — ${marginOk ? "above" : "below"} the 25–30% KSA benchmark — returning a ${m.irr == null ? "n/a" : pctf(m.irr * 100)} 5-year IRR and ${f0(m.npv)}K NPV at ${inp.wacc}% WACC. ${m.fundingOk ? "The funding plan covers the launch cash trough" : "The funding plan is short of the launch cash trough"}; the result swings most on ${topRisk[0].toLowerCase()}.`;
       const summaryKpis = [
         ["Funding to raise", f0(budget.totalRaise), "SAR '000 · all-in capital", C.brass, `incl. ${f0(budget.minCash)}K min-cash reserve`, C.pos],
         ["5-year IRR", m.irr == null ? "n/a" : pctf(m.irr * 100), "incl. exit at " + inp.exitMultiple + "× EBITDA", C.text, null, null],
@@ -903,7 +903,7 @@
                   <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginTop: 2 }}>NPV swings {f0(Math.abs(topRisk[2] - topRisk[1]))}K across a ±20% move — validate this first.</div>
                 </div>
                 <div>
-                  <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Break-even / chair (incl. {inp.wacc}% return)</div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.06em", color: C.sub, marginBottom: 3 }}>Break-even / dentist (incl. {inp.wacc}% return)</div>
                   <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: C.text }}>{sens.beRev == null ? "—" : f0(sens.beRev) + "K"}</div>
                   <div style={{ fontFamily: SANS, fontSize: 11.5, color: sens.beRev != null && (inp.revPerChair - sens.beRev) / inp.revPerChair < 0.2 ? C.neg : C.pos, marginTop: 2 }}>{sens.beRev == null ? "profitable across range" : `${(100 * (inp.revPerChair - sens.beRev) / inp.revPerChair).toFixed(0)}% cushion vs the ${inp.revPerChair}K plan`}</div>
                 </div>
@@ -1000,7 +1000,7 @@
               <div style={{ padding: "16px 18px" }}>
                 <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14, marginBottom: 16 }}>
                   <div style={{ background: C.bone, borderRadius: 8, padding: "12px 16px" }}>
-                    <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.sub, marginBottom: 4 }}>Break-even revenue per chair (NPV = 0 · incl. {inp.wacc}% return)</div>
+                    <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: C.sub, marginBottom: 4 }}>Break-even revenue per dentist (NPV = 0 · incl. {inp.wacc}% return)</div>
                     <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: C.text }}>
                       {sens.beRev == null ? "—" : f0(sens.beRev)} <span style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 400, color: C.sub }}>SAR'000/mo</span>
                     </div>
@@ -1109,7 +1109,7 @@
                 <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>Monte Carlo risk</h3>
                 <button className="no-print" onClick={runMc} style={btn(mc ? "transparent" : C.brass, mc ? C.brass : C.ink, mc ? C.line : C.brass)}>{mcRunning ? "Running…" : mc ? "Re-run" : "Run 2,500 trials"}</button>
               </div>
-              <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginBottom: 12 }}>Probability the project clears its hurdle, given realistic ranges: revenue/chair ±20%, Y1 utilisation ±10pts, materials % ±2pts (triangular).</div>
+              <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginBottom: 12 }}>Probability the project clears its hurdle, given realistic ranges: revenue/dentist ±20%, Y1 utilisation ±10pts, materials % ±2pts (triangular).</div>
               {mc ? (
                 <>
                   <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 14 }}>
@@ -1178,7 +1178,7 @@
                             </div>
                           </div>
                           <div style={{ fontFamily: MONO, fontSize: 11, color: C.invSub, marginTop: 5 }}>
-                            {s.inputs.revPerChair}K/chair · EBITDA <span style={{ color: sm.y5.ebitda < 0 ? C.neg : C.brassLt }}>{pctf(sm.y5.ebitdaPct)}</span> · cum <span style={{ color: sm.cumNI < 0 ? C.neg : C.pos }}>{f0(sm.cumNI)}</span>
+                            {s.inputs.revPerChair}K/dentist · EBITDA <span style={{ color: sm.y5.ebitda < 0 ? C.neg : C.brassLt }}>{pctf(sm.y5.ebitdaPct)}</span> · cum <span style={{ color: sm.cumNI < 0 ? C.neg : C.pos }}>{f0(sm.cumNI)}</span>
                           </div>
                         </div>
                       );
@@ -1191,9 +1191,16 @@
 
             <div className="grid" style={{ gap: 14, gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", marginBottom: 22 }}>
               <Card title="Revenue & Capacity" n="01">
-                <Slider label={inp.seniorCount > 0 ? "Revenue per chair / month — salaried days" : "Revenue per chair / month"} value={inp.revPerChair} min={0} max={260} step={5} unit="SAR'000" onChange={(v) => set("revPerChair", v)} danger={inp.revPerChair * 1000 / 500 / 26 > 15} hint={`≈ ${(inp.revPerChair * 1000 / 500 / 26).toFixed(1)} patients/chair/day (${Math.round(inp.revPerChair * 1000 / 500)}/mo) @ SAR 500 avg ticket · realistic max ~15/day single shift${inp.seniorCount > 0 ? " · senior days priced separately in the roster card" : ""}`} />
-                <Slider label="Operatories (chairs)" value={inp.chairs} min={0} max={20} step={1} unit="chairs" onChange={(v) => set("chairs", v)} hint="Chairs are rostered by dentist-days — see Dentist Roster & Pay" />
+                <Slider label="Revenue per salaried dentist / month" value={inp.revPerChair} min={0} max={260} step={5} unit="SAR'000" onChange={(v) => set("revPerChair", v)} danger={inp.revPerChair * 1000 / 500 / 26 > 15} hint={`Full-timer working all ${inp.clinicDays} clinic days ≈ ${(inp.revPerChair * 1000 / 500 / 26).toFixed(1)} patients/day @ SAR 500 avg ticket · realistic max ~15/day single shift · part-timers scale by days`} />
+                <Slider label="Operatories (chairs)" value={inp.chairs} min={0} max={20} step={1} unit="chairs" onChange={(v) => set("chairs", v)} hint="Chairs cap production — dentist-days beyond chair capacity sit idle" />
                 <Slider label="Clinic days per week" value={inp.clinicDays} min={4} max={7} step={1} unit="days" onChange={(v) => set("clinicDays", v)} hint="One full shift per day (e.g. 2–10pm) — each open day is one chair-day to cover" />
+                <div style={{ marginTop: 10, background: C.bone, borderRadius: 7, padding: "9px 12px" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: C.sub, marginBottom: 6 }}>Derived capacity (dentist-driven, chair-capped)</div>
+                  <div className="flex justify-between" style={{ fontFamily: SANS, fontSize: 11.5, padding: "1.5px 0" }}><span style={{ color: C.sub }}>Production capacity / month</span><span style={{ fontFamily: MONO }}>{f0(m.prodCapMo)}K</span></div>
+                  <div className="flex justify-between" style={{ fontFamily: SANS, fontSize: 11.5, padding: "1.5px 0" }}><span style={{ color: C.sub }}>= Revenue per chair / month</span><span style={{ fontFamily: MONO, fontWeight: 700, color: m.revPerChairFull > 200 ? C.neg : C.text }}>{f0(m.revPerChairFull)}K</span></div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 3 }}>Sum of every dentist's days × their rate, capped at {f0(m.chairDays)} chair-days/week — sanity-check the per-chair figure against the ~160K KSA norm.</div>
+                  {m.idleDentistDays > 0 && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.neg, marginTop: 3 }}>{f0(m.idleDentistDays)} of {f0(m.dentistDays)} dentist-days/week have no chair — they produce nothing. Add chairs or trim the roster.</div>}
+                </div>
               </Card>
 
               <Card title="Dentist Roster & Pay" n="02">
@@ -1204,7 +1211,7 @@
                 <Slider label="Senior dentists (no salary)" value={inp.seniorCount} min={0} max={20} step={1} unit="" onChange={(v) => set("seniorCount", v)} hint="Paid a % of their own production only — can be part-time or full-time" />
                 {inp.seniorCount > 0 && (<>
                   <Slider label="Days per senior / week" value={inp.seniorDays} min={1} max={7} step={1} unit="days" onChange={(v) => set("seniorDays", v)} hint={inp.seniorDays >= (inp.clinicDays || 6) ? "Full-time senior — every clinic day, still no salary" : "Day slots across the week — several seniors can share one chair"} />
-                  <Slider label="Revenue per chair / month — senior days" value={inp.seniorRevPerChair} min={0} max={400} step={5} unit="SAR'000" onChange={(v) => set("seniorRevPerChair", v)} hint={`Independent of the salaried rate (${f0(inp.revPerChair)}K)${inp.revPerChair > 0 ? ` — currently ${(inp.seniorRevPerChair / inp.revPerChair).toFixed(2)}× on case-mix` : ""}`} />
+                  <Slider label="Revenue per senior dentist / month (full-time)" value={inp.seniorRevPerChair} min={0} max={400} step={5} unit="SAR'000" onChange={(v) => set("seniorRevPerChair", v)} hint={`Independent of the salaried rate (${f0(inp.revPerChair)}K)${inp.revPerChair > 0 ? ` — ${(inp.seniorRevPerChair / inp.revPerChair).toFixed(2)}× on case-mix` : ""} · at ${inp.seniorDays}/${inp.clinicDays} days each produces ${f0(inp.seniorRevPerChair * inp.seniorDays / Math.max(1, inp.clinicDays))}K/mo fully booked`} />
                   <div style={{ margin: "2px 0 10px" }}>
                     <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, fontWeight: 500, marginBottom: 5 }}>Senior pay basis</div>
                     <div className="flex" style={{ gap: 6, flexWrap: "wrap" }}>
@@ -1227,8 +1234,10 @@
                       const prod = perMo(m.y5.seniorRev), cost = perMo(m.y5.seniorCost), pay = perMo(m.y5.seniorPay);
                       const margin = prod - cost - pay;
                       const row = { display: "flex", justifyContent: "space-between", padding: "1.5px 0", fontFamily: SANS, fontSize: 11.5, color: C.text };
+                      const booked = m.usedDays > 0 ? Math.min(1, m.util[4] * m.chairDays / m.usedDays) : 0;
                       return (<>
                         <div style={row}><span style={{ color: C.sub }}>Production they generate</span><span style={{ fontFamily: MONO }}>{f0(prod)}K</span></div>
+                        <div style={{ fontFamily: SANS, fontSize: 10, color: C.sub, margin: "0 0 3px" }}>= {f0(inp.seniorRevPerChair)}K × {inp.seniorDays}/{inp.clinicDays} days × {pctf(booked * 100)} booked{m.usedFactor < 1 ? ` × ${pctf(m.usedFactor * 100)} chair access` : ""}</div>
                         <div style={row}><span style={{ color: C.sub }}>True cost of their sessions</span><span style={{ fontFamily: MONO }}>({f0(cost)}K)</span></div>
                         <div style={row}><span style={{ color: C.sub }}>Their pay</span><span style={{ fontFamily: MONO }}>({f0(pay)}K)</span></div>
                         <div style={{ ...row, borderTop: `1px solid ${C.line}`, marginTop: 3, paddingTop: 4, fontWeight: 700 }}><span>Clinic keeps</span><span style={{ fontFamily: MONO, color: margin >= 0 ? C.pos : C.neg }}>{f0(margin)}K</span></div>
@@ -1707,10 +1716,10 @@
               <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 11.5 }}>
                 <tbody>
                   {[
-                    ["Revenue per chair / month", inp.revPerChair + "K SAR"],
+                    ["Revenue per dentist (FTE) / month \u00b7 derived per chair", `${inp.revPerChair}K \u00b7 ${f0(m.revPerChairFull)}K SAR`],
                     ["Operatories (chairs)", inp.chairs],
                     ["Salaried dentists · base · profit share", `${inp.dentistCount} · ${f0(inp.dentistBase)} SAR/mo · ${inp.profitShare}%`],
-                    ...(inp.seniorCount > 0 ? [["Senior dentists · days/wk · share · basis · rev/chair", `${inp.seniorCount} · ${inp.seniorDays} · ${inp.seniorProdPct}% · ${inp.seniorPayBasis} · ${f0(inp.seniorRevPerChair)}K/chair`]] : []),
+                    ...(inp.seniorCount > 0 ? [["Senior dentists · days/wk · share · basis · rev (FTE)", `${inp.seniorCount} · ${inp.seniorDays} · ${inp.seniorProdPct}% · ${inp.seniorPayBasis} · ${f0(inp.seniorRevPerChair)}K`]] : []),
                     ["Y1 utilization · ramp growth", `${inp.rampStart}% · ${inp.rampGrowth}%/yr`],
                     ["Insured share · rejection · delay", `${inp.insuredPct}% · ${inp.rejectionPct}% · ${inp.insurerDelayMo} mo`],
                     ["Materials & lab (mature)", inp.materialsPct + "%"],
