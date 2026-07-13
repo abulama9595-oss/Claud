@@ -41,11 +41,12 @@ const BASE_INPUTS = {
   clinicDays: 6, dentistDays: 6,
   // senior tier: no salary — paid seniorProdPct % on the selected basis, optionally floored by a
   // monthly minimum guarantee per senior (SAR '000). 0 seniors = legacy model.
-  // seniorRevMult: revenue a senior day generates vs a salaried dentist's day (case-mix premium).
+  // seniorRevPerChair: SAR'000 a chair earns per month at full utilization on senior days —
+  // an independent rate, NOT linked to revPerChair (which prices salaried-dentist days).
   // seniorPayBasis: "gross" = % of own collected production · "netmat" = % net of materials & lab
   //                 · "profit" = % of session profit after materials + allocated operating costs.
   seniorCount: 0, seniorDays: 3, seniorProdPct: 40, seniorMinMo: 0,
-  seniorRevMult: 1.5, seniorPayBasis: "gross",
+  seniorRevPerChair: 240, seniorPayBasis: "gross",
   nursesPerChair: 1.5, chairsideSalary: 6000,
   generalStaffCount: 4, generalStaffSalary: 5500, adminManagerSalary: 15000,
   medicalSupportCount: 2, medicalSupportSalary: 5000, janitorCount: 3, janitorSalary: 900, driverCount: 1, driverSalary: 1500,
@@ -139,15 +140,17 @@ function compute(inp) {
   inp = { ...BASE_INPUTS, ...inp }; // saved scenarios may predate newer inputs
   // roster coverage caps achievable utilization: you can't fill chair-days no dentist covers
   const cov = rosterCoverage(inp), capU = Math.min(1, cov);
-  // seniors occupy sFracD of chair-time but generate sFracW of revenue (their days carry a
-  // case-mix multiplier); blendMult is the clinic-wide revenue uplift from that case-mix
+  // Each tier prices its own chair-days: salaried days earn revPerChair, senior days earn
+  // seniorRevPerChair (independent sliders). blendedRev is the roster-weighted rate per chair
+  // at full utilization; seniors occupy sFracD of chair-time but generate sFracW of revenue.
   const sFracD = seniorDayFrac(inp);
-  const mult = inp.seniorRevMult ?? 1;
-  const rawSeniorDays = (inp.seniorCount || 0) * (inp.seniorDays || 0);
+  const senDays = (inp.seniorCount || 0) * (inp.seniorDays || 0);
+  const salDays = inp.dentistCount * (inp.dentistDays ?? 6);
   const supplied = dentistDaysSupplied(inp);
-  const wTotal = supplied - rawSeniorDays + rawSeniorDays * mult;
-  const sFracW = wTotal > 0 ? rawSeniorDays * mult / wTotal : 0;
-  const blendMult = supplied > 0 ? wTotal / supplied : 1;
+  const senRate = inp.seniorRevPerChair ?? (inp.seniorRevMult != null ? inp.revPerChair * inp.seniorRevMult : inp.revPerChair); // legacy scenarios saved a multiplier
+  const wRev = salDays * inp.revPerChair + senDays * senRate;
+  const blendedRev = supplied > 0 ? wRev / supplied : inp.revPerChair;
+  const sFracW = wRev > 0 ? senDays * senRate / wRev : 0;
   const rev = Array.from({length: 5}, (_, i) => Math.min(capU, (inp.rampStart / 100) * Math.pow(1 + inp.rampGrowth / 100, i)));
   // materials % steps down linearly from (mature + Y1 premium) in Y1 to mature in Y5
   const matSched = Array.from({length: 5}, (_, i) => inp.materialsPct + inp.materialsY1Premium * (1 - i / 4));
@@ -164,7 +167,7 @@ function compute(inp) {
 
   const years = [];
   for (let i = 0; i < 5; i++) {
-    const revenue = inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, i) * 12 * inp.chairs * rev[i] * blendMult;
+    const revenue = blendedRev * Math.pow(1 + inp.revenueGrowth / 100, i) * 12 * inp.chairs * rev[i];
     const denials = revenue * (inp.insuredPct / 100) * (inp.rejectionPct / 100);
     const materials = (revenue * matSched[i]) / 100;
     const gp = revenue - denials - materials;
@@ -241,7 +244,7 @@ function compute(inp) {
   const Bop = Array.from({ length: 24 }, (_, j) => {
     const util = j < 12 ? uOpen + (uEnd - uOpen) * j / 11 : uEnd + (u2End - uEnd) * (j - 12) / 11;
     const yi = j < 12 ? 0 : 1;
-    return inp.revPerChair * Math.pow(1 + inp.revenueGrowth / 100, yi) * inp.chairs * util / 100 * blendMult;
+    return blendedRev * Math.pow(1 + inp.revenueGrowth / 100, yi) * inp.chairs * util / 100;
   });
   const Bat = (t) => { // billings interpolated at fractional month t (0 before operations)
     if (t <= -1) return 0;
@@ -369,7 +372,7 @@ function compute(inp) {
   const exitValue = inp.exitMultiple * y5.ebitda;
   const moic = totalRaise > 0 ? (years.reduce((a, y) => a + y.fcf, 0) + exitValue - loan.residual) / totalRaise : 0; // equity multiple: total cash returned ÷ capital invested
 
-  return { years, y5, cumNI, payback, irr, npv, perDentistMo, perSeniorMo, coverage: cov, seniorFracDays: sFracD, seniorFracRev: sFracW, blendMult, dentistDays: dentistDaysSupplied(inp), chairDays: chairDaysOpen(inp), saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev, moic };
+  return { years, y5, cumNI, payback, irr, npv, perDentistMo, perSeniorMo, coverage: cov, seniorFracDays: sFracD, seniorFracRev: sFracW, blendedRev, dentistDays: dentistDaysSupplied(inp), chairDays: chairDaysOpen(inp), saudization, verdict, vColor, exitValue, monthly, monthlyOp, peakNeed, troughLabel, fundingBudget, fundingOk, uOpen, uEnd, cashflow, monthlyOpex, launchLiquidity, minCashReserve, totalRaise, investCapex, financeable: financeableBase(inp), financedPrincipal: finPrincipal, downPayment: financeableBase(inp) - finPrincipal, monthlyPayment: loan.pmt, financeInterest: loan.totalInterest, financeResidual: loan.residual, opBreakEvenRev, moic };
 }
 function computeIRR(cfs) {
   let lo = -0.95, hi = 5.0;
