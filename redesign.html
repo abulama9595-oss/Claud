@@ -1199,7 +1199,8 @@
                   <div className="flex justify-between" style={{ fontFamily: SANS, fontSize: 11.5, padding: "1.5px 0" }}><span style={{ color: C.sub }}>Production capacity / month</span><span style={{ fontFamily: MONO }}>{f0(m.prodCapMo)}K</span></div>
                   <div className="flex justify-between" style={{ fontFamily: SANS, fontSize: 11.5, padding: "1.5px 0" }}><span style={{ color: C.sub }}>= Revenue per chair / month</span><span style={{ fontFamily: MONO, fontWeight: 700, color: m.revPerChairFull > 200 ? C.neg : C.text }}>{f0(m.revPerChairFull)}K</span></div>
                   <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 3 }}>Sum of every dentist's days × their rate, capped at {f0(m.chairDays)} chair-days/week — sanity-check the per-chair figure against the ~160K KSA norm.</div>
-                  {m.idleDentistDays > 0 && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.neg, marginTop: 3 }}>{f0(m.idleDentistDays)} of {f0(m.dentistDays)} dentist-days/week have no chair — they produce nothing. Add chairs or trim the roster.</div>}
+                  {m.salariedDisplacedDays > 0 && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.neg, marginTop: 3 }}>Seniors take chair priority: {f0(m.salariedDisplacedDays)} salaried dentist-days/week are displaced (salaried production at {pctf(m.salariedRealization * 100)}) — you're paying salaries for chairless days. Trim salaried headcount/days or add chairs.</div>}
+                  {m.seniorRealization < 1 && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.neg, marginTop: 3 }}>Even with priority, the chairs can only host {pctf(m.seniorRealization * 100)} of the senior books — add chairs or clinic days.</div>}
                 </div>
               </Card>
 
@@ -1237,7 +1238,7 @@
                       const booked = m.usedDays > 0 ? Math.min(1, m.util[4] * m.chairDays / m.usedDays) : 0;
                       return (<>
                         <div style={row}><span style={{ color: C.sub }}>Production they generate</span><span style={{ fontFamily: MONO }}>{f0(prod)}K</span></div>
-                        <div style={{ fontFamily: SANS, fontSize: 10, color: C.sub, margin: "0 0 3px" }}>= {f0(inp.seniorRevPerChair)}K book × {pctf(booked * 100)} booked{m.usedFactor < 1 ? ` × ${pctf(m.usedFactor * 100)} chair access` : ""} — days don't scale income</div>
+                        <div style={{ fontFamily: SANS, fontSize: 10, color: C.sub, margin: "0 0 3px" }}>= {f0(inp.seniorRevPerChair)}K book × {pctf(booked * 100)} booked{m.seniorRealization < 1 ? ` × ${pctf(m.seniorRealization * 100)} chair fit` : ""} — days don't scale income; seniors have chair priority</div>
                         <div style={row}><span style={{ color: C.sub }}>True cost of their sessions</span><span style={{ fontFamily: MONO }}>({f0(cost)}K)</span></div>
                         <div style={row}><span style={{ color: C.sub }}>Their pay</span><span style={{ fontFamily: MONO }}>({f0(pay)}K)</span></div>
                         <div style={{ ...row, borderTop: `1px solid ${C.line}`, marginTop: 3, paddingTop: 4, fontWeight: 700 }}><span>Clinic keeps</span><span style={{ fontFamily: MONO, color: margin >= 0 ? C.pos : C.neg }}>{f0(margin)}K</span></div>
@@ -1260,7 +1261,7 @@
                         {f0(m.dentistDays)} dentist-days supplied vs {f0(m.chairDays)} chair-days open per week.{" "}
                         {short ? `Understaffed: utilization is capped at ${pctf(m.coverage * 100)} — below even the Y1 plan of ${pctf(needY1 * 100)}.`
                           : capped ? `Caps growth: the ramp wants ${pctf(needY5 * 100)} by Y5 but the roster only covers ${pctf(m.coverage * 100)}.`
-                          : idle ? "More dentist-days than chair-days — some clinical time is unused."
+                          : idle ? "More dentist-days than chair-days — seniors are rostered first, salaried dentists absorb the squeeze (see Revenue & Capacity)."
                           : "Roster covers the full utilization plan."}
                       </div>
                     </div>
