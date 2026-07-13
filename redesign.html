@@ -732,9 +732,10 @@
         const totalRaise = m.totalRaise;
         const totalRequired = totalRaise, totalBudget = totalRaise, buffer = minCash;
         const by1 = m.years[0];
-        const opexY1 = by1.fixedStaff + by1.share + by1.seniorPay + by1.materials + by1.lease + by1.mkt + by1.other + by1.insUtil + by1.foreign;
+        const opCostsY1 = by1.fixedStaff + by1.materials + by1.lease + by1.mkt + by1.other + by1.insUtil + by1.foreign; // operating costs only (excl. practitioner variable pay)
+        const opexY1 = opCostsY1 + by1.share + by1.seniorPay; // total Y1 cash costs = operating costs + salaried share + senior production pay
         const netRevY1 = by1.revenue - by1.denials;
-        return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, hardAssets, softCosts, inventory, contingency, launchLiquidity, minCash, wcDerived, totalRaise, totalRequired, totalBudget, buffer, opexY1, netRevY1, ebitdaY1: by1.ebitda };
+        return { preOpen, vat, rentCheque1, insPrem, staffOnboard, capexInvest, opShortfall, hardAssets, softCosts, inventory, contingency, launchLiquidity, minCash, wcDerived, totalRaise, totalRequired, totalBudget, buffer, opCostsY1, opexY1, netRevY1, ebitdaY1: by1.ebitda };
       })();
       const rentChequeLabel = inp.rentTerms === "grace" ? `Rent during fit-out (${inp.fitoutMonths}-month grace — waived)` : inp.rentTerms === "semiannual" ? `Semi-annual rent instalments before opening` : `First annual rent cheque (P${inp.fitoutMonths})`;
       const budgetPie = [
@@ -756,6 +757,7 @@
       const bRow = { display: "flex", justifyContent: "space-between", padding: "3.5px 0", fontFamily: SANS, fontSize: 12.5, color: C.text };
       const bVal = { fontFamily: MONO, fontSize: 12.5 };
       const bSub = { display: "flex", justifyContent: "space-between", padding: "7px 0 0", marginTop: 6, borderTop: `1px solid ${C.line}`, fontFamily: SANS, fontSize: 12.5, fontWeight: 700, color: C.text };
+      const bMid = { display: "flex", justifyContent: "space-between", padding: "5px 0 1px", marginTop: 4, borderTop: `1px dotted ${C.line}`, fontFamily: SANS, fontSize: 12, fontWeight: 600, color: C.sub };
       const bTitle = { fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 8 };
 
       const pnlRows = [
@@ -1505,22 +1507,23 @@
                     <div style={bSub}><span>Subtotal</span><span style={bVal}>{f0(budget.preOpen + budget.vat)}</span></div>
                   </div>
                   <div>
-                    <div style={bTitle}>3 · Year-1 OpEx (funded by revenue)</div>
+                    <div style={bTitle}>3 · Year-1 costs (funded by revenue)</div>
                     <div style={bRow}><span style={{ color: C.sub }}>Staff (incl. dentist base)</span><span style={bVal}>{f0(m.years[0].fixedStaff)}</span></div>
-                    <div style={bRow}><span style={{ color: C.sub }}>Salaried dentist profit share</span><span style={bVal}>{f0(m.years[0].share)}</span></div>
-                    {inp.seniorCount > 0 && <div style={bRow}><span style={{ color: C.sub }}>Senior dentists (production pay)</span><span style={bVal}>{f0(m.years[0].seniorPay)}</span></div>}
                     <div style={bRow}><span style={{ color: C.sub }}>Materials &amp; lab</span><span style={bVal}>{f0(m.years[0].materials)}</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Lease &amp; housing (accrual)</span><span style={bVal}>{f0(m.years[0].lease)}</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Marketing (launch-weighted)</span><span style={bVal}>{f0(m.years[0].mkt)}</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Insurance, utilities &amp; waste</span><span style={bVal}>{f0(m.years[0].insUtil)}</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Other OpEx</span><span style={bVal}>{f0(m.years[0].other)}</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Foreign-labour fees</span><span style={bVal}>{f0(m.years[0].foreign)}</span></div>
-                    <div style={bSub}><span>Total Y1 OpEx</span><span style={bVal}>{f0(budget.opexY1)}</span></div>
+                    <div style={bMid}><span>Operating costs</span><span style={bVal}>{f0(budget.opCostsY1)}</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Salaried dentist profit share</span><span style={bVal}>{f0(m.years[0].share)}</span></div>
+                    {inp.seniorCount > 0 && <div style={bRow}><span style={{ color: C.sub }}>Senior dentists (production pay)</span><span style={bVal}>{f0(m.years[0].seniorPay)}</span></div>}
+                    <div style={bSub}><span>Total Y1 cash costs</span><span style={bVal}>{f0(budget.opexY1)}</span></div>
                   </div>
                   <div>
                     <div style={bTitle}>4 · Year-1 Cash Need (M1–M12)</div>
                     <div style={bRow}><span style={{ color: C.sub }}>Net revenue (after denials)</span><span style={bVal}>{f0(budget.netRevY1)}</span></div>
-                    <div style={bRow}><span style={{ color: C.sub }}>Less: Year-1 OpEx</span><span style={bVal}>({f0(budget.opexY1)})</span></div>
+                    <div style={bRow}><span style={{ color: C.sub }}>Less: Year-1 cash costs</span><span style={bVal}>({f0(budget.opexY1)})</span></div>
                     <div style={bRow}><span style={{ color: C.sub }}>Year-1 EBITDA</span><span style={bVal}>{f0(budget.ebitdaY1)}</span></div>
                     <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, fontStyle: "italic", padding: "2px 0 4px" }}>
                       Profitable on the year, but rent cheques, the ramp &amp; insurer receivables create an intra-year trough:
