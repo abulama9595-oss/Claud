@@ -32,7 +32,7 @@
 
   <script type="text/babel" src="components.jsx" data-presets="react"></script>
   <script type="text/babel" data-presets="react">
-    const { useState, useMemo } = React;
+    const { useState, useMemo, useEffect, useCallback } = React;
     const { ComposedChart, BarChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, LabelList } = window.Recharts;
 
     /* ============================================================
@@ -54,7 +54,8 @@
       // retail products
       retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
       // opex per pod / month (SAR '000)
-      rentPod: 15, dentistSalary: 30, podsPerDentist: 2, gosiPct: 11, hygienists: 2, hygSalary: 14, receptionCost: 6,
+      rentPod: 15, dentistSalary: 30, podsPerDentist: 2, gosiPct: 11, hygienists: 2, hygSalary: 14,
+      nursesPerPod: 1, nurseSalary: 5, receptionCost: 6,
       materialsPct: 12,
       // HQ / central — the network is run centrally: management, marketing, operations (CSSD/QA), IT (SAR '000 / mo)
       hqMgmt: 22, hqOffice: 8, hqIt: 6, hqProf: 4, mktPerPod: 8, opsPerPod: 7,
@@ -91,9 +92,9 @@
     // one supervising dentist covers podsPerDentist pods; per-pod cost = monthly salary loaded with GOSI,
     // then split across the pods that dentist covers
     const dentistPerPod = (p) => p.dentistSalary * (1 + (p.gosiPct || 0) / 100) / Math.max(1, p.podsPerDentist || 1);
-    // DIRECT fixed monthly opex per pod (rent, supervising dentist, hygienists, reception) — marketing &
-    // central overhead are managed at HQ, not the pod
-    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + p.receptionCost;
+    // DIRECT fixed monthly opex per pod (rent, supervising dentist, hygienists, nurses, reception) —
+    // marketing & central overhead are managed at HQ, not the pod
+    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * (p.nurseSalary || 0) + p.receptionCost;
     // HQ monthly opex: a fixed central base (mgmt, office, IT, professional) + a per-active-pod component
     // (central marketing & central operations / CSSD / QA)
     const hqFixedMo = (p) => p.hqMgmt + p.hqOffice + p.hqIt + p.hqProf;
@@ -197,10 +198,18 @@
       const mCosts = podFixedMo(p) + mMaterials + mRetailCogs;
       const mEbitda = mService + mRetail + mFunnel - mCosts; // pod contribution (before HQ)
       const podPayback = mEbitda > 0 ? capexPod / (mEbitda * 12) : null;
+      // mature per-pod net after ALL HQ (central per-pod + a share of the fixed HQ base)
+      const hqFixedPerPod = totalPods > 0 ? hqFixedMo(p) / totalPods : 0;
+      const netPerPod = mEbitda - hqPerPodMo(p) - hqFixedPerPod;
+      // Year-1 cost & funding: CapEx (pilot pods + HQ) + operating costs, and the cash to raise for the year
+      const y1 = years[0];
+      const y1Opex = y1.materials + y1.retailCogs + y1.podDirect + y1.hq;
+      const y1FundNeed = Math.max(0, -y1.fcf) + minCashReserve; // Y1 cash out (capex + operating shortfall) + reserve
       return { years, y5, cumCharts, dbValue, inclDb, exitOps, exitValue, irr, moic, cumFCF,
         totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqPerPodMo: hqPerPodMo(p),
         launchLiquidity, minCashReserve, capitalToRaise, selfFunded,
-        mature: { appts: mAppts, service: mService, retail: mRetail, funnel: mFunnel, materials: mMaterials, retailCogs: mRetailCogs, fixed: podFixedMo(p), hqPerPod: hqPerPodMo(p), costs: mCosts, ebitda: mEbitda, cases: mCases, payback: podPayback } };
+        year1: { capex: y1.capex, opex: y1Opex, revenue: y1.revenue, ebitda: y1.ebitda, fcf: y1.fcf, fundNeed: y1FundNeed },
+        mature: { appts: mAppts, service: mService, retail: mRetail, funnel: mFunnel, materials: mMaterials, retailCogs: mRetailCogs, fixed: podFixedMo(p), hqPerPod: hqPerPodMo(p), hqFixedPerPod, netPerPod, costs: mCosts, ebitda: mEbitda, cases: mCases, payback: podPayback } };
     }
 
     function SectionHeader({ eyebrow, title, sub }) {
@@ -229,6 +238,67 @@
       const m = useMemo(() => computePods(inp), [inp]);
       const F = inp.inclFunnel;
       const totalPods = m.totalPods;
+
+      // ── saved scenarios (localStorage, same pattern as the clinic study) ──
+      const [saved, setSaved] = useState([]);
+      const [scenName, setScenName] = useState("");
+      const [toast, setToast] = useState(null);
+      const flash = (t) => { setToast(t); setTimeout(() => setToast(null), 2200); };
+      const loadList = useCallback(() => {
+        const ex = JSON.parse(localStorage.getItem("pods_scenarios") || "{}");
+        setSaved(Object.entries(ex).map(([key, v]) => ({ key, ...v })).sort((a, b) => (b.ts || 0) - (a.ts || 0)));
+      }, []);
+      useEffect(() => { loadList(); }, [loadList]);
+      const saveScenario = () => {
+        const name = scenName.trim(); if (!name) { flash("Name the scenario first"); return; }
+        const id = name.replace(/[\s/\\'"]+/g, "_").slice(0, 60);
+        const ex = JSON.parse(localStorage.getItem("pods_scenarios") || "{}");
+        ex[id] = { name, inputs: inp, ts: Date.now() };
+        localStorage.setItem("pods_scenarios", JSON.stringify(ex));
+        setScenName(""); flash(`Saved "${name}"`); loadList();
+      };
+      const loadScenario = (s) => { setInp({ ...POD_BASE, ...s.inputs }); flash(`Loaded "${s.name}"`); };
+      const deleteScenario = (s) => {
+        const ex = JSON.parse(localStorage.getItem("pods_scenarios") || "{}");
+        delete ex[s.key]; localStorage.setItem("pods_scenarios", JSON.stringify(ex));
+        flash(`Deleted "${s.name}"`); loadList();
+      };
+      const fileRef = React.useRef(null);
+      const exportScenarios = () => {
+        const scenarios = JSON.parse(localStorage.getItem("pods_scenarios") || "{}");
+        const bundle = { type: "dental-pods-scenarios", version: 1, exportedAt: new Date().toISOString(), current: inp, scenarios };
+        const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" }));
+        const a = document.createElement("a"); a.href = url; a.download = `pods-scenarios-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        flash(`Exported ${Object.keys(scenarios).length} saved + current`);
+      };
+      const importScenarios = (e) => {
+        const file = e.target.files && e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const data = JSON.parse(reader.result); let incoming = {}, loadedCurrent = false;
+            if (data && data.scenarios && typeof data.scenarios === "object") {
+              incoming = data.scenarios;
+              if (data.current && typeof data.current === "object") { setInp({ ...POD_BASE, ...data.current }); loadedCurrent = true; }
+            } else if (data && data.inputs && typeof data.inputs === "object") {
+              const id = (data.name || "imported").replace(/[\s/\\'"]+/g, "_").slice(0, 60);
+              incoming = { [id]: { name: data.name || "Imported", inputs: data.inputs, ts: data.ts || Date.now() } };
+            } else if (data && typeof data === "object" && ("podsY1" in data || "chairs" in data)) {
+              setInp({ ...POD_BASE, ...data }); loadedCurrent = true;
+            } else if (data && typeof data === "object") { incoming = data; }
+            const merged = { ...JSON.parse(localStorage.getItem("pods_scenarios") || "{}"), ...incoming };
+            localStorage.setItem("pods_scenarios", JSON.stringify(merged)); loadList();
+            const n = Object.keys(incoming).length;
+            flash(n > 0 ? `Imported ${n} scenario${n === 1 ? "" : "s"}${loadedCurrent ? " + model" : ""}` : (loadedCurrent ? "Loaded model" : "Nothing to import"));
+          } catch (err) { flash("Import failed — not a valid file"); }
+        };
+        reader.readAsText(file); e.target.value = "";
+      };
+      const compareRows = [{ name: "Current", inputs: inp }, ...saved.map(s => ({ name: s.name, inputs: { ...POD_BASE, ...s.inputs } }))].map(s => {
+        const x = computePods(s.inputs);
+        return { name: s.name, raise: x.capitalToRaise, y1: x.year1.fundNeed, ebitda: x.y5.ebitdaPct, irr: x.irr, moic: x.moic, pay: x.years.find(y => y.cumFCF >= 0) ? x.years.find(y => y.cumFCF >= 0).year : "> Y5", net: x.mature.netPerPod };
+      });
 
       // table row styles (sources-and-uses / breakdowns)
       const bRow = { display: "flex", justifyContent: "space-between", padding: "3.5px 0", fontFamily: SANS, fontSize: 12.5, color: C.text };
@@ -338,6 +408,8 @@
                 <Slider label="Pods per supervising dentist" value={inp.podsPerDentist} min={1} max={3} step={1} unit="pods" onChange={(v) => set("podsPerDentist", v)} hint="MOH allows one dentist to supervise hygienists across a small cluster" />
                 <Slider label="Hygienists" value={inp.hygienists} min={1} max={4} step={1} unit="staff" onChange={(v) => set("hygienists", v)} />
                 <Slider label="Hygienist salary (loaded)" value={inp.hygSalary} min={8} max={22} step={0.5} unit="K SAR" onChange={(v) => set("hygSalary", v)} />
+                <Slider label="Nurses / assistants per pod" value={inp.nursesPerPod} min={0} max={3} step={1} unit="staff" onChange={(v) => set("nursesPerPod", v)} hint="dental assistant / chairside support" />
+                <Slider label="Nurse salary (loaded)" value={inp.nurseSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("nurseSalary", v)} />
                 <Slider label="Reception / retail assistant" value={inp.receptionCost} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionCost", v)} />
                 <Slider label="Consumables & lab" value={inp.materialsPct} min={5} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
                 <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 6 }}>Marketing &amp; central overhead are run at HQ (card E) — not charged to the pod.</div>
@@ -421,6 +493,7 @@
                 <div style={bRow}><span style={{ color: C.sub }}>Mall rent</span><span style={bVal}>{f0(inp.rentPod)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Supervising dentist (loaded ÷ {inp.podsPerDentist})</span><span style={bVal}>{f0(inp.dentistSalary * (1 + inp.gosiPct / 100) / inp.podsPerDentist)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Hygienists ({inp.hygienists})</span><span style={bVal}>{f0(inp.hygienists * inp.hygSalary)}</span></div>
+                {inp.nursesPerPod > 0 && <div style={bRow}><span style={{ color: C.sub }}>Nurses / assistants ({inp.nursesPerPod})</span><span style={bVal}>{f0(inp.nursesPerPod * inp.nurseSalary)}</span></div>}
                 <div style={bRow}><span style={{ color: C.sub }}>Reception / retail assistant</span><span style={bVal}>{f0(inp.receptionCost)}</span></div>
                 <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Direct fixed / pod</span><span style={bVal}>{f0(m.mature.fixed)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>+ Consumables ({inp.materialsPct}% svc)</span><span style={bVal}>{f0(m.mature.materials)}</span></div>
@@ -462,6 +535,19 @@
                   Capital to raise = launch liquidity + reserve; expansion self-funds from operating cash. MOIC ({m.moic ? m.moic.toFixed(1) + "×" : "—"}) is measured on the full {f0(m.totalCapex)}K deployed.
                 </div>
               </div>
+              {/* Year 1 */}
+              <div style={card}>
+                <div style={bTitle}>6 · Year 1 — cost & funding</div>
+                <div style={bRow}><span style={{ color: C.sub }}>CapEx (pilot pods + HQ)</span><span style={bVal}>{f0(m.year1.capex)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>OpEx (pods + HQ)</span><span style={bVal}>{f0(m.year1.opex)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Revenue</span><span style={bVal}>{f0(m.year1.revenue)}</span></div>
+                <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Year-1 EBITDA</span><span style={{ fontFamily: MONO, fontSize: 12.5, color: m.year1.ebitda >= 0 ? C.pos : C.neg }}>{f0(m.year1.ebitda)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Year-1 free cash flow</span><span style={{ fontFamily: MONO, fontSize: 12.5, color: m.year1.fcf >= 0 ? C.pos : C.neg }}>{f0(m.year1.fcf)}</span></div>
+                <div style={bSub}><span>Fund to raise for Year 1</span><span style={bVal}>{f0(m.year1.fundNeed)}</span></div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>
+                  Year-1 CapEx + operating shortfall + {inp.minCashMonths}-mo reserve — cash to have in the bank before opening.
+                </div>
+              </div>
             </div>
 
             {/* mature pod economics */}
@@ -475,7 +561,9 @@
                     {F && <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>Funnel capture</span><span>{f0(m.mature.funnel)}K</span></div>}
                     <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>Direct costs</span><span>({f0(m.mature.costs)}K)</span></div>
                     <div className="flex justify-between" style={{ gap: 30, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}><span style={{ fontFamily: SANS }}>Pod contribution (pre-HQ)</span><span style={{ color: m.mature.ebitda >= 0 ? C.pos : C.neg }}>{f0(m.mature.ebitda)}K</span></div>
-                    <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>less HQ central / pod</span><span>({f0(m.mature.hqPerPod)}K)</span></div>
+                    <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>less central / pod</span><span>({f0(m.mature.hqPerPod)}K)</span></div>
+                    <div className="flex justify-between" style={{ gap: 30 }}><span style={{ fontFamily: SANS, color: C.sub }}>less HQ fixed / pod</span><span>({f0(m.mature.hqFixedPerPod)}K)</span></div>
+                    <div className="flex justify-between" style={{ gap: 30, borderTop: `1px solid ${C.line}`, fontWeight: 700 }}><span style={{ fontFamily: SANS }}>Pod net (post-HQ)</span><span style={{ color: m.mature.netPerPod >= 0 ? C.pos : C.neg }}>{f0(m.mature.netPerPod)}K</span></div>
                   </div>
                 </div>
                 <div style={{ fontFamily: SANS, fontSize: 12, color: C.sub, maxWidth: 320, lineHeight: 1.6 }}>
@@ -583,12 +671,66 @@
               </div>
             </div>
 
+            {/* scenarios */}
+            <SectionHeader eyebrow={F ? "06 · Scenarios" : "05 · Scenarios"} title="Save & compare scenarios" sub="Save the current settings as a named scenario (Base, Conservative, Upside…). They're stored in this browser and line up beside the current model in the table below." />
+            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 20px", marginBottom: 16 }}>
+              {compareRows.length > 1 ? (
+                <div style={{ overflowX: "auto", marginBottom: 14 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                    <thead><tr>
+                      <th style={{ ...th, textAlign: "left", fontFamily: SANS }}>Scenario</th>
+                      <th style={th}>Capital to raise</th><th style={th}>Y1 fund</th><th style={th}>Y5 EBITDA %</th><th style={th}>IRR</th><th style={th}>MOIC</th><th style={th}>Payback</th><th style={th}>Net / pod·mo</th>
+                    </tr></thead>
+                    <tbody>
+                      {compareRows.map((r, i) => (
+                        <tr key={i} style={{ background: i === 0 ? "#F3EFE6" : "transparent" }}>
+                          <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: i === 0 ? 700 : 400 }}>{r.name}</td>
+                          <td style={td}>{f0(r.raise)}K</td>
+                          <td style={td}>{f0(r.y1)}K</td>
+                          <td style={td}>{pctf(r.ebitda)}</td>
+                          <td style={td}>{r.irr != null ? pctf(r.irr * 100) : "—"}</td>
+                          <td style={td}>{r.moic ? r.moic.toFixed(1) + "×" : "—"}</td>
+                          <td style={td}>{r.pay}</td>
+                          <td style={td}>{f0(r.net)}K</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ fontFamily: SANS, fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>No saved scenarios yet — name one and hit Save; it appears here beside the current model.</div>
+              )}
+              <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
+                <input value={scenName} onChange={(e) => setScenName(e.target.value)} placeholder="Name this scenario…" onKeyDown={(e) => e.key === "Enter" && saveScenario()}
+                  style={{ flex: "1 1 200px", minWidth: 160, padding: "8px 11px", fontFamily: SANS, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 7, background: C.bone, color: C.text }} />
+                <button onClick={saveScenario} style={btn(C.brass, C.ink)}>Save</button>
+                <button onClick={exportScenarios} title="Download saved scenarios + current as JSON" style={btn("transparent", C.sub, C.line)}>Export</button>
+                <button onClick={() => fileRef.current && fileRef.current.click()} title="Load scenarios from a JSON file" style={btn("transparent", C.sub, C.line)}>Import</button>
+                <input ref={fileRef} type="file" accept="application/json,.json" onChange={importScenarios} style={{ display: "none" }} />
+              </div>
+              {saved.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: C.sub, marginBottom: 8 }}>Saved · stored in this browser</div>
+                  <div className="flex flex-wrap" style={{ gap: 8 }}>
+                    {saved.map((s) => (
+                      <div key={s.key} className="flex items-center" style={{ gap: 6, border: `1px solid ${C.line}`, borderRadius: 7, padding: "5px 6px 5px 11px", background: C.bone }}>
+                        <button onClick={() => loadScenario(s)} title="Load" style={{ background: "none", border: "none", cursor: "pointer", fontFamily: SANS, fontSize: 12.5, color: C.text }}>{s.name}</button>
+                        <button onClick={() => deleteScenario(s)} title="Delete" style={{ background: "none", border: "none", cursor: "pointer", color: C.neg, fontFamily: MONO, fontSize: 14, lineHeight: 1, padding: "0 4px" }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 12 }}>Scenarios are saved to this browser's local storage; use Export / Import to move them between devices.</div>
+            </div>
+
             {/* compliance note */}
             <div style={{ background: C.ink, borderRadius: 10, padding: "18px 22px", fontFamily: SANS, fontSize: 12.5, color: C.invSub, lineHeight: 1.7 }}>
               <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.brassLt, marginBottom: 6 }}>Compliance guardrails</div>
               Each pod is a <b style={{ color: C.inv }}>licensed MOH facility</b> with a supervising dentist; hygienists work under prescription and sterilization runs through a central CSSD. Retail products sold must be SFDA-compliant.{F ? <> With the funnel on, dental records are <b style={{ color: C.inv }}>sensitive personal data under the Saudi PDPL</b> — nothing moves without the explicit opt-in modelled by the consent slider, and raw records are never sold (Art. 35: up to 2 yrs / SAR 3M for unlawful disclosure). The referral model additionally needs a legal opinion on MOH fee-splitting; the hub model avoids that by keeping treatment, and data, in-group.</> : " With the funnel switched off, the model is a pure hygiene-and-retail business and carries none of the PDPL data-monetization or fee-splitting exposure."}
             </div>
           </div>
+          {toast && <div style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: C.ink, color: C.inv, fontFamily: SANS, fontSize: 13, padding: "10px 18px", borderRadius: 8, boxShadow: "0 6px 20px rgba(0,0,0,0.25)", zIndex: 100 }}>{toast}</div>}
         </div>
       );
     }
