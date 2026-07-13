@@ -47,9 +47,9 @@ Default must give: totalRaise **9033**, IRR **~0.6717**, NPV **32981**, verdict 
 There is a saved baseline JSON in the scratchpad during a session; re-capture one at the start of new work.
 
 ## Git & deploy workflow
-- Develop on branch **`claude/dreamy-newton-pc4hzd`**. Repo: `abulama9595-oss/Claud` (GitHub MCP tools, `mcp__github__*`).
-- **The repo's default branch is currently `claude/dreamy-newton-pc4hzd`, and GitHub Pages deploys from `main`.** So "push to production" = open a PR `head=claude/dreamy-newton-pc4hzd base=main`, merge it, and the Pages "pages build and deployment" workflow deploys `main`.
-- After a merge, the working branch is behind — **restart it from main before the next change**: `git fetch origin main && git checkout -B claude/dreamy-newton-pc4hzd origin/main`. (This session's rule: a merged PR is finished; never stack new work on merged history.)
+- Develop on the branch **this session assigns** (a fresh `claude/*` branch each task — do not hardcode a name here, it drifts). Repo: `abulama9595-oss/Claud` (GitHub MCP tools, `mcp__github__*`).
+- **GitHub Pages deploys from `main`.** So "push to production" = open a PR `head=<your session branch> base=main`, merge it, and the Pages "pages build and deployment" workflow deploys `main`.
+- After a merge, the working branch is behind — **restart it from main before the next change** (keep the same branch name): `git fetch origin main && git checkout -B <your session branch> origin/main`. A merged PR is finished; never stack new work on merged history.
 - Commit messages end with the Co-Authored-By + Claude-Session trailers already used in history. Do NOT put the model id anywhere in commits/PRs.
 - The network is proxied and blocks `github.io`, so you can't fetch the live URL to verify — confirm deploys via the Actions run conclusion instead. NOTE: `mcp__github__actions_list` returns huge (~300KB) payloads; it saves to a file — parse with a tiny python snippet reading `d['workflow_runs'][0]`, don't dump it.
 
