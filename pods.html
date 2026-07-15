@@ -232,7 +232,8 @@
       // Year-1 cost & funding: the cash to have available = Year-1 CapEx + Year-1 OpEx + the cash reserve
       const y1 = years[0];
       const y1Opex = y1.materials + y1.retailCogs + y1.podDirect + y1.hq + y1.insurance;
-      const y1FundNeed = y1.capex + y1Opex + minCashReserve;
+      const y1Reserve = Math.max(0, p.minCashMonths) * y1Opex / 12; // reserve sized on Year-1 opex (pods open in Y1), not the mature network
+      const y1FundNeed = y1.capex + y1Opex + y1Reserve;
       // per-pod monthly economics at a given booking (appts / chair / day) — reused for mature & Year-1
       const podEcon = (apptsPCD) => {
         const appts = p.chairs * apptsPCD * p.daysPerMonth;
@@ -268,7 +269,7 @@
         totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqPerPodMo: hqPerPodMo(p),
         hqStaffMo: hqStaffMo(p), hqStaffCount: hqStaffCount(p), matureInsuranceMo, capacityPCD, mApptsPCD, y1ApptsPCD, steady, y1Pod,
         launchLiquidity, minCashReserve, capitalToRaise, selfFunded, hqFixedPerPod,
-        year1: { capex: y1.capex, opex: y1Opex, revenue: y1.revenue, ebitda: y1.ebitda, fcf: y1.fcf, fundNeed: y1FundNeed },
+        year1: { capex: y1.capex, opex: y1Opex, revenue: y1.revenue, ebitda: y1.ebitda, fcf: y1.fcf, reserve: y1Reserve, fundNeed: y1FundNeed },
         mature: { apptsPCD: mApptsPCD, appts: maturePod.appts, service: maturePod.service, retail: maturePod.retail, funnel: maturePod.funnel, materials: maturePod.materials, retailCogs: maturePod.retailCogs, fixed: podFixedMo(p), hqPerPod: hqPerPodMo(p), hqFixedPerPod, insPerPod: matureInsuranceMo / totalPods, netPerPod, costs: maturePod.costs, ebitda: maturePod.ebitda, cases: maturePod.cases, payback: podPayback } };
     }
 
@@ -642,7 +643,7 @@
                 <div style={bTitle}>6 · Year 1 — fund needed</div>
                 <div style={bRow}><span style={{ color: C.sub }}>Year-1 CapEx (pilot pods + HQ)</span><span style={bVal}>{f0(m.year1.capex)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Year-1 OpEx (pods + HQ + insurance)</span><span style={bVal}>{f0(m.year1.opex)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Minimum-cash reserve ({inp.minCashMonths}mo)</span><span style={bVal}>{f0(m.minCashReserve)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Minimum-cash reserve ({inp.minCashMonths}mo of Y1 opex)</span><span style={bVal}>{f0(m.year1.reserve)}</span></div>
                 <div style={bSub}><span>Fund needed for Year 1</span><span style={bVal}>{f0(m.year1.fundNeed)}</span></div>
                 <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>CapEx + full-year OpEx + reserve (revenue of {f0(m.year1.revenue)}K comes in over the year as a return).</div>
               </div>
