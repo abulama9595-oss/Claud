@@ -69,11 +69,11 @@
        ============================================================ */
     const POD_BASE = {
       // rollout
-      podsY1: 4, podsPerYear: 3,
+      podsY1: 4, podsPerYear: 2,
       // format & capacity
-      chairs: 4, apptsPerChairDay: 10, daysPerMonth: 26,
+      chairs: 4, apptsPerChairDay: 15, daysPerMonth: 26,
       // appointment-based demand ramp (appts / chair / day), capped by capacity (apptsPerChairDay)
-      apptsOpen: 5, apptsRampPerYr: 2,
+      apptsOpen: 10, apptsRampPerYr: 5,
       // service revenue (hygiene & whitening)
       // service pricing split by type: hygiene (frequent) vs whitening (occasional, higher ticket)
       hygieneTicket: 150, whiteningTicket: 200, whiteningMixPct: 15,
@@ -81,38 +81,38 @@
       inclRetail: false, retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
       // pod staff & opex (per pod / month, SAR '000). "loaded" salaries include GOSI; the dentist
       // and HQ salaries are entered raw and loaded with gosiPct.
-      rentPod: 15,
-      dentistSalary: 30, podsPerDentist: 2, gosiPct: 11,
-      hygienists: 2, hygSalary: 14,
-      nursesPerPod: 1, nurseSalary: 5, nurseHousing: 80,
-      receptionists: 1, receptionSalary: 6,
+      rentPod: 23,
+      dentistSalary: 12, podsPerDentist: 1, gosiPct: 11,
+      hygienists: 3, hygSalary: 8,
+      nursesPerPod: 2, nurseSalary: 5, nurseHousing: 80,
+      receptionists: 0, receptionSalary: 5,
       materialsPct: 0,
       // pod overheads & statutory: utilities + mall CAM/service charges (per pod/mo), card fees (% of rev), EOSB accrual (% of payroll)
       podOverheadMo: 6, paymentFeePct: 1.5, eosbPct: 8.3,
       // CSSD / sterilization: central hub vs an autoclave per pod
-      cssdCentralized: false, cssdOpexPerPod: 5, hqCxCssd: 180, cssdPerPodCapex: 70,
+      cssdCentralized: false, cssdOpexPerPod: 3, hqCxCssd: 180, cssdPerPodCapex: 70,
       // staff insurance (SAR / person / year)
-      medInsPerEmp: 3000, malpracticePerClin: 4000,
+      medInsPerEmp: 5000, malpracticePerClin: 5000,
       // HQ staff — count N and monthly salary (K SAR), loaded with GOSI
-      hqAdminMgrN: 1, hqAdminMgrSal: 28,
-      hqMedMgrN: 1, hqMedMgrSal: 32,
-      hqAccountantN: 1, hqAccountantSal: 13,
-      hqProcAdminN: 1, hqProcAdminSal: 9,
-      hqMarketingN: 1, hqMarketingSal: 14,
-      hqHrN: 1, hqHrSal: 11,
-      hqDriverN: 1, hqDriverSal: 4,
+      hqAdminMgrN: 1, hqAdminMgrSal: 15,
+      hqMedMgrN: 1, hqMedMgrSal: 20,
+      hqAccountantN: 1, hqAccountantSal: 7,
+      hqProcAdminN: 1, hqProcAdminSal: 6,
+      hqMarketingN: 1, hqMarketingSal: 15,
+      hqHrN: 1, hqHrSal: 12,
+      hqDriverN: 1, hqDriverSal: 2,
       // HQ other opex (SAR '000 / YEAR)
-      hqOffice: 96, hqIt: 72, hqProf: 48, marketingPct: 5, centralOpsPct: 2,
+      hqOffice: 60, hqIt: 10, hqProf: 0, marketingPct: 5, centralOpsPct: 2,
       // HQ capex (SAR '000, one-time)
-      hqCxOffice: 200, hqCxIt: 200, hqCxBrand: 150, hqCxSetup: 120, hqCxCar: 100,
+      hqCxOffice: 200, hqCxIt: 20, hqCxBrand: 200, hqCxSetup: 50, hqCxCar: 100,
       // pod capex (SAR '000) breakdown
-      cxFitout: 170, cxEquip: 165, cxXray: 120, cxItBrand: 50, cxRetail: 40, cxLicensing: 18, cxContingency: 27,
+      cxFitout: 300, cxEquip: 200, cxXray: 120, cxItBrand: 30, cxRetail: 0, cxLicensing: 18, cxContingency: 30,
       // patient-funnel & data upside (optional module)
       inclFunnel: false,
       screensPerDay: 15, needPct: 35, consentPct: 60, acceptPct: 40, caseValue: 3500,
       mode: "hub", referralFeePct: 12, hubMarginPct: 30, chartValue: 150, inclDatabase: true,
       // capital & returns
-      minCashMonths: 3, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12, maintCapexPct: 3,
+      minCashMonths: 6, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12, maintCapexPct: 3,
       // depreciation lives by asset class (years, straight-line)
       depFitout: 10, depEquip: 7, depIt: 4, depVehicle: 5, depIntangible: 5,
     };
