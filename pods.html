@@ -406,11 +406,18 @@
           {/* header band */}
           <div style={{ background: C.ink, padding: "26px 4vw 20px" }}>
             <div style={{ maxWidth: 1180, margin: "0 auto" }}>
-              <div>
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt, marginBottom: 5 }}>Concept model · Riyadh &amp; major malls</div>
-                <h1 style={{ fontFamily: SANS, fontSize: 24, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em", margin: 0 }}>Mall Dental-Hygiene Pods — Network Model</h1>
-                <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.invSub, marginTop: 6, maxWidth: 780 }}>
-                  Small mall shops selling hygiene &amp; whitening services, run by a central HQ. Retail, the patient-funnel/data upside, and central-vs-per-pod sterilization are all switchable. Figures in SAR '000. <a href="index.html" style={{ color: C.brassLt }}>← all models</a>
+              <div className="flex flex-wrap items-start justify-between" style={{ gap: 16 }}>
+                <div style={{ flex: "1 1 360px", minWidth: 260 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt, marginBottom: 5 }}>Concept model · Riyadh &amp; major malls</div>
+                  <h1 style={{ fontFamily: SANS, fontSize: 24, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em", margin: 0 }}>Mall Dental-Hygiene Pods — Network Model</h1>
+                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.invSub, marginTop: 6, maxWidth: 780 }}>
+                    Small mall shops selling hygiene &amp; whitening services, run by a central HQ. Retail, the patient-funnel/data upside, and central-vs-per-pod sterilization are all switchable. Figures in SAR '000. <a href="index.html" style={{ color: C.brassLt }}>← all models</a>
+                  </div>
+                </div>
+                <div style={{ background: C.ink2, border: `1px solid ${C.brass}`, borderRadius: 10, padding: "12px 20px", textAlign: "right", flex: "0 0 auto" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brassLt, marginBottom: 4 }}>Fund needed · Year 1</div>
+                  <div style={{ fontFamily: MONO, fontSize: 27, fontWeight: 700, color: C.inv, lineHeight: 1 }}>SAR {f0(m.year1.fundNeed)}K</div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.invSub, marginTop: 5 }}>Y1 CapEx {f0(m.year1.capex)}K + ramp + {inp.minCashMonths}mo reserve</div>
                 </div>
               </div>
               {/* module toggles — the primary interaction */}
