@@ -101,7 +101,7 @@
       // HQ other opex (SAR '000 / YEAR)
       hqOffice: 96, hqIt: 72, hqProf: 48, marketingPct: 5, centralOpsPct: 2,
       // HQ capex (SAR '000, one-time)
-      hqCxOffice: 200, hqCxIt: 200, hqCxBrand: 150, hqCxSetup: 120,
+      hqCxOffice: 200, hqCxIt: 200, hqCxBrand: 150, hqCxSetup: 120, hqCxCar: 100,
       // pod capex (SAR '000) breakdown
       cxFitout: 170, cxEquip: 165, cxXray: 120, cxItBrand: 50, cxRetail: 40, cxLicensing: 18, cxContingency: 27,
       // patient-funnel & data upside (optional module)
@@ -127,6 +127,7 @@
       ["hqCxIt", "IT / ERP / practice-management platform"],
       ["hqCxBrand", "Brand, website & launch campaign"],
       ["hqCxSetup", "Pre-opening HQ team & setup"],
+      ["hqCxCar", "Vehicle / company car"],
     ];
     // HQ staff roles — key, label; each has {key}N (count) and {key}Sal (monthly K SAR)
     const HQ_STAFF = [
@@ -148,9 +149,9 @@
     // HQ staff monthly cost (loaded)
     const hqStaffCount = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0), 0);
     const hqStaffMo = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0) * (p[k + "Sal"] || 0), 0) * gosiMul(p);
-    // DIRECT fixed monthly opex per pod (rent, dentist, hygienists, nurses, receptionists, + CSSD if distributed)
-    // DIRECT fixed monthly opex per pod. nurseHousing is an ANNUAL figure → /12 for the monthly view.
-    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * ((p.nurseSalary || 0) + (p.nurseHousing || 0) / 12)
+    // DIRECT fixed monthly opex per pod (rent, dentist, hygienists, nurses, receptionists, + CSSD if distributed).
+    // Nurse housing is NOT here — it is charged centrally at HQ (see nurseHousingYr) across all nurses.
+    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * (p.nurseSalary || 0)
       + (p.receptionists || 0) * (p.receptionSalary || 0) + (p.cssdCentralized ? 0 : (p.cssdOpexPerPod || 0));
     // HQ FIXED monthly opex: staff + office/IT/professional (office etc. are ANNUAL inputs → /12).
     const hqFixedMo = (p) => hqStaffMo(p) + (p.hqOffice + p.hqIt + p.hqProf) / 12;
@@ -158,8 +159,10 @@
     const hqCssdPerPodMo = (p) => p.cssdCentralized ? (p.cssdOpexPerPod || 0) : 0;
     // HQ VARIABLE opex scales with revenue (best practice): marketing & central ops as a % of revenue
     const hqVarRate = (p) => ((p.marketingPct || 0) + (p.centralOpsPct || 0)) / 100;
-    // full HQ annual opex = fixed base + revenue-linked variable + central CSSD per active pod
-    const hqOpexYr = (p, revenue, effPods) => hqFixedMo(p) * 12 + hqVarRate(p) * revenue + hqCssdPerPodMo(p) * 12 * effPods;
+    // nurse housing/accommodation, charged centrally at HQ — a per-nurse ANNUAL allowance across every nurse in `pods` pods
+    const nurseHousingYr = (p, pods) => (p.nurseHousing || 0) * (p.nursesPerPod || 0) * pods;
+    // full HQ annual opex = fixed base + revenue-linked variable + central CSSD per active pod + nurse housing (all nurses)
+    const hqOpexYr = (p, revenue, effPods) => hqFixedMo(p) * 12 + hqVarRate(p) * revenue + hqCssdPerPodMo(p) * 12 * effPods + nurseHousingYr(p, effPods);
     // clinical & total staff per pod (for insurance headcount)
     const clinicalPerPod = (p) => 1 / Math.max(1, p.podsPerDentist || 1) + p.hygienists + (p.nursesPerPod || 0);
     const staffPerPod = (p) => clinicalPerPod(p) + (p.receptionists || 0);
@@ -251,7 +254,7 @@
       const matureTotalEmp = staffPerPod(p) * totalPods + hqStaffCount(p);
       const matureClinicalEmp = clinicalPerPod(p) * totalPods;
       const matureInsuranceMo = (matureTotalEmp * p.medInsPerEmp + matureClinicalEmp * p.malpracticePerClin) / 1000 / 12;
-      const matureNetworkFixedMo = totalPods * (podFixedMo(p) + hqCssdPerPodMo(p)) + hqFixedMo(p) + matureInsuranceMo; // fixed opex only (revenue-linked HQ excluded from the cash buffer)
+      const matureNetworkFixedMo = totalPods * (podFixedMo(p) + hqCssdPerPodMo(p)) + hqFixedMo(p) + matureInsuranceMo + nurseHousingYr(p, totalPods) / 12; // fixed opex only (revenue-linked HQ excluded from the cash buffer)
       const minCashReserve = Math.max(0, p.minCashMonths) * matureNetworkFixedMo;
       const capitalToRaise = launchLiquidity + minCashReserve;
       const selfFunded = Math.max(0, totalCapex - launchLiquidity);
@@ -530,7 +533,6 @@
                 <Slider label="Hygienist salary (loaded)" value={inp.hygSalary} min={0} max={22} step={0.5} unit="K SAR" onChange={(v) => set("hygSalary", v)} />
                 <Slider label="Nurses / assistants per pod" value={inp.nursesPerPod} min={0} max={3} step={1} unit="staff" onChange={(v) => set("nursesPerPod", v)} />
                 <Slider label="Nurse salary (loaded)" value={inp.nurseSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("nurseSalary", v)} />
-                <Slider label="Nurse housing / rent (per nurse)" value={inp.nurseHousing} min={0} max={96} step={2} unit="K SAR/yr" onChange={(v) => set("nurseHousing", v)} hint="annual staff accommodation allowance per nurse" />
                 <Slider label="Receptionists per pod" value={inp.receptionists} min={0} max={3} step={1} unit="staff" onChange={(v) => set("receptionists", v)} />
                 <Slider label="Receptionist salary (loaded)" value={inp.receptionSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionSalary", v)} />
                 <Slider label="Consumables & lab" value={inp.materialsPct} min={0} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
@@ -563,6 +565,7 @@
                 <Slider label="Office rent & admin" value={inp.hqOffice} min={0} max={480} step={5} unit="K SAR/yr" onChange={(v) => set("hqOffice", v)} />
                 <Slider label="IT / ERP / software" value={inp.hqIt} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqIt", v)} />
                 <Slider label="Professional & compliance" value={inp.hqProf} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqProf", v)} />
+                <Slider label="Nurse housing / rent (per nurse · annual)" value={inp.nurseHousing} min={0} max={96} step={2} unit="K SAR/yr" onChange={(v) => set("nurseHousing", v)} hint="charged at HQ × all nurses across active pods" />
                 <Slider label="Marketing (% of revenue)" value={inp.marketingPct} min={0} max={15} step={0.5} unit="% rev" onChange={(v) => set("marketingPct", v)} hint="brand & campaigns — scales with revenue (best practice)" />
                 <Slider label="Central ops / QA (% of revenue)" value={inp.centralOpsPct} min={0} max={10} step={0.5} unit="% rev" onChange={(v) => set("centralOpsPct", v)} hint="central operations, quality & compliance — scales with revenue" />
                 {HQ_CX_KEYS.map(([k, label]) => (
@@ -635,7 +638,6 @@
                 <div style={bRow}><span style={{ color: C.sub }}>Resident GP (loaded ÷ {inp.podsPerDentist})</span><span style={bVal}>{f0(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Hygienists ({inp.hygienists})</span><span style={bVal}>{f0(inp.hygienists * inp.hygSalary)}</span></div>
                 {inp.nursesPerPod > 0 && <div style={bRow}><span style={{ color: C.sub }}>Nurses / assistants ({inp.nursesPerPod})</span><span style={bVal}>{f0(inp.nursesPerPod * inp.nurseSalary)}</span></div>}
-                {inp.nursesPerPod > 0 && inp.nurseHousing > 0 && <div style={bRow}><span style={{ color: C.sub }}>Nurse housing ({inp.nursesPerPod})</span><span style={bVal}>{f0(inp.nursesPerPod * inp.nurseHousing / 12)}</span></div>}
                 {inp.receptionists > 0 && <div style={bRow}><span style={{ color: C.sub }}>Receptionists ({inp.receptionists})</span><span style={bVal}>{f0(inp.receptionists * inp.receptionSalary)}</span></div>}
                 {!inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>CSSD (per-pod autoclave)</span><span style={bVal}>{f0(inp.cssdOpexPerPod)}</span></div>}
                 <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Direct fixed / pod</span><span style={bVal}>{f0(m.mature.fixed)}</span></div>
@@ -659,10 +661,11 @@
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label} ({inp[k + "N"]})</span><span style={bVal}>{f0(inp[k + "N"] * inp[k + "Sal"] * gosiMulJS(inp) * 12)}</span></div>
                 ))}
                 <div style={bRow}><span style={{ color: C.sub }}>Office · IT · professional</span><span style={bVal}>{f0(inp.hqOffice + inp.hqIt + inp.hqProf)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Nurse housing ({inp.nursesPerPod * inp.podsY1} nurses · Y1)</span><span style={bVal}>{f0(inp.nurseHousing * inp.nursesPerPod * inp.podsY1)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Marketing ({inp.marketingPct}% of Y1 rev)</span><span style={bVal}>{f0(inp.marketingPct / 100 * m.year1.revenue)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Central ops / QA ({inp.centralOpsPct}% of Y1 rev)</span><span style={bVal}>{f0(inp.centralOpsPct / 100 * m.year1.revenue)}</span></div>
                 {inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>Central CSSD × {inp.podsY1} pods (Y1)</span><span style={bVal}>{f0(m.hqCssdPerPodMo * 12 * inp.podsY1)}</span></div>}
-                <div style={bSub}><span>Total HQ opex / year (Year 1)</span><span style={bVal}>{f0(m.hqStaffMo * 12 + (inp.hqOffice + inp.hqIt + inp.hqProf) + (inp.marketingPct + inp.centralOpsPct) / 100 * m.year1.revenue + (inp.cssdCentralized ? m.hqCssdPerPodMo * 12 * inp.podsY1 : 0))}</span></div>
+                <div style={bSub}><span>Total HQ opex / year (Year 1)</span><span style={bVal}>{f0(m.hqStaffMo * 12 + (inp.hqOffice + inp.hqIt + inp.hqProf) + inp.nurseHousing * inp.nursesPerPod * inp.podsY1 + (inp.marketingPct + inp.centralOpsPct) / 100 * m.year1.revenue + (inp.cssdCentralized ? m.hqCssdPerPodMo * 12 * inp.podsY1 : 0))}</span></div>
               </div>
               {/* Year 1 */}
               <div className="print-avoid" style={card}>
