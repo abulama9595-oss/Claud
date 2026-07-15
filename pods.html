@@ -159,8 +159,8 @@
     const hqCssdPerPodMo = (p) => p.cssdCentralized ? (p.cssdOpexPerPod || 0) : 0;
     // HQ VARIABLE opex scales with revenue (best practice): marketing & central ops as a % of revenue
     const hqVarRate = (p) => ((p.marketingPct || 0) + (p.centralOpsPct || 0)) / 100;
-    // nurse housing/accommodation, charged centrally at HQ — a per-nurse ANNUAL allowance across every nurse in `pods` pods
-    const nurseHousingYr = (p, pods) => (p.nurseHousing || 0) * (p.nursesPerPod || 0) * pods;
+    // nurse housing/accommodation, charged centrally at HQ — a single flat ANNUAL cost for all nurses (not per nurse)
+    const nurseHousingYr = (p, pods) => (p.nurseHousing || 0);
     // full HQ annual opex = fixed base + revenue-linked variable + central CSSD per active pod + nurse housing (all nurses)
     const hqOpexYr = (p, revenue, effPods) => hqFixedMo(p) * 12 + hqVarRate(p) * revenue + hqCssdPerPodMo(p) * 12 * effPods + nurseHousingYr(p, effPods);
     // clinical & total staff per pod (for insurance headcount)
@@ -565,7 +565,7 @@
                 <Slider label="Office rent & admin" value={inp.hqOffice} min={0} max={480} step={5} unit="K SAR/yr" onChange={(v) => set("hqOffice", v)} />
                 <Slider label="IT / ERP / software" value={inp.hqIt} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqIt", v)} />
                 <Slider label="Professional & compliance" value={inp.hqProf} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqProf", v)} />
-                <Slider label="Nurse housing / rent (per nurse · annual)" value={inp.nurseHousing} min={0} max={96} step={2} unit="K SAR/yr" onChange={(v) => set("nurseHousing", v)} hint="charged at HQ × all nurses across active pods" />
+                <Slider label="Nurse housing cost" value={inp.nurseHousing} min={0} max={600} step={1} unit="K SAR/yr" onChange={(v) => set("nurseHousing", v)} hint="total annual accommodation cost for all nurses — charged at HQ" />
                 <Slider label="Marketing (% of revenue)" value={inp.marketingPct} min={0} max={15} step={0.5} unit="% rev" onChange={(v) => set("marketingPct", v)} hint="brand & campaigns — scales with revenue (best practice)" />
                 <Slider label="Central ops / QA (% of revenue)" value={inp.centralOpsPct} min={0} max={10} step={0.5} unit="% rev" onChange={(v) => set("centralOpsPct", v)} hint="central operations, quality & compliance — scales with revenue" />
                 {HQ_CX_KEYS.map(([k, label]) => (
@@ -661,11 +661,11 @@
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label} ({inp[k + "N"]})</span><span style={bVal}>{f0(inp[k + "N"] * inp[k + "Sal"] * gosiMulJS(inp) * 12)}</span></div>
                 ))}
                 <div style={bRow}><span style={{ color: C.sub }}>Office · IT · professional</span><span style={bVal}>{f0(inp.hqOffice + inp.hqIt + inp.hqProf)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Nurse housing ({inp.nursesPerPod * inp.podsY1} nurses · Y1)</span><span style={bVal}>{f0(inp.nurseHousing * inp.nursesPerPod * inp.podsY1)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Nurse housing (all nurses)</span><span style={bVal}>{f0(inp.nurseHousing)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Marketing ({inp.marketingPct}% of Y1 rev)</span><span style={bVal}>{f0(inp.marketingPct / 100 * m.year1.revenue)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Central ops / QA ({inp.centralOpsPct}% of Y1 rev)</span><span style={bVal}>{f0(inp.centralOpsPct / 100 * m.year1.revenue)}</span></div>
                 {inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>Central CSSD × {inp.podsY1} pods (Y1)</span><span style={bVal}>{f0(m.hqCssdPerPodMo * 12 * inp.podsY1)}</span></div>}
-                <div style={bSub}><span>Total HQ opex / year (Year 1)</span><span style={bVal}>{f0(m.hqStaffMo * 12 + (inp.hqOffice + inp.hqIt + inp.hqProf) + inp.nurseHousing * inp.nursesPerPod * inp.podsY1 + (inp.marketingPct + inp.centralOpsPct) / 100 * m.year1.revenue + (inp.cssdCentralized ? m.hqCssdPerPodMo * 12 * inp.podsY1 : 0))}</span></div>
+                <div style={bSub}><span>Total HQ opex / year (Year 1)</span><span style={bVal}>{f0(m.hqStaffMo * 12 + (inp.hqOffice + inp.hqIt + inp.hqProf) + inp.nurseHousing + (inp.marketingPct + inp.centralOpsPct) / 100 * m.year1.revenue + (inp.cssdCentralized ? m.hqCssdPerPodMo * 12 * inp.podsY1 : 0))}</span></div>
               </div>
               {/* Year 1 */}
               <div className="print-avoid" style={card}>
