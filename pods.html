@@ -77,7 +77,7 @@
       // service revenue (hygiene & whitening)
       ticket: 280,
       // retail products (optional module)
-      inclRetail: true, retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
+      inclRetail: false, retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
       // pod staff & opex (per pod / month, SAR '000). "loaded" salaries include GOSI; the dentist
       // and HQ salaries are entered raw and loaded with gosiPct.
       rentPod: 15,
@@ -87,7 +87,7 @@
       receptionists: 1, receptionSalary: 6,
       materialsPct: 0,
       // CSSD / sterilization: central hub vs an autoclave per pod
-      cssdCentralized: true, cssdOpexPerPod: 5, hqCxCssd: 180, cssdPerPodCapex: 70,
+      cssdCentralized: false, cssdOpexPerPod: 5, hqCxCssd: 180, cssdPerPodCapex: 70,
       // staff insurance (SAR / person / year)
       medInsPerEmp: 3000, malpracticePerClin: 4000,
       // HQ staff — count N and monthly salary (K SAR), loaded with GOSI
@@ -105,7 +105,7 @@
       // pod capex (SAR '000) breakdown
       cxFitout: 170, cxEquip: 165, cxItBrand: 50, cxRetail: 40, cxLicensing: 18, cxContingency: 27,
       // patient-funnel & data upside (optional module)
-      inclFunnel: true,
+      inclFunnel: false,
       screensPerDay: 15, needPct: 35, consentPct: 60, acceptPct: 40, caseValue: 3500,
       mode: "hub", referralFeePct: 12, hubMarginPct: 30, chartValue: 150, inclDatabase: true,
       // capital & returns
@@ -242,7 +242,7 @@
       const totalCapex = cumCapex;
       const cfs = [0, 0, 0, 0, 0, 0];
       years.forEach((y, i) => { cfs[i] -= y.capex; cfs[i + 1] += y.ni + y.dep; });
-      cfs[5] += exitValue;
+      // 5-year IRR on operating cash flows only — the terminal exit value is deliberately excluded
       const irr = computeIRR(cfs);
       const totalPods = p.podsY1 + p.podsPerYear * 4;
       const launchLiquidity = Math.max(0, -peakNeed);
@@ -494,7 +494,7 @@
               <Kpi label="Y5 EBITDA" value={f0(m.y5.ebitda) + "K"} sub={pctf(m.y5.ebitdaPct) + " margin"} accent={m.y5.ebitda >= 0 ? C.pos : C.neg} />
               <Kpi label="Fund to raise" value={f0(m.capitalToRaise) + "K"} sub={`launch ${f0(m.launchLiquidity)}K + ${inp.minCashMonths}mo reserve`} accent={C.ink2} />
               <Kpi label="Year-1 fund" value={f0(m.year1.fundNeed) + "K"} sub={`capex + opex + reserve`} accent={C.ink2} />
-              <Kpi label="5-yr IRR" value={m.irr != null ? pctf(m.irr * 100) : "—"} sub={`incl. ${inp.exitMultiple}× exit${m.inclDb ? " + database" : ""}`} accent={m.irr != null && m.irr > 0.2 ? C.pos : C.text} />
+              <Kpi label="5-yr IRR" value={m.irr != null ? pctf(m.irr * 100) : "—"} sub="operations only · excl. exit" accent={m.irr != null && m.irr > 0.2 ? C.pos : C.text} />
               <Kpi label="MOIC" value={m.moic ? m.moic.toFixed(1) + "×" : "—"} sub={`on ${f0(m.totalCapex)}K deployed`} accent={C.brass} />
             </div>
 
@@ -659,7 +659,8 @@
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label} ({inp[k + "N"]})</span><span style={bVal}>{f0(inp[k + "N"] * inp[k + "Sal"] * gosiMulJS(inp) * 12)}</span></div>
                 ))}
                 <div style={bRow}><span style={{ color: C.sub }}>Office · IT · professional</span><span style={bVal}>{f0(inp.hqOffice + inp.hqIt + inp.hqProf)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Marketing + ops ({inp.marketingPct + inp.centralOpsPct}% of rev)</span><span style={bVal}>{f0(m.hqVarRate * m.steady.revenue)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Marketing ({inp.marketingPct}% of rev)</span><span style={bVal}>{f0(inp.marketingPct / 100 * m.steady.revenue)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Central ops / QA ({inp.centralOpsPct}% of rev)</span><span style={bVal}>{f0(inp.centralOpsPct / 100 * m.steady.revenue)}</span></div>
                 {inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>Central CSSD × {totalPods} pods</span><span style={bVal}>{f0(m.hqCssdPerPodMo * 12 * totalPods)}</span></div>}
                 <div style={bSub}><span>Total HQ opex / year</span><span style={bVal}>{f0(m.steady.hq)}</span></div>
               </div>
