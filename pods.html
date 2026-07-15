@@ -111,7 +111,7 @@
       screensPerDay: 15, needPct: 35, consentPct: 60, acceptPct: 40, caseValue: 3500,
       mode: "hub", referralFeePct: 12, hubMarginPct: 30, chartValue: 150, inclDatabase: true,
       // capital & returns
-      minCashMonths: 3, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12,
+      minCashMonths: 3, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12, maintCapexPct: 3,
       // depreciation lives by asset class (years, straight-line)
       depFitout: 10, depEquip: 7, depIt: 4, depVehicle: 5, depIntangible: 5,
     };
@@ -236,13 +236,14 @@
         const ebitda = opEbitda + funnelRev;
 
         const newPods = cohorts[i] || 0;
-        const capex = newPods * capexPod + (i === 0 ? hqCapex : 0); // HQ capex deployed at launch
+        const maintCapex = cumCapex * ((p.maintCapexPct || 0) / 100); // reinvestment on the installed asset base (prior years)
+        const capex = newPods * capexPod + (i === 0 ? hqCapex : 0); // growth capex: new pods + HQ deployed at launch
         cumCapex += capex;
         // depreciation by asset class: every open pod's assets + HQ assets (deployed Y1), straight-line
         const dep = podsActive * podDepPerYear(p) + hqDepPerYear(p);
         const zakat = Math.max(0, ebitda - dep) * (p.zakatPct / 100);
         const ni = ebitda - dep - zakat;
-        const fcf = ni + dep - capex;
+        const fcf = ni + dep - capex - maintCapex;
         cumFCF += fcf; peakNeed = Math.min(peakNeed, cumFCF);
 
         const totalRev = podRev + funnelRev;
@@ -250,7 +251,7 @@
         years.push({ year: `Y${i + 1}`, podsActive, newPods, appts, screenings, newCharts, cumCharts, cases, util,
           serviceRev, retailRev, podRev, funnelRev, referralRev, hubCapture, revenue: totalRev,
           materials, retailCogs, paymentFees, podDirect, podContribution, hq, insurance, eosb, opEbitda, ebitda, ebitdaPct: pct(ebitda),
-          dep, zakat, ni, capex, fcf, cumFCF });
+          dep, zakat, ni, capex, maintCapex, fcf, cumFCF });
       }
       const y5 = years[4];
       const dbValue = F ? cumCharts * p.chartValue / 1000 : 0;
@@ -261,7 +262,7 @@
       // (t=i+1), exit at t=5 — investment precedes returns.
       const totalCapex = cumCapex;
       const cfs = [0, 0, 0, 0, 0, 0];
-      years.forEach((y, i) => { cfs[i] -= y.capex; cfs[i + 1] += y.ni + y.dep; });
+      years.forEach((y, i) => { cfs[i] -= y.capex; cfs[i + 1] += y.ni + y.dep - y.maintCapex; });
       // 5-year IRR on operating cash flows only — the terminal exit value is deliberately excluded
       const irr = computeIRR(cfs);
       // NPV of the full investor cash flows (operating + terminal exit) at the discount rate
@@ -282,7 +283,7 @@
       const minCashReserve = Math.max(0, p.minCashMonths) * matureNetworkFixedMo;
       const capitalToRaise = launchLiquidity + minCashReserve;
       const selfFunded = Math.max(0, totalCapex - launchLiquidity);
-      const totalReturned = years.reduce((a, y) => a + y.ni + y.dep, 0) + exitValue;
+      const totalReturned = years.reduce((a, y) => a + y.ni + y.dep - y.maintCapex, 0) + exitValue;
       const moic = totalCapex > 0 && totalReturned > 0 ? totalReturned / totalCapex : null;
       const hqFixedPerPod = totalPods > 0 ? hqFixedMo(p) / totalPods : 0;
       // Year-1 cost & funding: the cash to have available = Year-1 CapEx + Year-1 OpEx + the cash reserve
@@ -482,7 +483,8 @@
         ["Depreciation", "dep", "neg"], ["Zakat", "zakat", "neg"],
         ["Net income", "ni", "head"],
         ["+ Depreciation (non-cash add-back)", "dep", "pos"],
-        ["− CapEx (pods + HQ)", "capex", "neg"],
+        ["− Growth CapEx (pods + HQ)", "capex", "neg"],
+        ["− Maintenance CapEx", "maintCapex", "neg"],
         ["Free cash flow", "fcf", "head"],
       ];
       const modeBtn = (id, label) => (
@@ -616,6 +618,7 @@
                 <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={1} unit="mo opex" onChange={(v) => set("minCashMonths", v)} />
                 <Slider label="Exit multiple (Y5 EBITDA)" value={inp.exitMultiple} min={0} max={10} step={0.5} unit="×" onChange={(v) => set("exitMultiple", v)} />
                 <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={30} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} hint="cost of capital used to discount cash flows" />
+                <Slider label="Maintenance CapEx / yr" value={inp.maintCapexPct} min={0} max={10} step={0.5} unit="% of deployed" onChange={(v) => set("maintCapexPct", v)} hint="annual reinvestment on the installed asset base" />
                 <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "10px 0 4px" }}>Depreciation lives (straight-line)</div>
                 <Slider label="Fit-out & premises" value={inp.depFitout} min={3} max={15} step={1} unit="yrs" onChange={(v) => set("depFitout", v)} />
                 <Slider label="Equipment (chairs · X-ray · CSSD)" value={inp.depEquip} min={3} max={15} step={1} unit="yrs" onChange={(v) => set("depEquip", v)} />
