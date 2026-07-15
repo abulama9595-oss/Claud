@@ -846,8 +846,8 @@
                       <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 700 }}>Active pods</td>
                       {feasYears.map((y) => <td key={y.year} style={{ ...td, fontWeight: 700 }}>{y.podsActive}</td>)}
                     </tr>
-                    {pnlFeas.map(([label, key, kind]) => (
-                      <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
+                    {pnlFeas.map(([label, key, kind], ri) => (
+                      <tr key={`${key}-${ri}`} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
                         <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "neg" ? C.sub : C.text }}>{label}</td>
                         {feasYears.map((y) => {
                           const v = y[key];
@@ -888,8 +888,8 @@
                       <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 700 }}>Active pods (new)</td>
                       {m.years.map((y) => <td key={y.year} style={{ ...td, fontWeight: 700 }}>{y.podsActive} <span style={{ color: C.sub, fontWeight: 400 }}>(+{y.newPods})</span></td>)}
                     </tr>
-                    {pnl.map(([label, key, kind]) => (
-                      <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
+                    {pnl.map(([label, key, kind], ri) => (
+                      <tr key={`${key}-${ri}`} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
                         <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "neg" ? C.sub : C.text }}>{label}</td>
                         {m.years.map((y) => {
                           const v = y[key];
