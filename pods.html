@@ -326,8 +326,8 @@
       const [inp, setInp] = useState({ ...POD_BASE });
       const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
       const m = useMemo(() => computePods(inp), [inp]);
-      // "no expansion" fleet: all the selected pods open in Y1, no new pods added — ramps in place over 5 years
-      const fleet = useMemo(() => { const tp = inp.podsY1 + inp.podsPerYear * 4; return computePods({ ...inp, podsY1: tp, podsPerYear: 0 }); }, [inp]);
+      // "no expansion" fleet: only the pilot pods (Y1 slider), all open in Y1, no new pods added — ramps in place over 5 years
+      const fleet = useMemo(() => computePods({ ...inp, podsPerYear: 0 }), [inp]);
       const F = inp.inclFunnel, R = inp.inclRetail;
       const totalPods = m.totalPods;
 
@@ -764,7 +764,7 @@
             )}
 
             {/* steady-state (feasibility) P&L */}
-            <SectionHeader eyebrow={F ? "05 · Feasibility P&L" : "04 · Feasibility P&L"} title={`P&amp;L — ${totalPods} pods, no expansion`} sub={`Your selected ${totalPods} pods, all opening in Year 1 with no new pods added — they simply ramp in place. Focused on the pods you chose, without the network build-out. SAR '000.`} />
+            <SectionHeader eyebrow={F ? "05 · Feasibility P&L" : "04 · Feasibility P&L"} title={`P&L — ${inp.podsY1} pilot pods, no expansion`} sub={`Your ${inp.podsY1} pilot pods (Y1 slider), all opening in Year 1 with no new pods added — they simply ramp in place. Focused on the pilot phase, without the network build-out. SAR '000.`} />
             <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 34 }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
@@ -801,12 +801,12 @@
                 </table>
               </div>
               <div style={{ padding: "10px 18px", fontFamily: SANS, fontSize: 11, color: C.sub, borderTop: `1px solid ${C.line}` }}>
-                All {totalPods} pods open in Year 1 (Y1 CapEx {f0(fleet.year1.capex)}K, all pods + HQ) and ramp in place — no new pods. Utilization grows from {f0(fleet.y1ApptsPCD)} to {f0(fleet.mApptsPCD)} of {inp.apptsPerChairDay} appts/chair/day by Y5.
+                All {inp.podsY1} pilot pods open in Year 1 (Y1 CapEx {f0(fleet.year1.capex)}K, all pods + HQ) and ramp in place — no new pods. Utilization grows from {f0(fleet.y1ApptsPCD)} to {f0(fleet.mApptsPCD)} of {inp.apptsPerChairDay} appts/chair/day by Y5.
               </div>
             </div>
 
             {/* ramp / build-out P&L table */}
-            <SectionHeader eyebrow={F ? "06 · Build-out P&L" : "05 · Build-out P&L"} title="Five-Year Network P&amp;L (with expansion)" sub={`The ramp: pods opening over 5 years, with expansion CapEx. SAR '000. Revenue is hygiene/whitening services${R ? " + retail products" : ""}; HQ, insurance${F ? " and funnel capture" : ""} are on their own lines.`} />
+            <SectionHeader eyebrow={F ? "06 · Build-out P&L" : "05 · Build-out P&L"} title="Five-Year Network P&L (with expansion)" sub={`The ramp: pods opening over 5 years, with expansion CapEx. SAR '000. Revenue is hygiene/whitening services${R ? " + retail products" : ""}; HQ, insurance${F ? " and funnel capture" : ""} are on their own lines.`} />
             <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
