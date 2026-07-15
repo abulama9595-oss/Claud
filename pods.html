@@ -26,11 +26,26 @@
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; margin-top: -5px; background: var(--accent, #B0823A); cursor: pointer; }
     html { scroll-behavior: smooth; }
     @media print {
-      body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 10.5px; }
       .no-print { display: none !important; }
       input[type=range] { display: none !important; }
       a[href] { text-decoration: none; }
-      .print-avoid { break-inside: avoid; page-break-inside: avoid; }
+      /* atomic blocks never split across a page */
+      .print-avoid, .pods-card { break-inside: avoid; page-break-inside: avoid; }
+      /* each numbered section starts on a fresh page (header band + KPIs are the cover) */
+      .print-section { break-before: page; page-break-before: always; }
+      /* a header must never be the last thing on a page */
+      h1, h2, h3, .print-section { break-after: avoid; page-break-after: avoid; }
+      /* tall tables may paginate, but never mid-row, and repeat their header */
+      table { break-inside: auto; width: 100% !important; font-size: 9.5px !important; }
+      th, td { padding: 4px 6px !important; }
+      tr, img, svg { break-inside: avoid; page-break-inside: avoid; }
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+      /* charts render as one piece and scale to the page instead of bleeding off it */
+      .recharts-wrapper, .recharts-responsive-container { break-inside: avoid; page-break-inside: avoid; }
+      .recharts-wrapper, .recharts-responsive-container, .recharts-surface { max-width: 100% !important; }
+      svg { max-width: 100%; height: auto; }
     }
     @page { margin: 12mm; }
   </style>
@@ -290,7 +305,7 @@
 
     function SectionHeader({ eyebrow, title, sub }) {
       return (
-        <div style={{ marginBottom: 16 }}>
+        <div className="print-section" style={{ marginBottom: 16 }}>
           {eyebrow && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: C.brass, marginBottom: 4 }}>{eyebrow}</div>}
           <h2 style={{ fontFamily: SANS, fontSize: 19, fontWeight: 700, color: C.text, letterSpacing: "-0.01em", margin: 0 }}>{title}</h2>
           {sub && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, maxWidth: 820 }}>{sub}</div>}
@@ -299,7 +314,7 @@
     }
     function Kpi({ label, value, sub, accent }) {
       return (
-        <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: `3px solid ${accent || C.brass}`, borderRadius: 9, padding: "13px 15px" }}>
+        <div className="print-avoid" style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: `3px solid ${accent || C.brass}`, borderRadius: 9, padding: "13px 15px" }}>
           <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub, marginBottom: 5 }}>{label}</div>
           <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: accent || C.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
           {sub && <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 5 }}>{sub}</div>}
@@ -583,7 +598,7 @@
 
             {/* revenue chart */}
             <SectionHeader eyebrow="02 · Build-out" title="Network revenue & EBITDA" sub={`Stacked bars: hygiene/whitening services${R ? " + retail" : ""}${F ? " + funnel capture" : ""}. New pods trade ~half of their opening year.`} />
-            <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px", marginBottom: 34 }}>
+            <div className="print-avoid" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px", marginBottom: 34 }}>
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={chartRev} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
@@ -603,7 +618,7 @@
             <SectionHeader eyebrow="03 · Capital & cost structure" title="CapEx, OpEx & funding" sub="What it costs to build and run a pod, what the central HQ costs to build and run, and the cash to put in to launch the network." />
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 16, marginBottom: 20 }}>
               {/* Pod CapEx */}
-              <div style={card}>
+              <div className="print-avoid" style={card}>
                 <div style={bTitle}>1 · CapEx per pod (SAR '000)</div>
                 {CX_KEYS.map(([k, label]) => (
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label}</span><span style={bVal}>{f0(inp[k])}</span></div>
@@ -613,7 +628,7 @@
                 <div style={{ ...bRow, marginTop: 6 }}><span style={{ color: C.sub }}>× {totalPods} pods by Y5</span><span style={bVal}>{f0(m.capexPod * totalPods)}</span></div>
               </div>
               {/* Pod OpEx */}
-              <div style={card}>
+              <div className="print-avoid" style={card}>
                 <div style={bTitle}>2 · Pod direct OpEx (SAR '000 / month)</div>
                 <div style={bRow}><span style={{ color: C.sub }}>Mall rent</span><span style={bVal}>{f0(inp.rentPod)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Supervising dentist (loaded ÷ {inp.podsPerDentist})</span><span style={bVal}>{f0(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist)}</span></div>
@@ -628,7 +643,7 @@
                 <div style={bSub}><span>All-in direct / pod (mature)</span><span style={bVal}>{f0(m.mature.costs)}</span></div>
               </div>
               {/* HQ CapEx */}
-              <div style={card}>
+              <div className="print-avoid" style={card}>
                 <div style={bTitle}>3 · HQ / central CapEx (SAR '000)</div>
                 {HQ_CX_KEYS.map(([k, label]) => (
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label}</span><span style={bVal}>{f0(inp[k])}</span></div>
@@ -637,7 +652,7 @@
                 <div style={bSub}><span>Total HQ CapEx (one-time)</span><span style={bVal}>{f0(m.hqCapex)}</span></div>
               </div>
               {/* HQ OpEx */}
-              <div style={card}>
+              <div className="print-avoid" style={card}>
                 <div style={bTitle}>4 · HQ OpEx (SAR '000 / year)</div>
                 {HQ_STAFF.map(([k, label]) => (inp[k + "N"] > 0 &&
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label} ({inp[k + "N"]})</span><span style={bVal}>{f0(inp[k + "N"] * inp[k + "Sal"] * gosiMulJS(inp) * 12)}</span></div>
@@ -648,7 +663,7 @@
                 <div style={bSub}><span>Total HQ opex / year</span><span style={bVal}>{f0(m.steady.hq)}</span></div>
               </div>
               {/* Funding */}
-              <div style={card}>
+              <div className="print-avoid" style={card}>
                 <div style={bTitle}>5 · Funding — sources & uses</div>
                 <div style={bRow}><span style={{ color: C.sub }}>Total CapEx by Y5 (pods + HQ)</span><span style={bVal}>{f0(m.totalCapex)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>· incl. HQ CapEx (Y1)</span><span style={bVal}>{f0(m.hqCapex)}</span></div>
@@ -658,7 +673,7 @@
                 <div style={bSub}><span>Fund to raise</span><span style={bVal}>{f0(m.capitalToRaise)}</span></div>
               </div>
               {/* Year 1 */}
-              <div style={card}>
+              <div className="print-avoid" style={card}>
                 <div style={bTitle}>6 · Year 1 — fund needed</div>
                 <div style={bRow}><span style={{ color: C.sub }}>Year-1 CapEx (pilot pods + HQ)</span><span style={bVal}>{f0(m.year1.capex)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Year-1 OpEx (pods + HQ + insurance)</span><span style={bVal}>{f0(m.year1.opex)}</span></div>
@@ -713,7 +728,7 @@
               <>
                 <SectionHeader eyebrow="04 · Upside" title="Patient funnel & consented data" sub="Speculative layer, switchable off. The intraoral-camera screening builds a consented records base; the treatment demand it uncovers is captured as referral fees or at the group's own hub." />
                 <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 20 }}>
-                  <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px" }}>
+                  <div className="print-avoid" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px" }}>
                     <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 10px 6px" }}>Year-5 treatment funnel · people / yr</h3>
                     <ResponsiveContainer width="100%" height={230}>
                       <BarChart data={chartFunnel} layout="vertical" margin={{ top: 0, right: 60, left: 30, bottom: 0 }}>
@@ -727,7 +742,7 @@
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px" }}>
+                  <div className="print-avoid" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px" }}>
                     <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 10px 6px" }}>Consented database growth</h3>
                     <ResponsiveContainer width="100%" height={230}>
                       <ComposedChart data={chartDb} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
