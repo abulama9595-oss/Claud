@@ -76,7 +76,7 @@
       apptsOpen: 5, apptsRampPerYr: 2,
       // service revenue (hygiene & whitening)
       // service pricing split by type: hygiene (frequent) vs whitening (occasional, higher ticket)
-      hygieneTicket: 250, whiteningTicket: 800, whiteningMixPct: 15,
+      hygieneTicket: 150, whiteningTicket: 200, whiteningMixPct: 15,
       // retail products (optional module)
       inclRetail: false, retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
       // pod staff & opex (per pod / month, SAR '000). "loaded" salaries include GOSI; the dentist
@@ -84,7 +84,7 @@
       rentPod: 15,
       dentistSalary: 30, podsPerDentist: 2, gosiPct: 11,
       hygienists: 2, hygSalary: 14,
-      nursesPerPod: 1, nurseSalary: 5, nurseHousing: 24,
+      nursesPerPod: 1, nurseSalary: 5, nurseHousing: 80,
       receptionists: 1, receptionSalary: 6,
       materialsPct: 0,
       // pod overheads & statutory: utilities + mall CAM/service charges (per pod/mo), card fees (% of rev), EOSB accrual (% of payroll)
@@ -198,7 +198,7 @@
           const n = cohorts[c];
           if (n <= 0) continue;
           const age = i - c;
-          const open = age === 0 ? 0.5 : 1; // opening-year pods trade ~half the year
+          const open = 1; // opening-year pods trade the full year (no half-year haircut)
           // demand ramps in appointments/chair/day and is CAPPED by capacity
           const apptsPCD = Math.min(capacityPCD, p.apptsOpen + p.apptsRampPerYr * age);
           const podAppts = p.chairs * apptsPCD * p.daysPerMonth * 12 * open;
@@ -655,7 +655,7 @@
             </div>
 
             {/* revenue chart */}
-            <SectionHeader eyebrow="02 · Build-out" title="Network revenue & EBITDA" sub={`Stacked bars: hygiene/whitening services${R ? " + retail" : ""}${F ? " + funnel capture" : ""}. New pods trade ~half of their opening year.`} />
+            <SectionHeader eyebrow="02 · Build-out" title="Network revenue & EBITDA" sub={`Stacked bars: hygiene/whitening services${R ? " + retail" : ""}${F ? " + funnel capture" : ""}. Pods trade the full year from opening.`} />
             <div className="print-avoid" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px", marginBottom: 34 }}>
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={chartRev} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
