@@ -25,6 +25,14 @@
     input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #DBD4C5; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; margin-top: -5px; background: var(--accent, #B0823A); cursor: pointer; }
     html { scroll-behavior: smooth; }
+    @media print {
+      body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none !important; }
+      input[type=range] { display: none !important; }
+      a[href] { text-decoration: none; }
+      .print-avoid { break-inside: avoid; page-break-inside: avoid; }
+    }
+    @page { margin: 12mm; }
   </style>
 </head>
 <body>
@@ -76,7 +84,7 @@
       hqHrN: 1, hqHrSal: 11,
       hqDriverN: 1, hqDriverSal: 4,
       // HQ other opex (SAR '000 / YEAR)
-      hqOffice: 96, hqIt: 72, hqProf: 48, mktPerPod: 96, opsPerPod: 48,
+      hqOffice: 96, hqIt: 72, hqProf: 48, marketingPct: 5, centralOpsPct: 2,
       // HQ capex (SAR '000, one-time)
       hqCxOffice: 200, hqCxIt: 200, hqCxBrand: 150, hqCxSetup: 120,
       // pod capex (SAR '000) breakdown
@@ -128,9 +136,14 @@
     // DIRECT fixed monthly opex per pod. nurseHousing is an ANNUAL figure → /12 for the monthly view.
     const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * ((p.nurseSalary || 0) + (p.nurseHousing || 0) / 12)
       + (p.receptionists || 0) * (p.receptionSalary || 0) + (p.cssdCentralized ? 0 : (p.cssdOpexPerPod || 0));
-    // HQ monthly opex. Office/IT/professional & central marketing/ops are ANNUAL inputs → /12 for the monthly view.
+    // HQ FIXED monthly opex: staff + office/IT/professional (office etc. are ANNUAL inputs → /12).
     const hqFixedMo = (p) => hqStaffMo(p) + (p.hqOffice + p.hqIt + p.hqProf) / 12;
-    const hqPerPodMo = (p) => (p.mktPerPod + p.opsPerPod) / 12 + (p.cssdCentralized ? (p.cssdOpexPerPod || 0) : 0);
+    // central CSSD throughput charged at HQ, per active pod (monthly), when sterilization is centralized
+    const hqCssdPerPodMo = (p) => p.cssdCentralized ? (p.cssdOpexPerPod || 0) : 0;
+    // HQ VARIABLE opex scales with revenue (best practice): marketing & central ops as a % of revenue
+    const hqVarRate = (p) => ((p.marketingPct || 0) + (p.centralOpsPct || 0)) / 100;
+    // full HQ annual opex = fixed base + revenue-linked variable + central CSSD per active pod
+    const hqOpexYr = (p, revenue, effPods) => hqFixedMo(p) * 12 + hqVarRate(p) * revenue + hqCssdPerPodMo(p) * 12 * effPods;
     // clinical & total staff per pod (for insurance headcount)
     const clinicalPerPod = (p) => 1 / Math.max(1, p.podsPerDentist || 1) + p.hygienists + (p.nursesPerPod || 0);
     const staffPerPod = (p) => clinicalPerPod(p) + (p.receptionists || 0);
@@ -180,7 +193,7 @@
         const retailCogs = R ? retailRev * (1 - p.retailMarginPct / 100) : 0;
         const podDirect = podFixedMo(p) * 12 * effPods;
         const podContribution = podRev - materials - retailCogs - podDirect;
-        const hq = hqFixedMo(p) * 12 + hqPerPodMo(p) * 12 * effPods;
+        const hq = hqOpexYr(p, podRev + funnelRev, effPods); // fixed base + revenue-linked marketing/ops + central CSSD per pod
         // staff insurance: medical (all staff) + malpractice (clinical staff). HQ staff full year; pod staff scale with effPods.
         const totalEmp = staffPerPod(p) * effPods + hqStaffCount(p);
         const clinicalEmp = clinicalPerPod(p) * effPods;
@@ -222,7 +235,7 @@
       const matureTotalEmp = staffPerPod(p) * totalPods + hqStaffCount(p);
       const matureClinicalEmp = clinicalPerPod(p) * totalPods;
       const matureInsuranceMo = (matureTotalEmp * p.medInsPerEmp + matureClinicalEmp * p.malpracticePerClin) / 1000 / 12;
-      const matureNetworkFixedMo = totalPods * (podFixedMo(p) + hqPerPodMo(p)) + hqFixedMo(p) + matureInsuranceMo;
+      const matureNetworkFixedMo = totalPods * (podFixedMo(p) + hqCssdPerPodMo(p)) + hqFixedMo(p) + matureInsuranceMo; // fixed opex only (revenue-linked HQ excluded from the cash buffer)
       const minCashReserve = Math.max(0, p.minCashMonths) * matureNetworkFixedMo;
       const capitalToRaise = launchLiquidity + minCashReserve;
       const selfFunded = Math.max(0, totalCapex - launchLiquidity);
@@ -250,13 +263,15 @@
       const y1ApptsPCD = Math.min(capacityPCD, p.apptsOpen);
       const maturePod = podEcon(mApptsPCD), y1Pod = podEcon(y1ApptsPCD);
       const podPayback = maturePod.ebitda > 0 ? capexPod / (maturePod.ebitda * 12) : null;
-      const netPerPod = maturePod.ebitda - hqPerPodMo(p) - hqFixedPerPod - matureInsuranceMo / totalPods;
+      const matureRevAnnual = (maturePod.service + maturePod.retail + maturePod.funnel) * totalPods * 12;
+      const matureHqPerPodMo = totalPods > 0 ? hqOpexYr(p, matureRevAnnual, totalPods) / totalPods / 12 : 0; // all-in HQ per pod at maturity (monthly)
+      const netPerPod = maturePod.ebitda - matureHqPerPodMo - matureInsuranceMo / totalPods;
       // Steady-state annual P&L: the selected pod count, all mature — pod feasibility without expansion noise
       const sPods = totalPods, sMul = sPods * 12;
-      const sHq = hqFixedMo(p) * 12 + hqPerPodMo(p) * sMul;
-      const sIns = matureInsuranceMo * 12;
       const sServiceRev = maturePod.service * sMul, sRetailRev = maturePod.retail * sMul, sFunnelRev = maturePod.funnel * sMul;
       const sPodRev = sServiceRev + sRetailRev, sRevenue = sPodRev + sFunnelRev;
+      const sHq = hqOpexYr(p, sRevenue, sPods);
+      const sIns = matureInsuranceMo * 12;
       const sMaterials = maturePod.materials * sMul, sRetailCogs = maturePod.retailCogs * sMul, sPodDirect = podFixedMo(p) * sMul;
       const sPodContribution = sPodRev - sMaterials - sRetailCogs - sPodDirect;
       const sOpEbitda = sPodContribution - sHq - sIns, sEbitda = sOpEbitda + sFunnelRev;
@@ -266,11 +281,11 @@
         materials: sMaterials, retailCogs: sRetailCogs, podDirect: sPodDirect, podContribution: sPodContribution, hq: sHq, insurance: sIns,
         opEbitda: sOpEbitda, ebitda: sEbitda, ebitdaPct: sRevenue > 0 ? sEbitda / sRevenue * 100 : 0, dep: sDep, zakat: sZakat, ni: sEbitda - sDep - sZakat };
       return { years, y5, cumCharts, dbValue, inclDb, exitOps, exitValue, irr, moic, cumFCF,
-        totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqPerPodMo: hqPerPodMo(p),
+        totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqVarRate: hqVarRate(p), hqCssdPerPodMo: hqCssdPerPodMo(p), matureHqPerPodMo, matureRevAnnual,
         hqStaffMo: hqStaffMo(p), hqStaffCount: hqStaffCount(p), matureInsuranceMo, capacityPCD, mApptsPCD, y1ApptsPCD, steady, y1Pod,
         launchLiquidity, minCashReserve, capitalToRaise, selfFunded, hqFixedPerPod,
         year1: { capex: y1.capex, opex: y1Opex, revenue: y1.revenue, ebitda: y1.ebitda, fcf: y1.fcf, reserve: y1Reserve, fundNeed: y1FundNeed },
-        mature: { apptsPCD: mApptsPCD, appts: maturePod.appts, service: maturePod.service, retail: maturePod.retail, funnel: maturePod.funnel, materials: maturePod.materials, retailCogs: maturePod.retailCogs, fixed: podFixedMo(p), hqPerPod: hqPerPodMo(p), hqFixedPerPod, insPerPod: matureInsuranceMo / totalPods, netPerPod, costs: maturePod.costs, ebitda: maturePod.ebitda, cases: maturePod.cases, payback: podPayback } };
+        mature: { apptsPCD: mApptsPCD, appts: maturePod.appts, service: maturePod.service, retail: maturePod.retail, funnel: maturePod.funnel, materials: maturePod.materials, retailCogs: maturePod.retailCogs, fixed: podFixedMo(p), hqPerPod: matureHqPerPodMo, hqFixedPerPod: 0, insPerPod: matureInsuranceMo / totalPods, netPerPod, costs: maturePod.costs, ebitda: maturePod.ebitda, cases: maturePod.cases, payback: podPayback } };
     }
 
     function SectionHeader({ eyebrow, title, sub }) {
@@ -443,11 +458,12 @@
                 </div>
               </div>
               {/* module toggles — the primary interaction */}
-              <div className="flex flex-wrap" style={{ gap: 10, marginTop: 16 }}>
+              <div className="flex flex-wrap items-center no-print" style={{ gap: 10, marginTop: 16 }}>
                 <Toggle label="Retail products" on={R} onChange={(v) => set("inclRetail", v)} />
                 <Toggle label="Patient-funnel & data" on={F} onChange={(v) => set("inclFunnel", v)} />
                 <Toggle label="Sterilization" on={inp.cssdCentralized} onChange={(v) => set("cssdCentralized", v)} on_label="Central hub" off_label="Per pod" />
                 {F && <div className="flex items-center" style={{ gap: 6 }}><span style={{ fontFamily: SANS, fontSize: 11, color: C.invSub, letterSpacing: "0.05em", textTransform: "uppercase" }}>Capture</span>{modeBtn("hub", "Own hub")}{modeBtn("referral", "Referral")}</div>}
+                <button onClick={() => window.print()} title="Print or save the study as a PDF" style={{ ...btn(C.brass, C.ink), fontSize: 12, marginLeft: "auto" }}>Print / PDF</button>
               </div>
             </div>
           </div>
@@ -529,8 +545,8 @@
                 <Slider label="Office rent & admin" value={inp.hqOffice} min={0} max={480} step={5} unit="K SAR/yr" onChange={(v) => set("hqOffice", v)} />
                 <Slider label="IT / ERP / software" value={inp.hqIt} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqIt", v)} />
                 <Slider label="Professional & compliance" value={inp.hqProf} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqProf", v)} />
-                <Slider label="Marketing per pod" value={inp.mktPerPod} min={0} max={300} step={5} unit="K SAR/yr" onChange={(v) => set("mktPerPod", v)} hint="brand & local campaigns, scales with the network" />
-                <Slider label="Operations / QA per pod" value={inp.opsPerPod} min={0} max={240} step={5} unit="K SAR/yr" onChange={(v) => set("opsPerPod", v)} />
+                <Slider label="Marketing (% of revenue)" value={inp.marketingPct} min={0} max={15} step={0.5} unit="% rev" onChange={(v) => set("marketingPct", v)} hint="brand & campaigns — scales with revenue (best practice)" />
+                <Slider label="Central ops / QA (% of revenue)" value={inp.centralOpsPct} min={0} max={10} step={0.5} unit="% rev" onChange={(v) => set("centralOpsPct", v)} hint="central operations, quality & compliance — scales with revenue" />
                 {HQ_CX_KEYS.map(([k, label]) => (
                   <Slider key={k} label={label} value={inp[k]} min={0} max={500} step={10} unit="K SAR" onChange={(v) => set(k, v)} />
                 ))}
@@ -625,7 +641,8 @@
                   <div key={k} style={bRow}><span style={{ color: C.sub }}>{label} ({inp[k + "N"]})</span><span style={bVal}>{f0(inp[k + "N"] * inp[k + "Sal"] * gosiMulJS(inp) * 12)}</span></div>
                 ))}
                 <div style={bRow}><span style={{ color: C.sub }}>Office · IT · professional</span><span style={bVal}>{f0(inp.hqOffice + inp.hqIt + inp.hqProf)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Marketing · ops{inp.cssdCentralized ? " · CSSD" : ""} × {totalPods} pods</span><span style={bVal}>{f0(m.hqPerPodMo * 12 * totalPods)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Marketing + ops ({inp.marketingPct + inp.centralOpsPct}% of rev)</span><span style={bVal}>{f0(m.hqVarRate * m.steady.revenue)}</span></div>
+                {inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>Central CSSD × {totalPods} pods</span><span style={bVal}>{f0(m.hqCssdPerPodMo * 12 * totalPods)}</span></div>}
                 <div style={bSub}><span>Total HQ opex / year</span><span style={bVal}>{f0(m.steady.hq)}</span></div>
               </div>
               {/* Funding */}
@@ -745,7 +762,7 @@
             )}
 
             {/* steady-state (feasibility) P&L */}
-            <SectionHeader eyebrow={F ? "05 · Feasibility P&L" : "04 · Feasibility P&L"} title={`Steady-state P&amp;L — ${totalPods} mature pods`} sub="The selected pod count at full maturity, no expansion — pod feasibility without the noise of the build-out. Per-pod and network, annual, SAR '000." />
+            <SectionHeader eyebrow={F ? "05 · Feasibility P&L" : "04 · Feasibility P&L"} title={`P&amp;L — ${totalPods} pods (your rollout), at maturity`} sub="The number of pods from your rollout assumptions, all mature — pod feasibility without the build-out ramp. Per-pod and network, annual, SAR '000." />
             <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 34 }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
@@ -779,11 +796,16 @@
                         <td style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: col }}>{fmt(v)}</td>
                       </tr>);
                     })}
+                    <tr>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>EBITDA margin</td>
+                      <td style={{ ...td, fontWeight: 700, color: m.steady.ebitda >= 0 ? C.pos : C.neg }}>{pctf(m.steady.ebitdaPct)}</td>
+                      <td style={{ ...td, fontWeight: 700, color: m.steady.ebitda >= 0 ? C.pos : C.neg }}>{pctf(m.steady.ebitdaPct)}</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
               <div style={{ padding: "10px 18px", fontFamily: SANS, fontSize: 11, color: C.sub, borderTop: `1px solid ${C.line}` }}>
-                Steady-state EBITDA margin {pctf(m.steady.ebitdaPct)} · depreciation on the fully-built {f0(m.totalCapex)}K asset base · excludes expansion capex. The run-rate once all {totalPods} pods are mature.
+                EBITDA margin {pctf(m.steady.ebitdaPct)} · depreciation on the fully-built {f0(m.totalCapex)}K asset base · excludes expansion capex. The run-rate once all {totalPods} pods are mature.
               </div>
             </div>
 
@@ -813,6 +835,10 @@
                         })}
                       </tr>
                     ))}
+                    <tr>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>EBITDA margin</td>
+                      {m.years.map((y) => <td key={y.year} style={{ ...td, fontWeight: 700, color: y.ebitda >= 0 ? C.pos : C.neg }}>{pctf(y.ebitdaPct)}</td>)}
+                    </tr>
                     <tr>
                       <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>Cumulative FCF</td>
                       {m.years.map((y) => <td key={y.year} style={{ ...td, color: y.cumFCF < 0 ? C.neg : C.pos }}>{f0(y.cumFCF)}</td>)}
@@ -860,7 +886,7 @@
               ) : (
                 <div style={{ fontFamily: SANS, fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>No saved scenarios yet — name one and hit Save; it appears here beside the current model.</div>
               )}
-              <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
+              <div className="flex flex-wrap items-center no-print" style={{ gap: 8 }}>
                 <input value={scenName} onChange={(e) => setScenName(e.target.value)} placeholder="Name this scenario…" onKeyDown={(e) => e.key === "Enter" && saveScenario()}
                   style={{ flex: "1 1 200px", minWidth: 160, padding: "8px 11px", fontFamily: SANS, fontSize: 13, border: `1px solid ${C.line}`, borderRadius: 7, background: C.bone, color: C.text }} />
                 <button onClick={saveScenario} style={btn(C.brass, C.ink)}>Save</button>
