@@ -75,7 +75,8 @@
       // appointment-based demand ramp (appts / chair / day), capped by capacity (apptsPerChairDay)
       apptsOpen: 5, apptsRampPerYr: 2,
       // service revenue (hygiene & whitening)
-      ticket: 280,
+      // service pricing split by type: hygiene (frequent) vs whitening (occasional, higher ticket)
+      hygieneTicket: 250, whiteningTicket: 800, whiteningMixPct: 15,
       // retail products (optional module)
       inclRetail: false, retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
       // pod staff & opex (per pod / month, SAR '000). "loaded" salaries include GOSI; the dentist
@@ -144,6 +145,8 @@
       ["hqDriver", "Driver"],
     ];
     const gosiMul = (p) => 1 + (p.gosiPct || 0) / 100;
+    // blended revenue per appointment from the hygiene vs whitening mix
+    const blendedTicket = (p) => (p.hygieneTicket || 0) * (1 - (p.whiteningMixPct || 0) / 100) + (p.whiteningTicket || 0) * ((p.whiteningMixPct || 0) / 100);
     // pod build cost: fixed breakdown, plus a per-pod autoclave when CSSD is distributed
     const capexPerPod = (p) => CX_KEYS.reduce((s, [k]) => s + (p[k] || 0), 0) + (p.cssdCentralized ? 0 : (p.cssdPerPodCapex || 0));
     // HQ one-time capex, plus the central CSSD hub when centralized
@@ -207,7 +210,7 @@
         const avgApptsPCD = apptsPCDw > 0 ? apptsPCDsum / apptsPCDw : 0;
         const util = capacityPCD > 0 ? avgApptsPCD / capacityPCD : 0;
         // revenue: hygiene/whitening SERVICES + optional RETAIL products
-        const serviceRev = appts * p.ticket / 1000;
+        const serviceRev = appts * blendedTicket(p) / 1000;
         const retailRev = R ? appts * (p.retailAttachPct / 100) * p.retailBasket / 1000 : 0;
         const podRev = serviceRev + retailRev;
         // optional funnel + data upside
@@ -294,7 +297,7 @@
       // per-pod monthly economics at a given booking (appts / chair / day) — reused for mature & Year-1
       const podEcon = (apptsPCD) => {
         const appts = p.chairs * apptsPCD * p.daysPerMonth;
-        const service = appts * p.ticket / 1000;
+        const service = appts * blendedTicket(p) / 1000;
         const retail = R ? appts * (p.retailAttachPct / 100) * p.retailBasket / 1000 : 0;
         const cases = F ? appts * (p.needPct / 100) * (p.consentPct / 100) * (p.acceptPct / 100) : 0;
         const funnel = F ? cases * p.caseValue / 1000 * ((p.mode === "referral" ? p.referralFeePct : p.hubMarginPct) / 100) : 0;
@@ -548,7 +551,9 @@
               <Card n="B" title="Demand ramp (appointments)">
                 <Slider label="Opening appts / chair / day" value={inp.apptsOpen} min={1} max={inp.apptsPerChairDay} step={1} unit="appts" onChange={(v) => set("apptsOpen", v)} hint={`${(100 * inp.apptsOpen / inp.apptsPerChairDay).toFixed(0)}% of capacity at opening`} />
                 <Slider label="Ramp / year (per pod age)" value={inp.apptsRampPerYr} min={0} max={6} step={0.5} unit="appts/yr" onChange={(v) => set("apptsRampPerYr", v)} hint={`matures at ${f0(m.mApptsPCD)} appts/chair/day (${(100 * m.mApptsPCD / inp.apptsPerChairDay).toFixed(0)}% of capacity), capped by capacity`} />
-                <Slider label="Average service ticket" value={inp.ticket} min={100} max={600} step={10} unit="SAR" onChange={(v) => set("ticket", v)} hint="scaling & polishing, airflow, fluoride, whitening" />
+                <Slider label="Hygiene ticket" value={inp.hygieneTicket} min={100} max={800} step={10} unit="SAR" onChange={(v) => set("hygieneTicket", v)} hint="scaling & polishing, airflow, fluoride" />
+                <Slider label="Whitening ticket" value={inp.whiteningTicket} min={200} max={2500} step={50} unit="SAR" onChange={(v) => set("whiteningTicket", v)} hint="in-office whitening — higher value, occasional" />
+                <Slider label="Whitening mix" value={inp.whiteningMixPct} min={0} max={60} step={1} unit="% of appts" onChange={(v) => set("whiteningMixPct", v)} hint={`blended ticket ≈ ${f0((inp.hygieneTicket * (1 - inp.whiteningMixPct / 100) + inp.whiteningTicket * inp.whiteningMixPct / 100))} SAR/appt`} />
                 <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 4 }}>Bookings never exceed capacity; the utilization each year is the appts booked ÷ capacity.</div>
               </Card>
               {R && (
