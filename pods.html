@@ -60,7 +60,7 @@
       rentPod: 15,
       dentistSalary: 30, podsPerDentist: 2, gosiPct: 11,
       hygienists: 2, hygSalary: 14,
-      nursesPerPod: 1, nurseSalary: 5,
+      nursesPerPod: 1, nurseSalary: 5, nurseHousing: 2,
       receptionists: 1, receptionSalary: 6,
       materialsPct: 12,
       // CSSD / sterilization: central hub vs an autoclave per pod
@@ -74,6 +74,7 @@
       hqProcAdminN: 1, hqProcAdminSal: 9,
       hqMarketingN: 1, hqMarketingSal: 14,
       hqHrN: 1, hqHrSal: 11,
+      hqDriverN: 1, hqDriverSal: 4,
       // HQ other opex (SAR '000 / month)
       hqOffice: 8, hqIt: 6, hqProf: 4, mktPerPod: 8, opsPerPod: 4,
       // HQ capex (SAR '000, one-time)
@@ -111,6 +112,7 @@
       ["hqProcAdmin", "Procurement & admin"],
       ["hqMarketing", "Marketing"],
       ["hqHr", "HR"],
+      ["hqDriver", "Driver"],
     ];
     const gosiMul = (p) => 1 + (p.gosiPct || 0) / 100;
     // pod build cost: fixed breakdown, plus a per-pod autoclave when CSSD is distributed
@@ -123,7 +125,7 @@
     const hqStaffCount = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0), 0);
     const hqStaffMo = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0) * (p[k + "Sal"] || 0), 0) * gosiMul(p);
     // DIRECT fixed monthly opex per pod (rent, dentist, hygienists, nurses, receptionists, + CSSD if distributed)
-    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * (p.nurseSalary || 0)
+    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * ((p.nurseSalary || 0) + (p.nurseHousing || 0))
       + (p.receptionists || 0) * (p.receptionSalary || 0) + (p.cssdCentralized ? 0 : (p.cssdOpexPerPod || 0));
     // HQ monthly opex: fixed central base + per-active-pod (central marketing, ops, + central CSSD if centralized)
     const hqFixedMo = (p) => hqStaffMo(p) + p.hqOffice + p.hqIt + p.hqProf;
@@ -468,12 +470,13 @@
               )}
               <Card n="D" title="Pod staff & opex (per pod / month)">
                 <Slider label="Mall rent" value={inp.rentPod} min={5} max={40} step={1} unit="K SAR" onChange={(v) => set("rentPod", v)} />
-                <Slider label="Supervising dentist salary" value={inp.dentistSalary} min={18} max={55} step={1} unit="K SAR/mo" onChange={(v) => set("dentistSalary", v)} hint={`+${inp.gosiPct}% GOSI, shared across ${inp.podsPerDentist} pods → ${(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist).toFixed(1)}K per pod`} />
+                <Slider label="Supervising dentist salary" value={inp.dentistSalary} min={0} max={55} step={1} unit="K SAR/mo" onChange={(v) => set("dentistSalary", v)} hint={`+${inp.gosiPct}% GOSI, shared across ${inp.podsPerDentist} pods → ${(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist).toFixed(1)}K per pod`} />
                 <Slider label="Pods per supervising dentist" value={inp.podsPerDentist} min={1} max={3} step={1} unit="pods" onChange={(v) => set("podsPerDentist", v)} />
                 <Slider label="Hygienists" value={inp.hygienists} min={1} max={4} step={1} unit="staff" onChange={(v) => set("hygienists", v)} />
-                <Slider label="Hygienist salary (loaded)" value={inp.hygSalary} min={8} max={22} step={0.5} unit="K SAR" onChange={(v) => set("hygSalary", v)} />
+                <Slider label="Hygienist salary (loaded)" value={inp.hygSalary} min={0} max={22} step={0.5} unit="K SAR" onChange={(v) => set("hygSalary", v)} />
                 <Slider label="Nurses / assistants per pod" value={inp.nursesPerPod} min={0} max={3} step={1} unit="staff" onChange={(v) => set("nursesPerPod", v)} />
                 <Slider label="Nurse salary (loaded)" value={inp.nurseSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("nurseSalary", v)} />
+                <Slider label="Nurse housing / rent (per nurse)" value={inp.nurseHousing} min={0} max={8} step={0.5} unit="K SAR/mo" onChange={(v) => set("nurseHousing", v)} hint="staff accommodation allowance per nurse" />
                 <Slider label="Receptionists per pod" value={inp.receptionists} min={0} max={3} step={1} unit="staff" onChange={(v) => set("receptionists", v)} />
                 <Slider label="Receptionist salary (loaded)" value={inp.receptionSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionSalary", v)} />
                 <Slider label="Consumables & lab" value={inp.materialsPct} min={5} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
@@ -578,6 +581,7 @@
                 <div style={bRow}><span style={{ color: C.sub }}>Supervising dentist (loaded ÷ {inp.podsPerDentist})</span><span style={bVal}>{f0(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Hygienists ({inp.hygienists})</span><span style={bVal}>{f0(inp.hygienists * inp.hygSalary)}</span></div>
                 {inp.nursesPerPod > 0 && <div style={bRow}><span style={{ color: C.sub }}>Nurses / assistants ({inp.nursesPerPod})</span><span style={bVal}>{f0(inp.nursesPerPod * inp.nurseSalary)}</span></div>}
+                {inp.nursesPerPod > 0 && inp.nurseHousing > 0 && <div style={bRow}><span style={{ color: C.sub }}>Nurse housing ({inp.nursesPerPod})</span><span style={bVal}>{f0(inp.nursesPerPod * inp.nurseHousing)}</span></div>}
                 {inp.receptionists > 0 && <div style={bRow}><span style={{ color: C.sub }}>Receptionists ({inp.receptionists})</span><span style={bVal}>{f0(inp.receptionists * inp.receptionSalary)}</span></div>}
                 {!inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>CSSD (per-pod autoclave)</span><span style={bVal}>{f0(inp.cssdOpexPerPod)}</span></div>}
                 <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Direct fixed / pod</span><span style={bVal}>{f0(m.mature.fixed)}</span></div>
