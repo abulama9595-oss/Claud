@@ -86,6 +86,8 @@
       nursesPerPod: 1, nurseSalary: 5, nurseHousing: 24,
       receptionists: 1, receptionSalary: 6,
       materialsPct: 0,
+      // pod overheads & statutory: utilities + mall CAM/service charges (per pod/mo), card fees (% of rev), EOSB accrual (% of payroll)
+      podOverheadMo: 6, paymentFeePct: 1.5, eosbPct: 8.3,
       // CSSD / sterilization: central hub vs an autoclave per pod
       cssdCentralized: false, cssdOpexPerPod: 5, hqCxCssd: 180, cssdPerPodCapex: 70,
       // staff insurance (SAR / person / year)
@@ -158,10 +160,11 @@
     // HQ staff monthly cost (loaded)
     const hqStaffCount = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0), 0);
     const hqStaffMo = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0) * (p[k + "Sal"] || 0), 0) * gosiMul(p);
-    // DIRECT fixed monthly opex per pod (rent, dentist, hygienists, nurses, receptionists, + CSSD if distributed).
+    // pod staff payroll (loaded) per month — GP + hygienists + nurses + reception (basis for the EOSB accrual)
+    const podPayrollMo = (p) => dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * (p.nurseSalary || 0) + (p.receptionists || 0) * (p.receptionSalary || 0);
+    // DIRECT fixed monthly opex per pod (rent, staff, utilities/CAM overhead, + CSSD if distributed).
     // Nurse housing is NOT here — it is charged centrally at HQ (see nurseHousingYr) across all nurses.
-    const podFixedMo = (p) => p.rentPod + dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * (p.nurseSalary || 0)
-      + (p.receptionists || 0) * (p.receptionSalary || 0) + (p.cssdCentralized ? 0 : (p.cssdOpexPerPod || 0));
+    const podFixedMo = (p) => p.rentPod + podPayrollMo(p) + (p.podOverheadMo || 0) + (p.cssdCentralized ? 0 : (p.cssdOpexPerPod || 0));
     // HQ FIXED monthly opex: staff + office/IT/professional (office etc. are ANNUAL inputs → /12).
     const hqFixedMo = (p) => hqStaffMo(p) + (p.hqOffice + p.hqIt + p.hqProf) / 12;
     // central CSSD throughput charged at HQ, per active pod (monthly), when sterilization is centralized
@@ -219,14 +222,17 @@
         // costs
         const materials = serviceRev * (p.materialsPct / 100);
         const retailCogs = R ? retailRev * (1 - p.retailMarginPct / 100) : 0;
+        const paymentFees = podRev * ((p.paymentFeePct || 0) / 100); // card/payment processing on pod revenue
         const podDirect = podFixedMo(p) * 12 * effPods;
-        const podContribution = podRev - materials - retailCogs - podDirect;
+        const podContribution = podRev - materials - retailCogs - paymentFees - podDirect;
         const hq = hqOpexYr(p, podRev + funnelRev, effPods); // fixed base + revenue-linked marketing/ops + central CSSD per pod
         // staff insurance: medical (all staff) + malpractice (clinical staff). HQ staff full year; pod staff scale with effPods.
         const totalEmp = staffPerPod(p) * effPods + hqStaffCount(p);
         const clinicalEmp = clinicalPerPod(p) * effPods;
         const insurance = (totalEmp * p.medInsPerEmp + clinicalEmp * p.malpracticePerClin) / 1000;
-        const opEbitda = podContribution - hq - insurance;
+        // EOSB (end-of-service) accrual on loaded payroll — pod staff (scale with effPods) + HQ staff
+        const eosb = (podPayrollMo(p) * 12 * effPods + hqStaffMo(p) * 12) * ((p.eosbPct || 0) / 100);
+        const opEbitda = podContribution - hq - insurance - eosb;
         const ebitda = opEbitda + funnelRev;
 
         const newPods = cohorts[i] || 0;
@@ -243,7 +249,7 @@
         const pct = (x) => totalRev > 0 ? x / totalRev * 100 : 0;
         years.push({ year: `Y${i + 1}`, podsActive, newPods, appts, screenings, newCharts, cumCharts, cases, util,
           serviceRev, retailRev, podRev, funnelRev, referralRev, hubCapture, revenue: totalRev,
-          materials, retailCogs, podDirect, podContribution, hq, insurance, opEbitda, ebitda, ebitdaPct: pct(ebitda),
+          materials, retailCogs, paymentFees, podDirect, podContribution, hq, insurance, eosb, opEbitda, ebitda, ebitdaPct: pct(ebitda),
           dep, zakat, ni, capex, fcf, cumFCF });
       }
       const y5 = years[4];
@@ -271,7 +277,8 @@
       const matureTotalEmp = staffPerPod(p) * totalPods + hqStaffCount(p);
       const matureClinicalEmp = clinicalPerPod(p) * totalPods;
       const matureInsuranceMo = (matureTotalEmp * p.medInsPerEmp + matureClinicalEmp * p.malpracticePerClin) / 1000 / 12;
-      const matureNetworkFixedMo = totalPods * (podFixedMo(p) + hqCssdPerPodMo(p)) + hqFixedMo(p) + matureInsuranceMo + nurseHousingYr(p, totalPods) / 12; // fixed opex only (revenue-linked HQ excluded from the cash buffer)
+      const matureNetworkFixedMo = totalPods * (podFixedMo(p) + hqCssdPerPodMo(p)) + hqFixedMo(p) + matureInsuranceMo + nurseHousingYr(p, totalPods) / 12
+        + (podPayrollMo(p) * totalPods + hqStaffMo(p)) * ((p.eosbPct || 0) / 100); // fixed opex only incl. EOSB (revenue-linked card fees & marketing excluded from the cash buffer)
       const minCashReserve = Math.max(0, p.minCashMonths) * matureNetworkFixedMo;
       const capitalToRaise = launchLiquidity + minCashReserve;
       const selfFunded = Math.max(0, totalCapex - launchLiquidity);
@@ -280,7 +287,7 @@
       const hqFixedPerPod = totalPods > 0 ? hqFixedMo(p) / totalPods : 0;
       // Year-1 cost & funding: the cash to have available = Year-1 CapEx + Year-1 OpEx + the cash reserve
       const y1 = years[0];
-      const y1Opex = y1.materials + y1.retailCogs + y1.podDirect + y1.hq + y1.insurance;
+      const y1Opex = y1.materials + y1.retailCogs + y1.paymentFees + y1.podDirect + y1.hq + y1.insurance + y1.eosb;
       const y1Reserve = Math.max(0, p.minCashMonths) * y1Opex / 12; // reserve sized on Year-1 opex (pods open in Y1), not the mature network
       const y1FundNeed = y1.capex + y1Opex + y1Reserve;
       // per-pod monthly economics at a given booking (appts / chair / day) — reused for mature & Year-1
@@ -292,8 +299,10 @@
         const funnel = F ? cases * p.caseValue / 1000 * ((p.mode === "referral" ? p.referralFeePct : p.hubMarginPct) / 100) : 0;
         const materials = service * (p.materialsPct / 100);
         const retailCogs = R ? retail * (1 - p.retailMarginPct / 100) : 0;
-        const costs = podFixedMo(p) + materials + retailCogs;
-        return { apptsPCD, appts, service, retail, funnel, materials, retailCogs, cases, costs, ebitda: service + retail + funnel - costs };
+        const paymentFees = (service + retail) * ((p.paymentFeePct || 0) / 100);
+        const eosb = podPayrollMo(p) * ((p.eosbPct || 0) / 100); // pod-staff EOSB, monthly per pod
+        const costs = podFixedMo(p) + materials + retailCogs + paymentFees + eosb;
+        return { apptsPCD, appts, service, retail, funnel, materials, retailCogs, paymentFees, eosb, cases, costs, ebitda: service + retail + funnel - costs };
       };
       const mApptsPCD = Math.min(capacityPCD, p.apptsOpen + p.apptsRampPerYr * 4);
       const y1ApptsPCD = Math.min(capacityPCD, p.apptsOpen);
@@ -309,19 +318,21 @@
       const sHq = hqOpexYr(p, sRevenue, sPods);
       const sIns = matureInsuranceMo * 12;
       const sMaterials = maturePod.materials * sMul, sRetailCogs = maturePod.retailCogs * sMul, sPodDirect = podFixedMo(p) * sMul;
-      const sPodContribution = sPodRev - sMaterials - sRetailCogs - sPodDirect;
-      const sOpEbitda = sPodContribution - sHq - sIns, sEbitda = sOpEbitda + sFunnelRev;
+      const sPaymentFees = sPodRev * ((p.paymentFeePct || 0) / 100);
+      const sEosb = (podPayrollMo(p) * sPods + hqStaffMo(p)) * 12 * ((p.eosbPct || 0) / 100);
+      const sPodContribution = sPodRev - sMaterials - sRetailCogs - sPaymentFees - sPodDirect;
+      const sOpEbitda = sPodContribution - sHq - sIns - sEosb, sEbitda = sOpEbitda + sFunnelRev;
       const sDep = sPods * podDepPerYear(p) + hqDepPerYear(p);
       const sZakat = Math.max(0, sEbitda - sDep) * (p.zakatPct / 100);
       const steady = { pods: sPods, serviceRev: sServiceRev, retailRev: sRetailRev, funnelRev: sFunnelRev, podRev: sPodRev, revenue: sRevenue,
-        materials: sMaterials, retailCogs: sRetailCogs, podDirect: sPodDirect, podContribution: sPodContribution, hq: sHq, insurance: sIns,
+        materials: sMaterials, retailCogs: sRetailCogs, paymentFees: sPaymentFees, podDirect: sPodDirect, podContribution: sPodContribution, hq: sHq, insurance: sIns, eosb: sEosb,
         opEbitda: sOpEbitda, ebitda: sEbitda, ebitdaPct: sRevenue > 0 ? sEbitda / sRevenue * 100 : 0, dep: sDep, zakat: sZakat, ni: sEbitda - sDep - sZakat };
       return { years, y5, cumCharts, dbValue, inclDb, exitOps, exitValue, irr, npv, paybackYear, discountRate: p.discountRate, moic, cumFCF,
         totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqVarRate: hqVarRate(p), hqCssdPerPodMo: hqCssdPerPodMo(p), matureHqPerPodMo, matureRevAnnual,
         hqStaffMo: hqStaffMo(p), hqStaffCount: hqStaffCount(p), matureInsuranceMo, capacityPCD, mApptsPCD, y1ApptsPCD, steady, y1Pod,
         launchLiquidity, minCashReserve, capitalToRaise, selfFunded, hqFixedPerPod,
         year1: { capex: y1.capex, opex: y1Opex, revenue: y1.revenue, ebitda: y1.ebitda, fcf: y1.fcf, reserve: y1Reserve, fundNeed: y1FundNeed },
-        mature: { apptsPCD: mApptsPCD, appts: maturePod.appts, service: maturePod.service, retail: maturePod.retail, funnel: maturePod.funnel, materials: maturePod.materials, retailCogs: maturePod.retailCogs, fixed: podFixedMo(p), hqPerPod: matureHqPerPodMo, hqFixedPerPod: 0, insPerPod: matureInsuranceMo / totalPods, netPerPod, costs: maturePod.costs, ebitda: maturePod.ebitda, cases: maturePod.cases, payback: podPayback } };
+        mature: { apptsPCD: mApptsPCD, appts: maturePod.appts, service: maturePod.service, retail: maturePod.retail, funnel: maturePod.funnel, materials: maturePod.materials, retailCogs: maturePod.retailCogs, paymentFees: maturePod.paymentFees, eosb: maturePod.eosb, fixed: podFixedMo(p), hqPerPod: matureHqPerPodMo, hqFixedPerPod: 0, insPerPod: matureInsuranceMo / totalPods, netPerPod, costs: maturePod.costs, ebitda: maturePod.ebitda, cases: maturePod.cases, payback: podPayback } };
     }
 
     function SectionHeader({ eyebrow, title, sub }) {
@@ -460,10 +471,12 @@
         ["Pod revenue", "podRev", "head"],
         ["Consumables & lab", "materials", "neg"],
         ...(R ? [["Retail COGS", "retailCogs", "neg"]] : []),
-        ["Pod direct opex (dentist · hygienists · nurses · reception · rent)", "podDirect", "neg"],
+        ["Card & payment fees", "paymentFees", "neg"],
+        ["Pod direct opex (staff · rent · utilities/CAM)", "podDirect", "neg"],
         ["Pod contribution", "podContribution", "head"],
         ["HQ opex (staff · marketing · ops · IT · office)", "hq", "neg"],
         ["Insurance (staff medical + malpractice)", "insurance", "neg"],
+        ["EOSB accrual (staff end-of-service)", "eosb", "neg"],
         ...(F ? [["Operating EBITDA", "opEbitda", "head"], [inp.mode === "referral" ? "Referral / coordination fees" : "Hub treatment capture", "funnelRev", "pos"]] : []),
         ["Network EBITDA", "ebitda", "head"],
         ["Depreciation", "dep", "neg"], ["Zakat", "zakat", "neg"],
@@ -555,6 +568,8 @@
                 <Slider label="Receptionists per pod" value={inp.receptionists} min={0} max={3} step={1} unit="staff" onChange={(v) => set("receptionists", v)} />
                 <Slider label="Receptionist salary (loaded)" value={inp.receptionSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionSalary", v)} />
                 <Slider label="Consumables & lab" value={inp.materialsPct} min={0} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
+                <Slider label="Utilities, CAM & pod overhead" value={inp.podOverheadMo} min={0} max={30} step={1} unit="K SAR/mo" onChange={(v) => set("podOverheadMo", v)} hint="mall service charge / CAM + utilities, per pod" />
+                <Slider label="Card & payment fees" value={inp.paymentFeePct} min={0} max={4} step={0.1} unit="% of rev" onChange={(v) => set("paymentFeePct", v)} />
               </Card>
               <Card n="E" title="Sterilization (CSSD)">
                 <div style={{ fontFamily: SANS, fontSize: 12, color: C.text, marginBottom: 6 }}>Mode: <b style={{ color: C.brass }}>{inp.cssdCentralized ? "Central hub (shared)" : "Per pod (autoclave each)"}</b> — toggle in the header.</div>
@@ -566,6 +581,7 @@
               <Card n="F" title="Insurance (staff)">
                 <Slider label="Medical insurance / employee" value={inp.medInsPerEmp} min={0} max={12000} step={250} unit="SAR/yr" onChange={(v) => set("medInsPerEmp", v)} hint="CCHI cover for every employee (pods + HQ)" />
                 <Slider label="Malpractice / clinical staff" value={inp.malpracticePerClin} min={0} max={15000} step={250} unit="SAR/yr" onChange={(v) => set("malpracticePerClin", v)} hint="dentists, hygienists & nurses" />
+                <Slider label="EOSB accrual (% of payroll)" value={inp.eosbPct} min={0} max={12} step={0.1} unit="%" onChange={(v) => set("eosbPct", v)} hint="end-of-service benefit accrual — KSA ~8.3%" />
                 <div style={{ ...bSub, marginTop: 8 }}><span>Mature insurance / mo</span><span style={bVal}>{f0(m.matureInsuranceMo)}K</span></div>
               </Card>
               <Card n="G" title="HQ / central staff">
@@ -665,10 +681,13 @@
                 <div style={bRow}><span style={{ color: C.sub }}>Hygienists ({inp.hygienists})</span><span style={bVal}>{f0(inp.hygienists * inp.hygSalary)}</span></div>
                 {inp.nursesPerPod > 0 && <div style={bRow}><span style={{ color: C.sub }}>Nurses / assistants ({inp.nursesPerPod})</span><span style={bVal}>{f0(inp.nursesPerPod * inp.nurseSalary)}</span></div>}
                 {inp.receptionists > 0 && <div style={bRow}><span style={{ color: C.sub }}>Receptionists ({inp.receptionists})</span><span style={bVal}>{f0(inp.receptionists * inp.receptionSalary)}</span></div>}
+                {inp.podOverheadMo > 0 && <div style={bRow}><span style={{ color: C.sub }}>Utilities, CAM & overhead</span><span style={bVal}>{f0(inp.podOverheadMo)}</span></div>}
                 {!inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>CSSD (per-pod autoclave)</span><span style={bVal}>{f0(inp.cssdOpexPerPod)}</span></div>}
                 <div style={{ ...bRow, fontWeight: 600 }}><span style={{ color: C.text }}>Direct fixed / pod</span><span style={bVal}>{f0(m.mature.fixed)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>+ Consumables ({inp.materialsPct}% svc)</span><span style={bVal}>{f0(m.mature.materials)}</span></div>
                 {R && <div style={bRow}><span style={{ color: C.sub }}>+ Retail COGS</span><span style={bVal}>{f0(m.mature.retailCogs)}</span></div>}
+                {inp.paymentFeePct > 0 && <div style={bRow}><span style={{ color: C.sub }}>+ Card fees ({inp.paymentFeePct}%)</span><span style={bVal}>{f0(m.mature.paymentFees)}</span></div>}
+                {inp.eosbPct > 0 && <div style={bRow}><span style={{ color: C.sub }}>+ EOSB ({inp.eosbPct}% payroll)</span><span style={bVal}>{f0(m.mature.eosb)}</span></div>}
                 <div style={bSub}><span>All-in direct / pod (mature)</span><span style={bVal}>{f0(m.mature.costs)}</span></div>
               </div>
               {/* HQ CapEx */}
