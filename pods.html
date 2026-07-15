@@ -85,7 +85,7 @@
       hygienists: 2, hygSalary: 14,
       nursesPerPod: 1, nurseSalary: 5, nurseHousing: 24,
       receptionists: 1, receptionSalary: 6,
-      materialsPct: 12,
+      materialsPct: 0,
       // CSSD / sterilization: central hub vs an autoclave per pod
       cssdCentralized: true, cssdOpexPerPod: 5, hqCxCssd: 180, cssdPerPodCapex: 70,
       // staff insurance (SAR / person / year)
@@ -533,7 +533,7 @@
                 <Slider label="Nurse housing / rent (per nurse)" value={inp.nurseHousing} min={0} max={96} step={2} unit="K SAR/yr" onChange={(v) => set("nurseHousing", v)} hint="annual staff accommodation allowance per nurse" />
                 <Slider label="Receptionists per pod" value={inp.receptionists} min={0} max={3} step={1} unit="staff" onChange={(v) => set("receptionists", v)} />
                 <Slider label="Receptionist salary (loaded)" value={inp.receptionSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionSalary", v)} />
-                <Slider label="Consumables & lab" value={inp.materialsPct} min={5} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
+                <Slider label="Consumables & lab" value={inp.materialsPct} min={0} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
               </Card>
               <Card n="E" title="Sterilization (CSSD)">
                 <div style={{ fontFamily: SANS, fontSize: 12, color: C.text, marginBottom: 6 }}>Mode: <b style={{ color: C.brass }}>{inp.cssdCentralized ? "Central hub (shared)" : "Per pod (autoclave each)"}</b> — toggle in the header.</div>
