@@ -109,7 +109,9 @@
       screensPerDay: 15, needPct: 35, consentPct: 60, acceptPct: 40, caseValue: 3500,
       mode: "hub", referralFeePct: 12, hubMarginPct: 30, chartValue: 150, inclDatabase: true,
       // capital & returns
-      minCashMonths: 3, exitMultiple: 5, zakatPct: 2.5, deprYears: 7,
+      minCashMonths: 3, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12,
+      // depreciation lives by asset class (years, straight-line)
+      depFitout: 10, depEquip: 7, depIt: 4, depVehicle: 5, depIntangible: 5,
     };
     // pod CapEx breakdown (SAR '000 per pod)
     const CX_KEYS = [
@@ -144,6 +146,13 @@
     const capexPerPod = (p) => CX_KEYS.reduce((s, [k]) => s + (p[k] || 0), 0) + (p.cssdCentralized ? 0 : (p.cssdPerPodCapex || 0));
     // HQ one-time capex, plus the central CSSD hub when centralized
     const hqCapexTotal = (p) => HQ_CX_KEYS.reduce((s, [k]) => s + (p[k] || 0), 0) + (p.cssdCentralized ? (p.hqCxCssd || 0) : 0);
+    // depreciation: each CapEx line mapped to an asset-class life (years), straight-line
+    const DEP_LIFE = { cxFitout: "depFitout", cxRetail: "depFitout", cxContingency: "depFitout", cxLicensing: "depIntangible", cxEquip: "depEquip", cxXray: "depEquip", cxItBrand: "depIt", hqCxOffice: "depFitout", hqCxIt: "depIt", hqCxBrand: "depIntangible", hqCxSetup: "depIntangible", hqCxCar: "depVehicle", hqCxCssd: "depEquip" };
+    const depLife = (p, key) => Math.max(1, p[DEP_LIFE[key]] || p.deprYears || 7);
+    // annual straight-line depreciation for one pod's CapEx (+ per-pod autoclave when distributed)
+    const podDepPerYear = (p) => CX_KEYS.reduce((s, [k]) => s + (p[k] || 0) / depLife(p, k), 0) + (p.cssdCentralized ? 0 : (p.cssdPerPodCapex || 0) / Math.max(1, p.depEquip || 7));
+    // annual straight-line depreciation for HQ CapEx (+ central CSSD hub when centralized)
+    const hqDepPerYear = (p) => HQ_CX_KEYS.reduce((s, [k]) => s + (p[k] || 0) / depLife(p, k), 0) + (p.cssdCentralized ? (p.hqCxCssd || 0) / Math.max(1, p.depEquip || 7) : 0);
     // one supervising dentist covers podsPerDentist pods; per-pod cost = monthly salary loaded with GOSI, split
     const dentistPerPod = (p) => p.dentistSalary * gosiMul(p) / Math.max(1, p.podsPerDentist || 1);
     // HQ staff monthly cost (loaded)
@@ -223,7 +232,8 @@
         const newPods = cohorts[i] || 0;
         const capex = newPods * capexPod + (i === 0 ? hqCapex : 0); // HQ capex deployed at launch
         cumCapex += capex;
-        const dep = cumCapex / p.deprYears;
+        // depreciation by asset class: every open pod's assets + HQ assets (deployed Y1), straight-line
+        const dep = podsActive * podDepPerYear(p) + hqDepPerYear(p);
         const zakat = Math.max(0, ebitda - dep) * (p.zakatPct / 100);
         const ni = ebitda - dep - zakat;
         const fcf = ni + dep - capex;
@@ -248,6 +258,13 @@
       years.forEach((y, i) => { cfs[i] -= y.capex; cfs[i + 1] += y.ni + y.dep; });
       // 5-year IRR on operating cash flows only — the terminal exit value is deliberately excluded
       const irr = computeIRR(cfs);
+      // NPV of the full investor cash flows (operating + terminal exit) at the discount rate
+      const r = (p.discountRate || 0) / 100;
+      const cfsFull = cfs.slice(); cfsFull[5] += exitValue;
+      const npv = cfsFull.reduce((s, cf, t) => s + cf / Math.pow(1 + r, t), 0);
+      // payback: first year cumulative FCF turns positive (null → beyond Y5)
+      const payYr = years.find((y) => y.cumFCF >= 0);
+      const paybackYear = payYr ? payYr.year : null;
       const totalPods = p.podsY1 + p.podsPerYear * 4;
       const launchLiquidity = Math.max(0, -peakNeed);
       // mature monthly fixed opex (whole network) incl. mature insurance — for the reserve
@@ -294,12 +311,12 @@
       const sMaterials = maturePod.materials * sMul, sRetailCogs = maturePod.retailCogs * sMul, sPodDirect = podFixedMo(p) * sMul;
       const sPodContribution = sPodRev - sMaterials - sRetailCogs - sPodDirect;
       const sOpEbitda = sPodContribution - sHq - sIns, sEbitda = sOpEbitda + sFunnelRev;
-      const sDep = p.deprYears > 0 ? totalCapex / p.deprYears : 0;
+      const sDep = sPods * podDepPerYear(p) + hqDepPerYear(p);
       const sZakat = Math.max(0, sEbitda - sDep) * (p.zakatPct / 100);
       const steady = { pods: sPods, serviceRev: sServiceRev, retailRev: sRetailRev, funnelRev: sFunnelRev, podRev: sPodRev, revenue: sRevenue,
         materials: sMaterials, retailCogs: sRetailCogs, podDirect: sPodDirect, podContribution: sPodContribution, hq: sHq, insurance: sIns,
         opEbitda: sOpEbitda, ebitda: sEbitda, ebitdaPct: sRevenue > 0 ? sEbitda / sRevenue * 100 : 0, dep: sDep, zakat: sZakat, ni: sEbitda - sDep - sZakat };
-      return { years, y5, cumCharts, dbValue, inclDb, exitOps, exitValue, irr, moic, cumFCF,
+      return { years, y5, cumCharts, dbValue, inclDb, exitOps, exitValue, irr, npv, paybackYear, discountRate: p.discountRate, moic, cumFCF,
         totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqVarRate: hqVarRate(p), hqCssdPerPodMo: hqCssdPerPodMo(p), matureHqPerPodMo, matureRevAnnual,
         hqStaffMo: hqStaffMo(p), hqStaffCount: hqStaffCount(p), matureInsuranceMo, capacityPCD, mApptsPCD, y1ApptsPCD, steady, y1Pod,
         launchLiquidity, minCashReserve, capitalToRaise, selfFunded, hqFixedPerPod,
@@ -498,6 +515,8 @@
               <Kpi label="Y5 EBITDA" value={f0(m.y5.ebitda) + "K"} sub={pctf(m.y5.ebitdaPct) + " margin"} accent={m.y5.ebitda >= 0 ? C.pos : C.neg} />
               <Kpi label="Year-1 fund" value={f0(m.year1.fundNeed) + "K"} sub={`capex + opex + reserve`} accent={C.ink2} />
               <Kpi label="5-yr IRR" value={m.irr != null ? pctf(m.irr * 100) : "—"} sub="operations only · excl. exit" accent={m.irr != null && m.irr > 0.2 ? C.pos : C.text} />
+              <Kpi label="NPV" value={f0(m.npv) + "K"} sub={`@ ${inp.discountRate}% · incl. exit`} accent={m.npv >= 0 ? C.pos : C.neg} />
+              <Kpi label="Payback" value={m.paybackYear || "> Y5"} sub="cumulative FCF turns positive" accent={C.ink2} />
               <Kpi label="MOIC" value={m.moic ? m.moic.toFixed(1) + "×" : "—"} sub={`on ${f0(m.totalCapex)}K deployed`} accent={C.brass} />
             </div>
 
@@ -580,6 +599,13 @@
                 <div style={{ ...bSub, marginTop: 8 }}><span>CapEx per pod{inp.cssdCentralized ? "" : " (incl. autoclave)"}</span><span style={bVal}>{f0(m.capexPod)}K</span></div>
                 <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={1} unit="mo opex" onChange={(v) => set("minCashMonths", v)} />
                 <Slider label="Exit multiple (Y5 EBITDA)" value={inp.exitMultiple} min={0} max={10} step={0.5} unit="×" onChange={(v) => set("exitMultiple", v)} />
+                <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={30} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} hint="cost of capital used to discount cash flows" />
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "10px 0 4px" }}>Depreciation lives (straight-line)</div>
+                <Slider label="Fit-out & premises" value={inp.depFitout} min={3} max={15} step={1} unit="yrs" onChange={(v) => set("depFitout", v)} />
+                <Slider label="Equipment (chairs · X-ray · CSSD)" value={inp.depEquip} min={3} max={15} step={1} unit="yrs" onChange={(v) => set("depEquip", v)} />
+                <Slider label="IT / POS / software" value={inp.depIt} min={2} max={10} step={1} unit="yrs" onChange={(v) => set("depIt", v)} />
+                <Slider label="Vehicle" value={inp.depVehicle} min={3} max={10} step={1} unit="yrs" onChange={(v) => set("depVehicle", v)} />
+                <Slider label="Licensing / brand / pre-opening" value={inp.depIntangible} min={2} max={10} step={1} unit="yrs" onChange={(v) => set("depIntangible", v)} />
               </Card>
               {F && (
                 <Card n="J" title="Patient-funnel & data upside">
