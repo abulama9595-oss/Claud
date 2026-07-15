@@ -326,6 +326,8 @@
       const [inp, setInp] = useState({ ...POD_BASE });
       const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
       const m = useMemo(() => computePods(inp), [inp]);
+      // "no expansion" fleet: all the selected pods open in Y1, no new pods added — ramps in place over 5 years
+      const fleet = useMemo(() => { const tp = inp.podsY1 + inp.podsPerYear * 4; return computePods({ ...inp, podsY1: tp, podsPerYear: 0 }); }, [inp]);
       const F = inp.inclFunnel, R = inp.inclRetail;
       const totalPods = m.totalPods;
 
@@ -762,50 +764,44 @@
             )}
 
             {/* steady-state (feasibility) P&L */}
-            <SectionHeader eyebrow={F ? "05 · Feasibility P&L" : "04 · Feasibility P&L"} title={`P&amp;L — ${totalPods} pods (your rollout), at maturity`} sub="The number of pods from your rollout assumptions, all mature — pod feasibility without the build-out ramp. Per-pod and network, annual, SAR '000." />
+            <SectionHeader eyebrow={F ? "05 · Feasibility P&L" : "04 · Feasibility P&L"} title={`P&amp;L — ${totalPods} pods, no expansion`} sub={`Your selected ${totalPods} pods, all opening in Year 1 with no new pods added — they simply ramp in place. Focused on the pods you chose, without the network build-out. SAR '000.`} />
             <div style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 34 }}>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
-                  <thead><tr>
-                    <th style={{ ...th, textAlign: "left", fontFamily: SANS }}>Line item (annual)</th>
-                    <th style={th}>Per pod</th><th style={th}>Network · {totalPods}</th>
-                  </tr></thead>
+                  <thead>
+                    <tr>
+                      <th style={{ ...th, textAlign: "left", fontFamily: SANS }}>Line item</th>
+                      {fleet.years.map((y) => <th key={y.year} style={th}>{y.year}</th>)}
+                    </tr>
+                  </thead>
                   <tbody>
-                    {[
-                      ["Hygiene & whitening services", "serviceRev", "sub"],
-                      ...(R ? [["Retail products", "retailRev", "sub"]] : []),
-                      ["Pod revenue", "podRev", "head"],
-                      ["Consumables & lab", "materials", "neg"],
-                      ...(R ? [["Retail COGS", "retailCogs", "neg"]] : []),
-                      ["Pod direct opex", "podDirect", "neg"],
-                      ["Pod contribution", "podContribution", "head"],
-                      ["HQ opex", "hq", "neg"],
-                      ["Insurance", "insurance", "neg"],
-                      ...(F ? [["Operating EBITDA", "opEbitda", "head"], ["Funnel capture", "funnelRev", "pos"]] : []),
-                      ["Network EBITDA", "ebitda", "head"],
-                      ["Depreciation", "dep", "neg"], ["Zakat", "zakat", "neg"],
-                      ["Net income", "ni", "head"],
-                    ].map(([label, key, kind]) => {
-                      const v = m.steady[key], pp = v / Math.max(1, totalPods);
-                      const loss = (key === "ebitda" || key === "ni" || key === "opEbitda" || key === "podContribution") && v < 0;
-                      const col = loss ? C.neg : kind === "neg" ? C.sub : kind === "pos" ? C.brass : C.text;
-                      const fmt = (x) => kind === "neg" ? `(${f0(Math.abs(x))})` : f0(x);
-                      return (<tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
+                    <tr style={{ background: "#F3EFE6" }}>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 700 }}>Active pods</td>
+                      {fleet.years.map((y) => <td key={y.year} style={{ ...td, fontWeight: 700 }}>{y.podsActive}</td>)}
+                    </tr>
+                    {pnl.map(([label, key, kind]) => (
+                      <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
                         <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "neg" ? C.sub : C.text }}>{label}</td>
-                        <td style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: col }}>{fmt(pp)}</td>
-                        <td style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: col }}>{fmt(v)}</td>
-                      </tr>);
-                    })}
+                        {fleet.years.map((y) => {
+                          const v = y[key];
+                          const loss = (key === "ebitda" || key === "ni" || key === "fcf" || key === "opEbitda" || key === "podContribution") && v < 0;
+                          return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: loss ? C.neg : kind === "neg" ? C.sub : kind === "pos" ? C.brass : C.text }}>{kind === "neg" ? `(${f0(Math.abs(v))})` : f0(v)}</td>;
+                        })}
+                      </tr>
+                    ))}
                     <tr>
                       <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>EBITDA margin</td>
-                      <td style={{ ...td, fontWeight: 700, color: m.steady.ebitda >= 0 ? C.pos : C.neg }}>{pctf(m.steady.ebitdaPct)}</td>
-                      <td style={{ ...td, fontWeight: 700, color: m.steady.ebitda >= 0 ? C.pos : C.neg }}>{pctf(m.steady.ebitdaPct)}</td>
+                      {fleet.years.map((y) => <td key={y.year} style={{ ...td, fontWeight: 700, color: y.ebitda >= 0 ? C.pos : C.neg }}>{pctf(y.ebitdaPct)}</td>)}
+                    </tr>
+                    <tr>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontStyle: "italic", color: C.sub }}>Cumulative FCF</td>
+                      {fleet.years.map((y) => <td key={y.year} style={{ ...td, color: y.cumFCF < 0 ? C.neg : C.pos }}>{f0(y.cumFCF)}</td>)}
                     </tr>
                   </tbody>
                 </table>
               </div>
               <div style={{ padding: "10px 18px", fontFamily: SANS, fontSize: 11, color: C.sub, borderTop: `1px solid ${C.line}` }}>
-                EBITDA margin {pctf(m.steady.ebitdaPct)} · depreciation on the fully-built {f0(m.totalCapex)}K asset base · excludes expansion capex. The run-rate once all {totalPods} pods are mature.
+                All {totalPods} pods open in Year 1 (Y1 CapEx {f0(fleet.year1.capex)}K, all pods + HQ) and ramp in place — no new pods. Utilization grows from {f0(fleet.y1ApptsPCD)} to {f0(fleet.mApptsPCD)} of {inp.apptsPerChairDay} appts/chair/day by Y5.
               </div>
             </div>
 
