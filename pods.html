@@ -93,6 +93,8 @@
       cssdCentralized: false, cssdOpexPerPod: 3, hqCxCssd: 180, cssdPerPodCapex: 70,
       // staff insurance (SAR / person / year)
       medInsPerEmp: 5000, malpracticePerClin: 5000,
+      // patient insurance vs cash mix: share billed to insurers, rejection rate, and collection delay (months)
+      insuredPct: 30, rejectionPct: 5, insurerDelayMo: 3,
       // HQ staff — count N and monthly salary (K SAR), loaded with GOSI
       hqAdminMgrN: 1, hqAdminMgrSal: 15,
       hqMedMgrN: 1, hqMedMgrSal: 20,
@@ -222,12 +224,14 @@
         const contacts = F ? screenings + appts * 0.5 : 0;
         cumCharts += contacts * (p.consentPct / 100);
         const newCharts = contacts * (p.consentPct / 100);
+        // insurance mix: a share of billings is billed to insurers; rejected claims are lost revenue
+        const denials = podRev * ((p.insuredPct || 0) / 100) * ((p.rejectionPct || 0) / 100);
         // costs
         const materials = serviceRev * (p.materialsPct / 100);
         const retailCogs = R ? retailRev * (1 - p.retailMarginPct / 100) : 0;
-        const paymentFees = podRev * ((p.paymentFeePct || 0) / 100); // card/payment processing on pod revenue
+        const paymentFees = (podRev - denials) * ((p.paymentFeePct || 0) / 100); // card/payment processing on collected revenue
         const podDirect = podFixedMo(p) * 12 * effPods;
-        const podContribution = podRev - materials - retailCogs - paymentFees - podDirect;
+        const podContribution = podRev - denials - materials - retailCogs - paymentFees - podDirect;
         const hq = hqOpexYr(p, podRev + funnelRev, effPods); // fixed base + revenue-linked marketing/ops + central CSSD per pod
         // staff insurance: medical (all staff) + malpractice (clinical staff). HQ staff full year; pod staff scale with effPods.
         const totalEmp = staffPerPod(p) * effPods + hqStaffCount(p);
@@ -253,7 +257,7 @@
         const pct = (x) => totalRev > 0 ? x / totalRev * 100 : 0;
         years.push({ year: `Y${i + 1}`, podsActive, newPods, appts, screenings, newCharts, cumCharts, cases, util,
           serviceRev, retailRev, podRev, funnelRev, referralRev, hubCapture, revenue: totalRev,
-          materials, retailCogs, paymentFees, podDirect, podContribution, hq, insurance, eosb, opEbitda, ebitda, ebitdaPct: pct(ebitda),
+          denials, materials, retailCogs, paymentFees, podDirect, podContribution, hq, insurance, eosb, opEbitda, ebitda, ebitdaPct: pct(ebitda),
           dep, zakat, ni, capex, maintCapex, fcf, cumFCF });
       }
       const y5 = years[4];
@@ -289,17 +293,11 @@
       const totalReturned = years.reduce((a, y) => a + y.ni + y.dep - y.maintCapex, 0) + exitValue;
       const moic = totalCapex > 0 && totalReturned > 0 ? totalReturned / totalCapex : null;
       const hqFixedPerPod = totalPods > 0 ? hqFixedMo(p) / totalPods : 0;
-      // Year-1 cost & funding (clinic-study concept): raise = CapEx + pre-opening costs + cash reserve.
-      // Ongoing operating opex is NOT raised — revenue covers it as it comes in.
+      // Year-1 launch funding (clinic-study MONTHLY cash-trough method): raise = CapEx + launch liquidity + cash reserve.
+      // A month-by-month cash curve (pre-opening + 12 operating months) finds the deepest cumulative deficit (the trough);
+      // the raise covers it so the venture never runs out of cash. Ongoing opex is NOT raised — revenue funds it.
       const y1 = years[0];
-      const y1Opex = y1.materials + y1.retailCogs + y1.paymentFees + y1.podDirect + y1.hq + y1.insurance + y1.eosb;
-      // pre-opening: fixed operating cash burn (pilot pods + HQ) for preOpenMonths before revenue starts — excludes revenue-linked materials/card fees/marketing
-      const y1InsMo = (staffPerPod(p) * p.podsY1 + hqStaffCount(p)) * p.medInsPerEmp / 1000 / 12 + (clinicalPerPod(p) * p.podsY1) * p.malpracticePerClin / 1000 / 12;
-      const y1FixedMo = podFixedMo(p) * p.podsY1 + hqFixedMo(p) + nurseHousingYr(p, p.podsY1) / 12
-        + (podPayrollMo(p) * p.podsY1 + hqStaffMo(p)) * ((p.eosbPct || 0) / 100) + y1InsMo;
-      const y1PreOpen = Math.max(0, p.preOpenMonths) * y1FixedMo;
-      const y1Reserve = Math.max(0, p.minCashMonths) * y1Opex / 12; // cash cushion: a few months of full running cost
-      const y1FundNeed = y1.capex + y1PreOpen + y1Reserve;
+      const y1Opex = y1.denials + y1.materials + y1.retailCogs + y1.paymentFees + y1.podDirect + y1.hq + y1.insurance + y1.eosb;
       // per-pod monthly economics at a given booking (appts / chair / day) — reused for mature & Year-1
       const podEcon = (apptsPCD) => {
         const appts = p.chairs * apptsPCD * p.daysPerMonth;
@@ -307,16 +305,48 @@
         const retail = R ? appts * (p.retailAttachPct / 100) * p.retailBasket / 1000 : 0;
         const cases = F ? appts * (p.needPct / 100) * (p.consentPct / 100) * (p.acceptPct / 100) : 0;
         const funnel = F ? cases * p.caseValue / 1000 * ((p.mode === "referral" ? p.referralFeePct : p.hubMarginPct) / 100) : 0;
+        const denials = (service + retail) * ((p.insuredPct || 0) / 100) * ((p.rejectionPct || 0) / 100);
         const materials = service * (p.materialsPct / 100);
         const retailCogs = R ? retail * (1 - p.retailMarginPct / 100) : 0;
-        const paymentFees = (service + retail) * ((p.paymentFeePct || 0) / 100);
+        const paymentFees = (service + retail - denials) * ((p.paymentFeePct || 0) / 100);
         const eosb = podPayrollMo(p) * ((p.eosbPct || 0) / 100); // pod-staff EOSB, monthly per pod
-        const costs = podFixedMo(p) + materials + retailCogs + paymentFees + eosb;
-        return { apptsPCD, appts, service, retail, funnel, materials, retailCogs, paymentFees, eosb, cases, costs, ebitda: service + retail + funnel - costs };
+        const costs = podFixedMo(p) + denials + materials + retailCogs + paymentFees + eosb;
+        return { apptsPCD, appts, service, retail, funnel, denials, materials, retailCogs, paymentFees, eosb, cases, costs, ebitda: service + retail + funnel - costs };
       };
       const mApptsPCD = Math.min(capacityPCD, p.apptsOpen + p.apptsRampPerYr * 4);
       const y1ApptsPCD = Math.min(capacityPCD, p.apptsOpen);
       const maturePod = podEcon(mApptsPCD), y1Pod = podEcon(y1ApptsPCD);
+      // --- Year-1 launch funding (clinic-study MONTHLY cash-trough method): raise = CapEx + launch liquidity + reserve ---
+      // A month-by-month cash curve (pre-opening + 12 operating months) finds the deepest cumulative deficit (trough);
+      // the raise covers it so cash never runs out. Ongoing opex is NOT raised — revenue funds it.
+      const y1InsMo = ((staffPerPod(p) * p.podsY1 + hqStaffCount(p)) * p.medInsPerEmp + (clinicalPerPod(p) * p.podsY1) * p.malpracticePerClin) / 1000 / 12;
+      const y1FixedNoInsMo = podFixedMo(p) * p.podsY1 + hqFixedMo(p) + nurseHousingYr(p, p.podsY1) / 12 + (podPayrollMo(p) * p.podsY1 + hqStaffMo(p)) * ((p.eosbPct || 0) / 100);
+      const insFrac = (p.insuredPct || 0) / 100, rejFrac = (p.rejectionPct || 0) / 100, dLag = Math.max(0, Math.round(p.insurerDelayMo || 0));
+      const preF = Math.max(0, Math.round(p.preOpenMonths || 0));
+      const billMo = p.podsY1 * (y1Pod.service + y1Pod.retail);        // gross billings / month at opening booking
+      const matMo = p.podsY1 * y1Pod.materials;                        // materials / month
+      const varHqRate = ((p.marketingPct || 0) + (p.centralOpsPct || 0)) / 100; // revenue-linked HQ (marketing + ops)
+      const insPremiumUpfront = y1InsMo * 12;                          // annual insurance premiums paid upfront at launch
+      const monthlyCash = [];
+      let cumCash = 0, trough = 0;
+      for (let mn = -preF; mn <= 12; mn++) {
+        let cf = 0;
+        if (mn <= 0) {
+          if (mn < 0) cf -= y1FixedNoInsMo;                            // pre-opening staff / rent / overhead each month
+          if (mn === -preF) cf -= insPremiumUpfront;                   // insurance premiums paid upfront
+        } else {
+          const insuredColl = (mn - dLag) >= 1 ? insFrac * (1 - rejFrac) * billMo : 0; // insured billed dLag months ago
+          const cashColl = (1 - insFrac) * billMo;                     // cash/card patients pay at visit
+          const cardFees = cashColl * ((p.paymentFeePct || 0) / 100);  // card fees only on cash/card collections
+          cf += cashColl + insuredColl - y1FixedNoInsMo - matMo - cardFees - varHqRate * billMo;
+        }
+        cumCash += cf;
+        if (cumCash < trough) trough = cumCash;
+        monthlyCash.push({ month: mn < 0 ? `P${preF + mn + 1}` : mn === 0 ? "Open" : `M${mn}`, net: Math.round(cf), cum: Math.round(cumCash) });
+      }
+      const y1LaunchLiq = Math.max(0, -trough);                        // deepest cumulative cash deficit during the launch window
+      const y1Reserve = Math.max(0, p.minCashMonths) * y1Opex / 12;    // cash cushion: a few months of full running cost
+      const y1FundNeed = y1.capex + y1LaunchLiq + y1Reserve;
       const podPayback = maturePod.ebitda > 0 ? capexPod / (maturePod.ebitda * 12) : null;
       const matureRevAnnual = (maturePod.service + maturePod.retail + maturePod.funnel) * totalPods * 12;
       const matureHqPerPodMo = totalPods > 0 ? hqOpexYr(p, matureRevAnnual, totalPods) / totalPods / 12 : 0; // all-in HQ per pod at maturity (monthly)
@@ -327,21 +357,22 @@
       const sPodRev = sServiceRev + sRetailRev, sRevenue = sPodRev + sFunnelRev;
       const sHq = hqOpexYr(p, sRevenue, sPods);
       const sIns = matureInsuranceMo * 12;
+      const sDenials = sPodRev * ((p.insuredPct || 0) / 100) * ((p.rejectionPct || 0) / 100);
       const sMaterials = maturePod.materials * sMul, sRetailCogs = maturePod.retailCogs * sMul, sPodDirect = podFixedMo(p) * sMul;
-      const sPaymentFees = sPodRev * ((p.paymentFeePct || 0) / 100);
+      const sPaymentFees = (sPodRev - sDenials) * ((p.paymentFeePct || 0) / 100);
       const sEosb = (podPayrollMo(p) * sPods + hqStaffMo(p)) * 12 * ((p.eosbPct || 0) / 100);
-      const sPodContribution = sPodRev - sMaterials - sRetailCogs - sPaymentFees - sPodDirect;
+      const sPodContribution = sPodRev - sDenials - sMaterials - sRetailCogs - sPaymentFees - sPodDirect;
       const sOpEbitda = sPodContribution - sHq - sIns - sEosb, sEbitda = sOpEbitda + sFunnelRev;
       const sDep = sPods * podDepPerYear(p) + hqDepPerYear(p);
       const sZakat = Math.max(0, sEbitda - sDep) * (p.zakatPct / 100);
-      const steady = { pods: sPods, serviceRev: sServiceRev, retailRev: sRetailRev, funnelRev: sFunnelRev, podRev: sPodRev, revenue: sRevenue,
+      const steady = { pods: sPods, serviceRev: sServiceRev, retailRev: sRetailRev, funnelRev: sFunnelRev, podRev: sPodRev, revenue: sRevenue, denials: sDenials,
         materials: sMaterials, retailCogs: sRetailCogs, paymentFees: sPaymentFees, podDirect: sPodDirect, podContribution: sPodContribution, hq: sHq, insurance: sIns, eosb: sEosb,
         opEbitda: sOpEbitda, ebitda: sEbitda, ebitdaPct: sRevenue > 0 ? sEbitda / sRevenue * 100 : 0, dep: sDep, zakat: sZakat, ni: sEbitda - sDep - sZakat };
       return { years, y5, cumCharts, dbValue, inclDb, exitOps, exitValue, irr, npv, paybackYear, discountRate: p.discountRate, moic, cumFCF,
         totalCapex, capexPod, hqCapex, totalPods, matureNetworkFixedMo, hqFixedMo: hqFixedMo(p), hqVarRate: hqVarRate(p), hqCssdPerPodMo: hqCssdPerPodMo(p), matureHqPerPodMo, matureRevAnnual,
         hqStaffMo: hqStaffMo(p), hqStaffCount: hqStaffCount(p), matureInsuranceMo, capacityPCD, mApptsPCD, y1ApptsPCD, steady, y1Pod,
         launchLiquidity, minCashReserve, capitalToRaise, selfFunded, hqFixedPerPod,
-        year1: { capex: y1.capex, opex: y1Opex, preOpen: y1PreOpen, revenue: y1.revenue, ebitda: y1.ebitda, fcf: y1.fcf, reserve: y1Reserve, fundNeed: y1FundNeed },
+        year1: { capex: y1.capex, opex: y1Opex, launchLiq: y1LaunchLiq, monthlyCash, trough: Math.round(trough), revenue: y1.revenue, ebitda: y1.ebitda, fcf: y1.fcf, reserve: y1Reserve, fundNeed: y1FundNeed },
         mature: { apptsPCD: mApptsPCD, appts: maturePod.appts, service: maturePod.service, retail: maturePod.retail, funnel: maturePod.funnel, materials: maturePod.materials, retailCogs: maturePod.retailCogs, paymentFees: maturePod.paymentFees, eosb: maturePod.eosb, fixed: podFixedMo(p), hqPerPod: matureHqPerPodMo, hqFixedPerPod: 0, insPerPod: matureInsuranceMo / totalPods, netPerPod, costs: maturePod.costs, ebitda: maturePod.ebitda, cases: maturePod.cases, payback: podPayback } };
     }
 
@@ -478,7 +509,8 @@
       const pnl = [
         ["Hygiene & whitening services", "serviceRev", "sub"],
         ...(R ? [["Retail products", "retailRev", "sub"]] : []),
-        ["Pod revenue", "podRev", "head"],
+        ["Pod revenue (billings)", "podRev", "head"],
+        ...(inp.insuredPct > 0 && inp.rejectionPct > 0 ? [["Insurance rejections (denied claims)", "denials", "neg"]] : []),
         ["Consumables & lab", "materials", "neg"],
         ...(R ? [["Retail COGS", "retailCogs", "neg"]] : []),
         ["Card & payment fees", "paymentFees", "neg"],
@@ -521,7 +553,7 @@
                 <div style={{ background: C.ink2, border: `1px solid ${C.brass}`, borderRadius: 10, padding: "12px 20px", textAlign: "right", flex: "0 0 auto" }}>
                   <div style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brassLt, marginBottom: 4 }}>Fund needed · Year 1</div>
                   <div style={{ fontFamily: MONO, fontSize: 27, fontWeight: 700, color: C.inv, lineHeight: 1 }}>SAR {f0(m.year1.fundNeed)}K</div>
-                  <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.invSub, marginTop: 5 }}>CapEx {f0(m.year1.capex)}K + pre-opening {f0(m.year1.preOpen)}K + {inp.minCashMonths}mo reserve</div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.invSub, marginTop: 5 }}>CapEx {f0(m.year1.capex)}K + launch liquidity {f0(m.year1.launchLiq)}K + {inp.minCashMonths}mo reserve</div>
                 </div>
               </div>
               {/* module toggles — the primary interaction */}
@@ -541,7 +573,7 @@
               <Kpi label="Pods by Y5" value={m.y5.podsActive} sub={`${inp.podsY1} pilot + ${inp.podsPerYear}/yr`} />
               <Kpi label="Y5 revenue" value={f0(m.y5.revenue) + "K"} sub={`${f0(m.y5.serviceRev)}K svc${R ? ` · ${f0(m.y5.retailRev)}K retail` : ""}${F ? ` · ${f0(m.y5.funnelRev)}K funnel` : ""}`} />
               <Kpi label="Y5 EBITDA" value={f0(m.y5.ebitda) + "K"} sub={pctf(m.y5.ebitdaPct) + " margin"} accent={m.y5.ebitda >= 0 ? C.pos : C.neg} />
-              <Kpi label="Year-1 fund" value={f0(m.year1.fundNeed) + "K"} sub={`capex + pre-opening + reserve`} accent={C.ink2} />
+              <Kpi label="Year-1 fund" value={f0(m.year1.fundNeed) + "K"} sub={`capex + launch liq. + reserve`} accent={C.ink2} />
               <Kpi label="5-yr IRR" value={m.irr != null ? pctf(m.irr * 100) : "—"} sub="operations only · excl. exit" accent={m.irr != null && m.irr > 0.2 ? C.pos : C.text} />
               <Kpi label="NPV" value={f0(m.npv) + "K"} sub={`@ ${inp.discountRate}% · incl. exit`} accent={m.npv >= 0 ? C.pos : C.neg} />
               <Kpi label="Payback" value={m.paybackYear || "> Y5"} sub="cumulative FCF turns positive" accent={C.ink2} />
@@ -564,6 +596,9 @@
                 <Slider label="Hygiene ticket" value={inp.hygieneTicket} min={100} max={800} step={10} unit="SAR" onChange={(v) => set("hygieneTicket", v)} hint="scaling & polishing, airflow, fluoride" />
                 <Slider label="Whitening ticket" value={inp.whiteningTicket} min={200} max={2500} step={50} unit="SAR" onChange={(v) => set("whiteningTicket", v)} hint="in-office whitening — higher value, occasional" />
                 <Slider label="Whitening mix" value={inp.whiteningMixPct} min={0} max={60} step={1} unit="% of appts" onChange={(v) => set("whiteningMixPct", v)} hint={`blended ticket ≈ ${f0((inp.hygieneTicket * (1 - inp.whiteningMixPct / 100) + inp.whiteningTicket * inp.whiteningMixPct / 100))} SAR/appt`} />
+                <Slider label="Insured share (billed to insurers)" value={inp.insuredPct} min={0} max={100} step={5} unit="% of billings" onChange={(v) => set("insuredPct", v)} hint="the rest is paid cash/card at the visit" />
+                <Slider label="Claim rejection rate" value={inp.rejectionPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("rejectionPct", v)} hint="rejected insured claims are lost revenue" />
+                <Slider label="Insurer payment delay" value={inp.insurerDelayMo} min={0} max={9} step={1} unit="months" onChange={(v) => set("insurerDelayMo", v)} hint="delays insured collections — deepens the Year-1 cash trough" />
                 <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 4 }}>Bookings never exceed capacity; the utilization each year is the appts booked ÷ capacity.</div>
               </Card>
               {R && (
@@ -574,7 +609,8 @@
                   <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 4 }}>Retail is a switchable module — toggle it off in the header for a pure-services model.</div>
                 </Card>
               )}
-              <Card n="D" title="Pod staff & opex (per pod / month)">
+              <Card n="D" title="Pod costs — opex &amp; CapEx">
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>Staff &amp; operating (per pod / month)</div>
                 <Slider label="Mall rent" value={inp.rentPod} min={5} max={40} step={1} unit="K SAR" onChange={(v) => set("rentPod", v)} />
                 <Slider label="Resident GP salary" value={inp.dentistSalary} min={0} max={55} step={1} unit="K SAR/mo" onChange={(v) => set("dentistSalary", v)} hint={`+${inp.gosiPct}% GOSI, shared across ${inp.podsPerDentist} pods → ${(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist).toFixed(1)}K per pod`} />
                 <Slider label="Pods per resident GP" value={inp.podsPerDentist} min={1} max={3} step={1} unit="pods" onChange={(v) => set("podsPerDentist", v)} />
@@ -587,21 +623,25 @@
                 <Slider label="Consumables & lab" value={inp.materialsPct} min={0} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
                 <Slider label="Utilities, CAM & pod overhead" value={inp.podOverheadMo} min={0} max={30} step={1} unit="K SAR/mo" onChange={(v) => set("podOverheadMo", v)} hint="mall service charge / CAM + utilities, per pod" />
                 <Slider label="Card & payment fees" value={inp.paymentFeePct} min={0} max={4} step={0.1} unit="% of rev" onChange={(v) => set("paymentFeePct", v)} />
-              </Card>
-              <Card n="E" title="Sterilization (CSSD)">
-                <div style={{ fontFamily: SANS, fontSize: 12, color: C.text, marginBottom: 6 }}>Mode: <b style={{ color: C.brass }}>{inp.cssdCentralized ? "Central hub (shared)" : "Per pod (autoclave each)"}</b> — toggle in the header.</div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>Sterilization (CSSD) · {inp.cssdCentralized ? "central hub" : "per pod"}</div>
                 <Slider label="CSSD opex / pod / month" value={inp.cssdOpexPerPod} min={0} max={15} step={0.5} unit="K SAR" onChange={(v) => set("cssdOpexPerPod", v)} hint={inp.cssdCentralized ? "charged at HQ, scales with active pods" : "charged inside each pod"} />
                 {inp.cssdCentralized
                   ? <Slider label="Central CSSD hub — CapEx" value={inp.hqCxCssd} min={0} max={500} step={10} unit="K SAR" onChange={(v) => set("hqCxCssd", v)} hint="one-time; part of HQ CapEx" />
                   : <Slider label="Per-pod autoclave — CapEx" value={inp.cssdPerPodCapex} min={0} max={200} step={5} unit="K SAR" onChange={(v) => set("cssdPerPodCapex", v)} hint="added to each pod's build cost" />}
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>Pod CapEx (SAR '000, one-time)</div>
+                {CX_KEYS.map(([k, label]) => (
+                  <Slider key={k} label={label} value={inp[k]} min={0} max={["cxFitout", "cxEquip", "cxXray"].includes(k) ? 500 : 120} step={5} unit="K SAR" onChange={(v) => set(k, v)} />
+                ))}
+                <div style={{ ...bSub, marginTop: 8 }}><span>CapEx per pod{inp.cssdCentralized ? "" : " (incl. autoclave)"}</span><span style={bVal}>{f0(m.capexPod)}K</span></div>
               </Card>
-              <Card n="F" title="Insurance (staff)">
+              <Card n="E" title="Insurance & statutory">
                 <Slider label="Medical insurance / employee" value={inp.medInsPerEmp} min={0} max={12000} step={250} unit="SAR/yr" onChange={(v) => set("medInsPerEmp", v)} hint="CCHI cover for every employee (pods + HQ)" />
                 <Slider label="Malpractice / clinical staff" value={inp.malpracticePerClin} min={0} max={15000} step={250} unit="SAR/yr" onChange={(v) => set("malpracticePerClin", v)} hint="dentists, hygienists & nurses" />
                 <Slider label="EOSB accrual (% of payroll)" value={inp.eosbPct} min={0} max={12} step={0.1} unit="%" onChange={(v) => set("eosbPct", v)} hint="end-of-service benefit accrual — KSA ~8.3%" />
                 <div style={{ ...bSub, marginTop: 8 }}><span>Mature insurance / mo</span><span style={bVal}>{f0(m.matureInsuranceMo)}K</span></div>
               </Card>
-              <Card n="G" title="HQ / central staff">
+              <Card n="F" title="HQ costs — staff, opex &amp; CapEx">
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>Central staff (count × K SAR/mo)</div>
                 {HQ_STAFF.map(([k, label]) => (
                   <div key={k} style={{ marginBottom: 10 }}>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.text, marginBottom: 3, display: "flex", justifyContent: "space-between" }}><span>{label}</span><span style={{ fontFamily: MONO, color: C.sub }}>{inp[k + "N"]} × {f0(inp[k + "Sal"])}K</span></div>
@@ -612,35 +652,26 @@
                   </div>
                 ))}
                 <div style={{ ...bSub, marginTop: 4 }}><span>HQ staff /mo (+{inp.gosiPct}% GOSI)</span><span style={bVal}>{f0(m.hqStaffMo)}K</span></div>
-              </Card>
-              <Card n="H" title="HQ other opex & CapEx (annual)">
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>Other HQ opex (SAR '000 / year)</div>
                 <Slider label="Office rent & admin" value={inp.hqOffice} min={0} max={480} step={5} unit="K SAR/yr" onChange={(v) => set("hqOffice", v)} />
                 <Slider label="IT / ERP / software" value={inp.hqIt} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqIt", v)} />
                 <Slider label="Professional & compliance" value={inp.hqProf} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqProf", v)} />
                 <Slider label="Nurse housing cost" value={inp.nurseHousing} min={0} max={600} step={1} unit="K SAR/yr" onChange={(v) => set("nurseHousing", v)} hint="total annual accommodation cost for all nurses — charged at HQ" />
                 <Slider label="Marketing (% of revenue)" value={inp.marketingPct} min={0} max={15} step={0.5} unit="% rev" onChange={(v) => set("marketingPct", v)} hint="brand & campaigns — scales with revenue (best practice)" />
                 <Slider label="Central ops / QA (% of revenue)" value={inp.centralOpsPct} min={0} max={10} step={0.5} unit="% rev" onChange={(v) => set("centralOpsPct", v)} hint="central operations, quality & compliance — scales with revenue" />
+                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>HQ CapEx (SAR '000, one-time)</div>
                 {HQ_CX_KEYS.map(([k, label]) => (
                   <Slider key={k} label={label} value={inp[k]} min={0} max={500} step={10} unit="K SAR" onChange={(v) => set(k, v)} />
                 ))}
                 <div style={{ ...bSub, marginTop: 8 }}><span>HQ CapEx (incl. CSSD hub if central)</span><span style={bVal}>{f0(m.hqCapex)}K</span></div>
               </Card>
-              <Card n="I" title="Pod CapEx & capital">
-                {CX_KEYS.map(([k, label]) => (
-                  <Slider key={k} label={label} value={inp[k]} min={0} max={["cxFitout", "cxEquip", "cxXray"].includes(k) ? 500 : 120} step={5} unit="K SAR" onChange={(v) => set(k, v)} />
-                ))}
-                <div style={{ ...bSub, marginTop: 8 }}><span>CapEx per pod{inp.cssdCentralized ? "" : " (incl. autoclave)"}</span><span style={bVal}>{f0(m.capexPod)}K</span></div>
-                <Slider label="Pre-opening period" value={inp.preOpenMonths} min={0} max={6} step={1} unit="mo fixed opex" onChange={(v) => set("preOpenMonths", v)} hint="fixed operating cash to fund before revenue starts" />
+              <Card n="G" title="Capital & returns">
+                <Slider label="Pre-opening period" value={inp.preOpenMonths} min={0} max={6} step={1} unit="mo fixed opex" onChange={(v) => set("preOpenMonths", v)} hint="months of fixed cash burn before opening — feeds the launch cash trough" />
                 <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={1} unit="mo opex" onChange={(v) => set("minCashMonths", v)} />
                 <Slider label="Exit multiple (Y5 EBITDA)" value={inp.exitMultiple} min={0} max={10} step={0.5} unit="×" onChange={(v) => set("exitMultiple", v)} />
                 <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={30} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} hint="cost of capital used to discount cash flows" />
                 <Slider label="Maintenance CapEx / yr" value={inp.maintCapexPct} min={0} max={10} step={0.5} unit="% of deployed" onChange={(v) => set("maintCapexPct", v)} hint="annual reinvestment on the installed asset base" />
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "10px 0 4px" }}>Depreciation lives (straight-line)</div>
-                <Slider label="Fit-out & premises" value={inp.depFitout} min={3} max={15} step={1} unit="yrs" onChange={(v) => set("depFitout", v)} />
-                <Slider label="Equipment (chairs · X-ray · CSSD)" value={inp.depEquip} min={3} max={15} step={1} unit="yrs" onChange={(v) => set("depEquip", v)} />
-                <Slider label="IT / POS / software" value={inp.depIt} min={2} max={10} step={1} unit="yrs" onChange={(v) => set("depIt", v)} />
-                <Slider label="Vehicle" value={inp.depVehicle} min={3} max={10} step={1} unit="yrs" onChange={(v) => set("depVehicle", v)} />
-                <Slider label="Licensing / brand / pre-opening" value={inp.depIntangible} min={2} max={10} step={1} unit="yrs" onChange={(v) => set("depIntangible", v)} />
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 6 }}>Depreciation is straight-line by asset class (fit-out 10y · equipment 7y · IT 4y · vehicle 5y · intangibles 5y) and shown in the P&L.</div>
               </Card>
               {F && (
                 <Card n="J" title="Patient-funnel & data upside">
@@ -735,11 +766,27 @@
               <div className="print-avoid" style={card}>
                 <div style={bTitle}>5 · Year 1 — fund needed</div>
                 <div style={bRow}><span style={{ color: C.sub }}>Year-1 CapEx (pilot pods + HQ)</span><span style={bVal}>{f0(m.year1.capex)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Pre-opening costs ({inp.preOpenMonths}mo fixed opex)</span><span style={bVal}>{f0(m.year1.preOpen)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Launch liquidity (cash trough)</span><span style={bVal}>{f0(m.year1.launchLiq)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Minimum-cash reserve ({inp.minCashMonths}mo)</span><span style={bVal}>{f0(m.year1.reserve)}</span></div>
                 <div style={bSub}><span>Fund needed for Year 1</span><span style={bVal}>{f0(m.year1.fundNeed)}</span></div>
-                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>CapEx + pre-opening + reserve. Ongoing operating opex is not raised — revenue ({f0(m.year1.revenue)}K in Y1) covers it as it comes in.</div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>CapEx + launch liquidity + reserve. Launch liquidity is the deepest cumulative cash deficit ({f0(-m.year1.trough)}K) over {inp.preOpenMonths}mo pre-opening + the Year-1 ramp (incl. {inp.insurerDelayMo}mo insurer delay). Ongoing opex is funded by revenue as it comes in.</div>
               </div>
+            </div>
+
+            {/* launch cash-trough curve (clinic-study method) */}
+            <div className="print-avoid" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 16px 8px", marginBottom: 34 }}>
+              <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 2 }}>Launch cash curve · pre-opening + Year 1</div>
+              <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, marginBottom: 8 }}>Cumulative operating cash from launch (excl. CapEx). The deepest point is the launch liquidity to raise so cash never goes negative — it dips through pre-opening and the pre-collection ramp, then recovers as insured claims ({inp.insurerDelayMo}mo delay) start paying.</div>
+              <ResponsiveContainer width="100%" height={210}>
+                <ComposedChart data={m.year1.monthlyCash} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                  <XAxis dataKey="month" tick={{ fontFamily: MONO, fontSize: 10, fill: C.sub }} interval={0} />
+                  <YAxis tick={{ fontFamily: MONO, fontSize: 11, fill: C.sub }} />
+                  <Tooltip formatter={(v, n) => [f0(v) + "K", n === "cum" ? "Cumulative cash" : "Net cash"]} contentStyle={{ fontFamily: SANS, fontSize: 12, border: `1px solid ${C.line}` }} />
+                  <Area dataKey="cum" name="cum" fill={C.ink2} fillOpacity={0.14} stroke={C.ink2} strokeWidth={2.5} />
+                  <Line dataKey="net" name="net" stroke={C.brass} strokeWidth={1.5} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
 
             {/* mature pod economics */}
