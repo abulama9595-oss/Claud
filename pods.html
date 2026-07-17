@@ -323,11 +323,12 @@
       const y1FixedNoInsMo = podFixedMo(p) * p.podsY1 + hqFixedMo(p) + nurseHousingYr(p, p.podsY1) / 12 + (podPayrollMo(p) * p.podsY1 + hqStaffMo(p)) * ((p.eosbPct || 0) / 100);
       const insFrac = (p.insuredPct || 0) / 100, rejFrac = (p.rejectionPct || 0) / 100, dLag = Math.max(0, Math.round(p.insurerDelayMo || 0));
       const preF = Math.max(0, Math.round(p.preOpenMonths || 0));
-      // pre-opening MONTHLY cost = all rent + all salaries (pilot pods + HQ), before operations begin.
-      // Rent: mall rent × pods + nurse housing + HQ office. Salaries: pod staff × pods + HQ staff (both loaded).
-      const preOpenMo = p.rentPod * p.podsY1 + nurseHousingYr(p, p.podsY1) / 12 + (p.hqOffice || 0) / 12
-        + podPayrollMo(p) * p.podsY1 + hqStaffMo(p);
-      const y1PreOpen = preF * preOpenMo;                             // total pre-opening cash (rent + salaries) for the window
+      // rent is paid ANNUALLY, upfront (mall rent × pods + nurse housing + HQ office) — a full year's cheque on day one.
+      const rentMo = p.rentPod * p.podsY1 + nurseHousingYr(p, p.podsY1) / 12 + (p.hqOffice || 0) / 12;
+      const rentAnnualUpfront = rentMo * 12;
+      const preOpenSalMo = podPayrollMo(p) * p.podsY1 + hqStaffMo(p); // pre-opening salaries (loaded), per month
+      // pre-opening cash before opening = the full-year rent (prepaid) + salaries over the pre-opening window
+      const y1PreOpen = rentAnnualUpfront + preF * preOpenSalMo;
       const billMo = p.podsY1 * (y1Pod.service + y1Pod.retail);        // gross billings / month at opening booking
       const matMo = p.podsY1 * y1Pod.materials;                        // materials / month
       const varHqRate = ((p.marketingPct || 0) + (p.centralOpsPct || 0)) / 100; // revenue-linked HQ (marketing + ops)
@@ -337,13 +338,13 @@
       for (let mn = -preF; mn <= 12; mn++) {
         let cf = 0;
         if (mn <= 0) {
-          if (mn < 0) cf -= preOpenMo;                                 // pre-opening: all rent + all salaries each month
-          if (mn === -preF) cf -= insPremiumUpfront;                   // insurance premiums paid upfront
+          if (mn < 0) cf -= preOpenSalMo;                              // pre-opening: salaries each month (rent is prepaid annually)
+          if (mn === -preF) cf -= rentAnnualUpfront + insPremiumUpfront; // full-year rent + insurance premiums paid upfront
         } else {
           const insuredColl = (mn - dLag) >= 1 ? insFrac * (1 - rejFrac) * billMo : 0; // insured billed dLag months ago
           const cashColl = (1 - insFrac) * billMo;                     // cash/card patients pay at visit
           const cardFees = cashColl * ((p.paymentFeePct || 0) / 100);  // card fees only on cash/card collections
-          cf += cashColl + insuredColl - y1FixedNoInsMo - matMo - cardFees - varHqRate * billMo;
+          cf += cashColl + insuredColl - (y1FixedNoInsMo - rentMo) - matMo - cardFees - varHqRate * billMo; // rent already prepaid annually
         }
         cumCash += cf;
         if (cumCash < trough) trough = cumCash;
@@ -776,7 +777,7 @@
                 <div style={bRow}><span style={{ color: C.sub }}>Launch liquidity (cash trough)</span><span style={bVal}>{f0(m.year1.launchLiq)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Minimum-cash reserve ({inp.minCashMonths}mo)</span><span style={bVal}>{f0(m.year1.reserve)}</span></div>
                 <div style={bSub}><span>Fund needed for Year 1</span><span style={bVal}>{f0(m.year1.fundNeed)}</span></div>
-                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>CapEx + launch liquidity + reserve. Launch liquidity is the deepest cumulative cash deficit ({f0(-m.year1.trough)}K): {inp.preOpenMonths}mo pre-opening (all rent + all salaries = {f0(m.year1.preOpen)}K) + the Year-1 ramp (insured claims lag {inp.insurerDelayMo}mo). Ongoing opex is funded by revenue as it comes in.</div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>CapEx + launch liquidity + reserve. Launch liquidity is the deepest cumulative cash deficit ({f0(-m.year1.trough)}K): a full year's rent is prepaid upfront + {inp.preOpenMonths}mo pre-opening salaries (pre-opening cash {f0(m.year1.preOpen)}K) + the Year-1 ramp (insured claims lag {inp.insurerDelayMo}mo). Ongoing opex is funded by revenue as it comes in.</div>
               </div>
             </div>
 
