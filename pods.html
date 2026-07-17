@@ -486,6 +486,8 @@
       const bSub = { display: "flex", justifyContent: "space-between", padding: "7px 0 0", marginTop: 6, borderTop: `1px solid ${C.line}`, fontFamily: SANS, fontSize: 12.5, fontWeight: 700, color: C.text };
       const bTitle = { fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.brass, marginBottom: 8 };
       const card = { background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 20px" };
+      const fw = { gridColumn: "1 / -1" }; // span both columns inside a 2-col Card (sub-headers, totals, notes)
+      const sub2 = { fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, gridColumn: "1 / -1" }; // section sub-header inside a 2-col card
 
       const revLabel = "Hygiene & whitening";
       const funnelKey = inp.mode === "referral" ? "Referral fees" : "Hub treatment capture";
@@ -582,15 +584,15 @@
 
             {/* controls */}
             <SectionHeader eyebrow="01 · Assumptions" title="Tune the concept" sub="Everything recomputes live. Demand ramps in appointments per chair/day and is capped by capacity. Salaries marked 'loaded' include GOSI; the dentist and HQ salaries are entered raw and loaded with GOSI automatically." />
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(285px, 1fr))", gap: 16, marginBottom: 34 }}>
-              <Card n="A" title="Rollout & capacity">
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 16, marginBottom: 34 }}>
+              <Card n="A" title="Rollout & capacity" cols={2}>
                 <Slider label="Pilot pods (Y1)" value={inp.podsY1} min={1} max={6} step={1} unit="pods" onChange={(v) => set("podsY1", v)} />
                 <Slider label="New pods per year (Y2–Y5)" value={inp.podsPerYear} min={0} max={8} step={1} unit="pods/yr" onChange={(v) => set("podsPerYear", v)} hint={`${totalPods} pods by end of Y5`} />
                 <Slider label="Chairs per pod" value={inp.chairs} min={1} max={8} step={1} unit="chairs" onChange={(v) => set("chairs", v)} hint="drives capacity & revenue — scale equipment CapEx (Card I) and clinical staff to match" />
                 <Slider label="Capacity — appts / chair / day" value={inp.apptsPerChairDay} min={6} max={18} step={1} unit="appts" onChange={(v) => set("apptsPerChairDay", v)} hint="the physical ceiling at 100% booking" />
                 <Slider label="Working days / month" value={inp.daysPerMonth} min={22} max={30} step={1} unit="days" onChange={(v) => set("daysPerMonth", v)} />
               </Card>
-              <Card n="B" title="Demand ramp (appointments)">
+              <Card n="B" title="Demand ramp (appointments)" cols={2}>
                 <Slider label="Opening appts / chair / day" value={inp.apptsOpen} min={1} max={inp.apptsPerChairDay} step={1} unit="appts" onChange={(v) => set("apptsOpen", v)} hint={`${(100 * inp.apptsOpen / inp.apptsPerChairDay).toFixed(0)}% of capacity at opening`} />
                 <Slider label="Ramp / year (per pod age)" value={inp.apptsRampPerYr} min={0} max={6} step={0.5} unit="appts/yr" onChange={(v) => set("apptsRampPerYr", v)} hint={`matures at ${f0(m.mApptsPCD)} appts/chair/day (${(100 * m.mApptsPCD / inp.apptsPerChairDay).toFixed(0)}% of capacity), capped by capacity`} />
                 <Slider label="Hygiene ticket" value={inp.hygieneTicket} min={100} max={800} step={10} unit="SAR" onChange={(v) => set("hygieneTicket", v)} hint="scaling & polishing, airflow, fluoride" />
@@ -599,18 +601,18 @@
                 <Slider label="Insured share (billed to insurers)" value={inp.insuredPct} min={0} max={100} step={5} unit="% of billings" onChange={(v) => set("insuredPct", v)} hint="the rest is paid cash/card at the visit" />
                 <Slider label="Claim rejection rate" value={inp.rejectionPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("rejectionPct", v)} hint="rejected insured claims are lost revenue" />
                 <Slider label="Insurer payment delay" value={inp.insurerDelayMo} min={0} max={9} step={1} unit="months" onChange={(v) => set("insurerDelayMo", v)} hint="delays insured collections — deepens the Year-1 cash trough" />
-                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 4 }}>Bookings never exceed capacity; the utilization each year is the appts booked ÷ capacity.</div>
+                <div style={{ ...fw, fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 4 }}>Bookings never exceed capacity; the utilization each year is the appts booked ÷ capacity.</div>
               </Card>
               {R && (
-                <Card n="C" title="Retail products">
+                <Card n="C" title="Retail products" cols={2}>
                   <Slider label="Retail attach rate" value={inp.retailAttachPct} min={0} max={80} step={5} unit="% of patients" onChange={(v) => set("retailAttachPct", v)} hint="share of hygiene patients who buy a product" />
                   <Slider label="Average retail basket" value={inp.retailBasket} min={0} max={500} step={10} unit="SAR" onChange={(v) => set("retailBasket", v)} hint="whitening kits, electric brushes, floss, sensitivity care" />
                   <Slider label="Retail gross margin" value={inp.retailMarginPct} min={20} max={70} step={1} unit="%" onChange={(v) => set("retailMarginPct", v)} hint="COGS is the rest" />
-                  <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 4 }}>Retail is a switchable module — toggle it off in the header for a pure-services model.</div>
+                  <div style={{ ...fw, fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 4 }}>Retail is a switchable module — toggle it off in the header for a pure-services model.</div>
                 </Card>
               )}
-              <Card n="D" title="Pod costs — opex &amp; CapEx">
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>Staff &amp; operating (per pod / month)</div>
+              <Card n="D" title="Pod costs — opex &amp; CapEx" cols={2}>
+                <div style={{ ...sub2, marginBottom: 6 }}>Staff &amp; operating (per pod / month)</div>
                 <Slider label="Mall rent" value={inp.rentPod} min={5} max={40} step={1} unit="K SAR" onChange={(v) => set("rentPod", v)} />
                 <Slider label="Resident GP salary" value={inp.dentistSalary} min={0} max={55} step={1} unit="K SAR/mo" onChange={(v) => set("dentistSalary", v)} hint={`+${inp.gosiPct}% GOSI, shared across ${inp.podsPerDentist} pods → ${(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist).toFixed(1)}K per pod`} />
                 <Slider label="Pods per resident GP" value={inp.podsPerDentist} min={1} max={3} step={1} unit="pods" onChange={(v) => set("podsPerDentist", v)} />
@@ -623,25 +625,25 @@
                 <Slider label="Consumables & lab" value={inp.materialsPct} min={0} max={25} step={1} unit="% of service rev" onChange={(v) => set("materialsPct", v)} />
                 <Slider label="Utilities, CAM & pod overhead" value={inp.podOverheadMo} min={0} max={30} step={1} unit="K SAR/mo" onChange={(v) => set("podOverheadMo", v)} hint="mall service charge / CAM + utilities, per pod" />
                 <Slider label="Card & payment fees" value={inp.paymentFeePct} min={0} max={4} step={0.1} unit="% of rev" onChange={(v) => set("paymentFeePct", v)} />
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>Sterilization (CSSD) · {inp.cssdCentralized ? "central hub" : "per pod"}</div>
+                <div style={{ ...sub2, margin: "12px 0 4px" }}>Sterilization (CSSD) · {inp.cssdCentralized ? "central hub" : "per pod"}</div>
                 <Slider label="CSSD opex / pod / month" value={inp.cssdOpexPerPod} min={0} max={15} step={0.5} unit="K SAR" onChange={(v) => set("cssdOpexPerPod", v)} hint={inp.cssdCentralized ? "charged at HQ, scales with active pods" : "charged inside each pod"} />
                 {inp.cssdCentralized
                   ? <Slider label="Central CSSD hub — CapEx" value={inp.hqCxCssd} min={0} max={500} step={10} unit="K SAR" onChange={(v) => set("hqCxCssd", v)} hint="one-time; part of HQ CapEx" />
                   : <Slider label="Per-pod autoclave — CapEx" value={inp.cssdPerPodCapex} min={0} max={200} step={5} unit="K SAR" onChange={(v) => set("cssdPerPodCapex", v)} hint="added to each pod's build cost" />}
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>Pod CapEx (SAR '000, one-time)</div>
+                <div style={{ ...sub2, margin: "12px 0 4px" }}>Pod CapEx (SAR '000, one-time)</div>
                 {CX_KEYS.map(([k, label]) => (
                   <Slider key={k} label={label} value={inp[k]} min={0} max={["cxFitout", "cxEquip", "cxXray"].includes(k) ? 500 : 120} step={5} unit="K SAR" onChange={(v) => set(k, v)} />
                 ))}
-                <div style={{ ...bSub, marginTop: 8 }}><span>CapEx per pod{inp.cssdCentralized ? "" : " (incl. autoclave)"}</span><span style={bVal}>{f0(m.capexPod)}K</span></div>
+                <div style={{ ...bSub, ...fw, marginTop: 8 }}><span>CapEx per pod{inp.cssdCentralized ? "" : " (incl. autoclave)"}</span><span style={bVal}>{f0(m.capexPod)}K</span></div>
               </Card>
-              <Card n="E" title="Insurance & statutory">
+              <Card n="E" title="Insurance & statutory" cols={2}>
                 <Slider label="Medical insurance / employee" value={inp.medInsPerEmp} min={0} max={12000} step={250} unit="SAR/yr" onChange={(v) => set("medInsPerEmp", v)} hint="CCHI cover for every employee (pods + HQ)" />
                 <Slider label="Malpractice / clinical staff" value={inp.malpracticePerClin} min={0} max={15000} step={250} unit="SAR/yr" onChange={(v) => set("malpracticePerClin", v)} hint="dentists, hygienists & nurses" />
                 <Slider label="EOSB accrual (% of payroll)" value={inp.eosbPct} min={0} max={12} step={0.1} unit="%" onChange={(v) => set("eosbPct", v)} hint="end-of-service benefit accrual — KSA ~8.3%" />
-                <div style={{ ...bSub, marginTop: 8 }}><span>Mature insurance / mo</span><span style={bVal}>{f0(m.matureInsuranceMo)}K</span></div>
+                <div style={{ ...bSub, ...fw, marginTop: 8 }}><span>Mature insurance / mo</span><span style={bVal}>{f0(m.matureInsuranceMo)}K</span></div>
               </Card>
-              <Card n="F" title="HQ costs — staff, opex &amp; CapEx">
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>Central staff (count × K SAR/mo)</div>
+              <Card n="F" title="HQ costs — staff, opex &amp; CapEx" cols={2}>
+                <div style={{ ...sub2, marginBottom: 6 }}>Central staff (count × K SAR/mo)</div>
                 {HQ_STAFF.map(([k, label]) => (
                   <div key={k} style={{ marginBottom: 10 }}>
                     <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.text, marginBottom: 3, display: "flex", justifyContent: "space-between" }}><span>{label}</span><span style={{ fontFamily: MONO, color: C.sub }}>{inp[k + "N"]} × {f0(inp[k + "Sal"])}K</span></div>
@@ -651,30 +653,30 @@
                     </div>
                   </div>
                 ))}
-                <div style={{ ...bSub, marginTop: 4 }}><span>HQ staff /mo (+{inp.gosiPct}% GOSI)</span><span style={bVal}>{f0(m.hqStaffMo)}K</span></div>
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>Other HQ opex (SAR '000 / year)</div>
+                <div style={{ ...bSub, ...fw, marginTop: 4 }}><span>HQ staff /mo (+{inp.gosiPct}% GOSI)</span><span style={bVal}>{f0(m.hqStaffMo)}K</span></div>
+                <div style={{ ...sub2, margin: "12px 0 4px" }}>Other HQ opex (SAR '000 / year)</div>
                 <Slider label="Office rent & admin" value={inp.hqOffice} min={0} max={480} step={5} unit="K SAR/yr" onChange={(v) => set("hqOffice", v)} />
                 <Slider label="IT / ERP / software" value={inp.hqIt} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqIt", v)} />
                 <Slider label="Professional & compliance" value={inp.hqProf} min={0} max={360} step={5} unit="K SAR/yr" onChange={(v) => set("hqProf", v)} />
                 <Slider label="Nurse housing cost" value={inp.nurseHousing} min={0} max={600} step={1} unit="K SAR/yr" onChange={(v) => set("nurseHousing", v)} hint="total annual accommodation cost for all nurses — charged at HQ" />
                 <Slider label="Marketing (% of revenue)" value={inp.marketingPct} min={0} max={15} step={0.5} unit="% rev" onChange={(v) => set("marketingPct", v)} hint="brand & campaigns — scales with revenue (best practice)" />
                 <Slider label="Central ops / QA (% of revenue)" value={inp.centralOpsPct} min={0} max={10} step={0.5} unit="% rev" onChange={(v) => set("centralOpsPct", v)} hint="central operations, quality & compliance — scales with revenue" />
-                <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.brass, margin: "12px 0 4px" }}>HQ CapEx (SAR '000, one-time)</div>
+                <div style={{ ...sub2, margin: "12px 0 4px" }}>HQ CapEx (SAR '000, one-time)</div>
                 {HQ_CX_KEYS.map(([k, label]) => (
                   <Slider key={k} label={label} value={inp[k]} min={0} max={500} step={10} unit="K SAR" onChange={(v) => set(k, v)} />
                 ))}
-                <div style={{ ...bSub, marginTop: 8 }}><span>HQ CapEx (incl. CSSD hub if central)</span><span style={bVal}>{f0(m.hqCapex)}K</span></div>
+                <div style={{ ...bSub, ...fw, marginTop: 8 }}><span>HQ CapEx (incl. CSSD hub if central)</span><span style={bVal}>{f0(m.hqCapex)}K</span></div>
               </Card>
-              <Card n="G" title="Capital & returns">
+              <Card n="G" title="Capital & returns" cols={2}>
                 <Slider label="Pre-opening period" value={inp.preOpenMonths} min={0} max={6} step={1} unit="mo fixed opex" onChange={(v) => set("preOpenMonths", v)} hint="months of fixed cash burn before opening — feeds the launch cash trough" />
                 <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={1} unit="mo opex" onChange={(v) => set("minCashMonths", v)} />
                 <Slider label="Exit multiple (Y5 EBITDA)" value={inp.exitMultiple} min={0} max={10} step={0.5} unit="×" onChange={(v) => set("exitMultiple", v)} />
                 <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={30} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} hint="cost of capital used to discount cash flows" />
                 <Slider label="Maintenance CapEx / yr" value={inp.maintCapexPct} min={0} max={10} step={0.5} unit="% of deployed" onChange={(v) => set("maintCapexPct", v)} hint="annual reinvestment on the installed asset base" />
-                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 6 }}>Depreciation is straight-line by asset class (fit-out 10y · equipment 7y · IT 4y · vehicle 5y · intangibles 5y) and shown in the P&L.</div>
+                <div style={{ ...fw, fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 6 }}>Depreciation is straight-line by asset class (fit-out 10y · equipment 7y · IT 4y · vehicle 5y · intangibles 5y) and shown in the P&L.</div>
               </Card>
               {F && (
-                <Card n="J" title="Patient-funnel & data upside">
+                <Card n="J" title="Patient-funnel & data upside" cols={2}>
                   <Slider label="Free screenings / pod / day" value={inp.screensPerDay} min={0} max={40} step={1} unit="people" onChange={(v) => set("screensPerDay", v)} hint="intraoral-camera walk-up funnel — the data engine" />
                   <Slider label="Found needing treatment" value={inp.needPct} min={10} max={60} step={1} unit="%" onChange={(v) => set("needPct", v)} />
                   <Slider label="PDPL consent opt-in" value={inp.consentPct} min={10} max={95} step={5} unit="%" onChange={(v) => set("consentPct", v)} hint="explicit opt-in — nothing moves without it" />
@@ -684,7 +686,7 @@
                     ? <Slider label="Referral / coordination fee" value={inp.referralFeePct} min={3} max={25} step={1} unit="%" onChange={(v) => set("referralFeePct", v)} />
                     : <Slider label="Hub margin on treatment" value={inp.hubMarginPct} min={10} max={50} step={1} unit="%" onChange={(v) => set("hubMarginPct", v)} />}
                   <Slider label="Value per consented chart" value={inp.chartValue} min={0} max={500} step={10} unit="SAR" onChange={(v) => set("chartValue", v)} />
-                  <label className="flex items-center" style={{ gap: 8, fontFamily: SANS, fontSize: 12.5, color: C.text, cursor: "pointer", marginTop: 4 }}>
+                  <label className="flex items-center" style={{ ...fw, gap: 8, fontFamily: SANS, fontSize: 12.5, color: C.text, cursor: "pointer", marginTop: 4 }}>
                     <input type="checkbox" checked={inp.inclDatabase} onChange={(e) => set("inclDatabase", e.target.checked)} />
                     Include database asset value in the exit
                   </label>

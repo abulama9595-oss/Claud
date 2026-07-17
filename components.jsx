@@ -72,14 +72,14 @@ function Slider({ label, value, min, max, step, unit, onChange, hint, danger }) 
     </div>
   );
 }
-function Card({ title, n, children }) {
+function Card({ title, n, children, cols }) {
   return (
     <div className="print-avoid pods-card" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 18px" }}>
       <div className="flex items-center" style={{ gap: 8, marginBottom: 14 }}>
         <span style={{ fontFamily: MONO, fontSize: 11, color: C.brass, fontWeight: 700 }}>{n}</span>
         <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: 0 }}>{title}</h3>
       </div>
-      {children}
+      {cols ? <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, columnGap: 22, alignItems: "start" }}>{children}</div> : children}
     </div>
   );
 }
