@@ -114,7 +114,7 @@
       screensPerDay: 15, needPct: 35, consentPct: 60, acceptPct: 40, caseValue: 3500,
       mode: "hub", referralFeePct: 12, hubMarginPct: 30, chartValue: 150, inclDatabase: true,
       // capital & returns
-      minCashMonths: 6, preOpenMonths: 2, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12, maintCapexPct: 3,
+      minCashMonths: 6, preOpenMonths: 6, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12, maintCapexPct: 3,
       // depreciation lives by asset class (years, straight-line)
       depFitout: 10, depEquip: 7, depIt: 4, depVehicle: 5, depIntangible: 5,
     };
@@ -327,8 +327,12 @@
       const rentMo = p.rentPod * p.podsY1 + nurseHousingYr(p, p.podsY1) / 12 + (p.hqOffice || 0) / 12;
       const rentAnnualUpfront = rentMo * 12;
       const preOpenSalMo = podPayrollMo(p) * p.podsY1 + hqStaffMo(p); // pre-opening salaries (loaded), per month
-      // pre-opening cash before opening = the full-year rent (prepaid) + salaries over the pre-opening window
-      const y1PreOpen = rentAnnualUpfront + preF * preOpenSalMo;
+      // the first 4 pre-opening months are setup & licensing (no salaries); staff onboard after month 4
+      const setupMonths = Math.min(4, preF);
+      const salaryMonths = Math.max(0, preF - setupMonths);
+      const firstPayMn = preF > 4 ? (4 - preF) : 0;                  // cash-engine month index when payroll (and insurance) start
+      // pre-opening cash before opening = the full-year rent (prepaid) + salaries for the post-setup months
+      const y1PreOpen = rentAnnualUpfront + salaryMonths * preOpenSalMo;
       const billMo = p.podsY1 * (y1Pod.service + y1Pod.retail);        // gross billings / month at opening booking
       const matMo = p.podsY1 * y1Pod.materials;                        // materials / month
       const varHqRate = ((p.marketingPct || 0) + (p.centralOpsPct || 0)) / 100; // revenue-linked HQ (marketing + ops)
@@ -338,8 +342,10 @@
       for (let mn = -preF; mn <= 12; mn++) {
         let cf = 0;
         if (mn <= 0) {
-          if (mn < 0) cf -= preOpenSalMo;                              // pre-opening: salaries each month (rent is prepaid annually)
-          if (mn === -preF) cf -= rentAnnualUpfront + insPremiumUpfront; // full-year rent + insurance premiums paid upfront
+          const pm = preF + mn + 1;                                    // 1-based pre-opening month (1..preF)
+          if (mn < 0 && pm > 4) cf -= preOpenSalMo;                    // salaries start after month 4 (first 4 = setup & licensing)
+          if (mn === -preF) cf -= rentAnnualUpfront;                   // full-year rent paid upfront when the unit is taken
+          if (mn === firstPayMn) cf -= insPremiumUpfront;              // insurance premiums when staff onboard
         } else {
           const insuredColl = (mn - dLag) >= 1 ? insFrac * (1 - rejFrac) * billMo : 0; // insured billed dLag months ago
           const cashColl = (1 - insFrac) * billMo;                     // cash/card patients pay at visit
@@ -674,7 +680,7 @@
                 <div style={{ ...bSub, ...fw, marginTop: 8 }}><span>HQ CapEx (incl. CSSD hub if central)</span><span style={bVal}>{f0(m.hqCapex)}K</span></div>
               </Card>
               <Card n="G" title="Capital & returns" cols={2}>
-                <Slider label="Pre-opening period" value={inp.preOpenMonths} min={0} max={6} step={1} unit="mo fixed opex" onChange={(v) => set("preOpenMonths", v)} hint="months of fixed cash burn before opening — feeds the launch cash trough" />
+                <Slider label="Pre-opening period" value={inp.preOpenMonths} min={0} max={8} step={1} unit="months" onChange={(v) => set("preOpenMonths", v)} hint="first 4 months = setup & licensing (rent only); salaries start month 5" />
                 <Slider label="Minimum-cash reserve" value={inp.minCashMonths} min={0} max={6} step={1} unit="mo opex" onChange={(v) => set("minCashMonths", v)} />
                 <Slider label="Exit multiple (Y5 EBITDA)" value={inp.exitMultiple} min={0} max={10} step={0.5} unit="×" onChange={(v) => set("exitMultiple", v)} />
                 <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={30} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} hint="cost of capital used to discount cash flows" />
@@ -777,7 +783,7 @@
                 <div style={bRow}><span style={{ color: C.sub }}>Launch liquidity (cash trough)</span><span style={bVal}>{f0(m.year1.launchLiq)}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Minimum-cash reserve ({inp.minCashMonths}mo)</span><span style={bVal}>{f0(m.year1.reserve)}</span></div>
                 <div style={bSub}><span>Fund needed for Year 1</span><span style={bVal}>{f0(m.year1.fundNeed)}</span></div>
-                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>CapEx + launch liquidity + reserve. Launch liquidity is the deepest cumulative cash deficit ({f0(-m.year1.trough)}K): a full year's rent is prepaid upfront + {inp.preOpenMonths}mo pre-opening salaries (pre-opening cash {f0(m.year1.preOpen)}K) + the Year-1 ramp (insured claims lag {inp.insurerDelayMo}mo). Ongoing opex is funded by revenue as it comes in.</div>
+                <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>CapEx + launch liquidity + reserve. Launch liquidity is the deepest cumulative cash deficit ({f0(-m.year1.trough)}K): a full year's rent prepaid upfront + {Math.max(0, inp.preOpenMonths - 4)}mo of salaries (first 4 of {inp.preOpenMonths}mo pre-opening are setup & licensing) = {f0(m.year1.preOpen)}K, + the Year-1 ramp (insured claims lag {inp.insurerDelayMo}mo). Ongoing opex is funded by revenue as it comes in.</div>
               </div>
             </div>
 
