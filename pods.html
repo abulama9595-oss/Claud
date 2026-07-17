@@ -237,8 +237,10 @@
         const totalEmp = staffPerPod(p) * effPods + hqStaffCount(p);
         const clinicalEmp = clinicalPerPod(p) * effPods;
         const insurance = (totalEmp * p.medInsPerEmp + clinicalEmp * p.malpracticePerClin) / 1000;
-        // EOSB (end-of-service) accrual on loaded payroll — pod staff (scale with effPods) + HQ staff
-        const eosb = (podPayrollMo(p) * 12 * effPods + hqStaffMo(p) * 12) * ((p.eosbPct || 0) / 100);
+        // EOSB (end-of-service) accrual on loaded payroll — pod staff (scale with effPods) + HQ staff.
+        // KSA Labor Law: no award for staff who resign before completing 2 years, so the accrual only
+        // starts from Year 3 (i >= 2); Years 1–2 carry no EOSB expense.
+        const eosb = i >= 2 ? (podPayrollMo(p) * 12 * effPods + hqStaffMo(p) * 12) * ((p.eosbPct || 0) / 100) : 0;
         const opEbitda = podContribution - hq - insurance - eosb;
         const ebitda = opEbitda + funnelRev;
 
@@ -320,7 +322,7 @@
       // A month-by-month cash curve (pre-opening + 12 operating months) finds the deepest cumulative deficit (trough);
       // the raise covers it so cash never runs out. Ongoing opex is NOT raised — revenue funds it.
       const y1InsMo = ((staffPerPod(p) * p.podsY1 + hqStaffCount(p)) * p.medInsPerEmp + (clinicalPerPod(p) * p.podsY1) * p.malpracticePerClin) / 1000 / 12;
-      const y1FixedNoInsMo = podFixedMo(p) * p.podsY1 + hqFixedMo(p) + nurseHousingYr(p, p.podsY1) / 12 + (podPayrollMo(p) * p.podsY1 + hqStaffMo(p)) * ((p.eosbPct || 0) / 100);
+      const y1FixedNoInsMo = podFixedMo(p) * p.podsY1 + hqFixedMo(p) + nurseHousingYr(p, p.podsY1) / 12; // no EOSB in Year 1 (accrual starts Year 3)
       const insFrac = (p.insuredPct || 0) / 100, rejFrac = (p.rejectionPct || 0) / 100, dLag = Math.max(0, Math.round(p.insurerDelayMo || 0));
       const preF = Math.max(0, Math.round(p.preOpenMonths || 0));
       // rent is paid ANNUALLY, upfront (mall rent × pods + nurse housing + HQ office) — a full year's cheque on day one.
@@ -651,7 +653,7 @@
               <Card n="E" title="Insurance & statutory" cols={2}>
                 <Slider label="Medical insurance / employee" value={inp.medInsPerEmp} min={0} max={12000} step={250} unit="SAR/yr" onChange={(v) => set("medInsPerEmp", v)} hint="CCHI cover for every employee (pods + HQ)" />
                 <Slider label="Malpractice / clinical staff" value={inp.malpracticePerClin} min={0} max={15000} step={250} unit="SAR/yr" onChange={(v) => set("malpracticePerClin", v)} hint="dentists, hygienists & nurses" />
-                <Slider label="EOSB accrual (% of payroll)" value={inp.eosbPct} min={0} max={12} step={0.1} unit="%" onChange={(v) => set("eosbPct", v)} hint="end-of-service benefit accrual — KSA ~8.3%" />
+                <Slider label="EOSB accrual (% of payroll)" value={inp.eosbPct} min={0} max={12} step={0.1} unit="%" onChange={(v) => set("eosbPct", v)} hint="KSA end-of-service — starts Year 3 (no award if staff leave before 2 yrs)" />
                 <div style={{ ...bSub, ...fw, marginTop: 8 }}><span>Mature insurance / mo</span><span style={bVal}>{f0(m.matureInsuranceMo)}K</span></div>
               </Card>
               <Card n="F" title="HQ costs — staff, opex &amp; CapEx" cols={2}>
