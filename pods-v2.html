@@ -77,12 +77,20 @@
       // service revenue (hygiene & whitening)
       // service pricing split by type: hygiene (frequent) vs whitening (occasional, higher ticket)
       hygieneTicket: 150, whiteningTicket: 200, whiteningMixPct: 15,
+      // v2 service menu. Every appointment is ONE main visit type (basic / premium hygiene / whitening; shares sum to 100%),
+      // and may carry add-ons (fluoride, X-ray assessment, fillings), each priced separately with an attach rate (% of visits).
+      premiumTicket: 250, premiumMixPct: 15,
+      fluorideTicket: 50, fluorideAttachPct: 20,
+      xrayTicket: 100, xrayAttachPct: 25,
+      fillingTicket: 300, fillingAttachPct: 10,
       // retail products (optional module)
       inclRetail: false, retailAttachPct: 35, retailBasket: 180, retailMarginPct: 45,
       // pod staff & opex (per pod / month, SAR '000). "loaded" salaries include GOSI; the dentist
       // and HQ salaries are entered raw and loaded with gosiPct.
       rentPod: 23,
       dentistSalary: 12, podsPerDentist: 1, gosiPct: 11,
+      // v2 MOH minimum per pod: 1 specialist + 1 GP + 2 nurses (floors enforced in the engine). Specialist salary is raw, loaded with GOSI.
+      specialistsPerPod: 1, specialistSalary: 30, gpPerPod: 1,
       hygienists: 3, hygSalary: 8,
       nursesPerPod: 2, nurseSalary: 5, nurseHousing: 80,
       receptionists: 0, receptionSalary: 5,
@@ -114,7 +122,7 @@
       screensPerDay: 15, needPct: 35, consentPct: 60, acceptPct: 40, caseValue: 3500,
       mode: "hub", referralFeePct: 12, hubMarginPct: 30, chartValue: 150, inclDatabase: true, dbTransferPct: 50,
       // v2: Saudization of pod staff (compliance check)
-      saudiGP: true, saudiHygienists: 1, saudiNurses: 0, saudiReception: true, saudizationTarget: 55,
+      saudiGP: true, saudiSpecialists: 0, saudiHygienists: 1, saudiNurses: 0, saudiReception: true, saudizationTarget: 55,
       // capital & returns
       minCashMonths: 6, preOpenMonths: 6, exitMultiple: 5, zakatPct: 2.5, deprYears: 7, discountRate: 12, maintCapexPct: 3,
       // depreciation lives by asset class (years, straight-line)
@@ -150,7 +158,18 @@
     ];
     const gosiMul = (p) => 1 + (p.gosiPct || 0) / 100;
     // blended revenue per appointment from the hygiene vs whitening mix
-    const blendedTicket = (p) => (p.hygieneTicket || 0) * (1 - (p.whiteningMixPct || 0) / 100) + (p.whiteningTicket || 0) * ((p.whiteningMixPct || 0) / 100);
+    // v2: service menu. Main visit mix: premium% + whitening% (capped at 100), basic hygiene takes the remainder.
+    const visitMix = (p) => { const w = Math.min(100, p.whiteningMixPct || 0), pr = Math.min(100 - w, p.premiumMixPct || 0); return { basic: 100 - w - pr, premium: pr, whitening: w }; };
+    const SERVICE_LINES = (p) => { const x = visitMix(p); return [
+      ["Basic hygiene", "main", x.basic, p.hygieneTicket],
+      ["Premium hygiene", "main", x.premium, p.premiumTicket],
+      ["Whitening", "main", x.whitening, p.whiteningTicket],
+      ["Fluoride", "add-on", p.fluorideAttachPct || 0, p.fluorideTicket],
+      ["X-ray assessment", "add-on", p.xrayAttachPct || 0, p.xrayTicket],
+      ["Fillings", "add-on", p.fillingAttachPct || 0, p.fillingTicket],
+    ].map(([name, kind, pct, price]) => ({ name, kind, pct, price: price || 0, perAppt: (pct / 100) * (price || 0) })); };
+    // blended revenue per appointment (SAR) = main-visit mix + add-on attach revenue
+    const blendedTicket = (p) => SERVICE_LINES(p).reduce((s, l) => s + l.perAppt, 0);
     // pod build cost: fixed breakdown, plus a per-pod autoclave when CSSD is distributed
     const capexPerPod = (p) => CX_KEYS.reduce((s, [k]) => s + (p[k] || 0), 0) + (p.cssdCentralized ? 0 : (p.cssdPerPodCapex || 0));
     // HQ one-time capex, plus the central CSSD hub when centralized
@@ -163,12 +182,17 @@
     // annual straight-line depreciation for HQ CapEx (+ central CSSD hub when centralized)
     const hqDepPerYear = (p) => HQ_CX_KEYS.reduce((s, [k]) => s + (p[k] || 0) / depLife(p, k), 0) + (p.cssdCentralized ? (p.hqCxCssd || 0) / Math.max(1, p.depEquip || 7) : 0);
     // one supervising dentist covers podsPerDentist pods; per-pod cost = monthly salary loaded with GOSI, split
-    const dentistPerPod = (p) => p.dentistSalary * gosiMul(p) / Math.max(1, p.podsPerDentist || 1);
+    // v2 MOH minimum per pod: >= 1 specialist, >= 1 GP, >= 2 nurses. No GP sharing across pods.
+    const MOH_MIN = { specialists: 1, gps: 1, nurses: 2 };
+    const specN = (p) => Math.max(MOH_MIN.specialists, p.specialistsPerPod ?? 1);
+    const gpN = (p) => Math.max(MOH_MIN.gps, p.gpPerPod ?? 1);
+    const nurseN = (p) => Math.max(MOH_MIN.nurses, p.nursesPerPod || 0);
+    const dentistPerPod = (p) => (gpN(p) * p.dentistSalary + specN(p) * (p.specialistSalary || 0)) * gosiMul(p); // GP(s) + specialist(s), loaded
     // HQ staff monthly cost (loaded)
     const hqStaffCount = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0), 0);
     const hqStaffMo = (p) => HQ_STAFF.reduce((s, [k]) => s + (p[k + "N"] || 0) * (p[k + "Sal"] || 0), 0) * gosiMul(p);
     // pod staff payroll (loaded) per month — GP + hygienists + nurses + reception (basis for the EOSB accrual)
-    const podPayrollMo = (p) => dentistPerPod(p) + p.hygienists * p.hygSalary + (p.nursesPerPod || 0) * (p.nurseSalary || 0) + (p.receptionists || 0) * (p.receptionSalary || 0);
+    const podPayrollMo = (p) => dentistPerPod(p) + p.hygienists * p.hygSalary + nurseN(p) * (p.nurseSalary || 0) + (p.receptionists || 0) * (p.receptionSalary || 0);
     // DIRECT fixed monthly opex per pod (rent, staff, utilities/CAM overhead, + CSSD if distributed).
     // Nurse housing is NOT here — it is charged centrally at HQ (see nurseHousingYr) across all nurses.
     const podFixedMo = (p) => p.rentPod + podPayrollMo(p) + (p.podOverheadMo || 0) + (p.cssdCentralized ? 0 : (p.cssdOpexPerPod || 0));
@@ -183,7 +207,7 @@
     // full HQ annual opex = fixed base + revenue-linked variable + central CSSD per active pod + nurse housing (all nurses)
     const hqOpexYr = (p, revenue, effPods) => hqFixedMo(p) * 12 + hqVarRate(p) * revenue + hqCssdPerPodMo(p) * 12 * effPods + nurseHousingYr(p, effPods);
     // clinical & total staff per pod (for insurance headcount)
-    const clinicalPerPod = (p) => 1 / Math.max(1, p.podsPerDentist || 1) + p.hygienists + (p.nursesPerPod || 0);
+    const clinicalPerPod = (p) => specN(p) + gpN(p) + p.hygienists + nurseN(p);
     const staffPerPod = (p) => clinicalPerPod(p) + (p.receptionists || 0);
 
     function computePods(p) {
@@ -411,9 +435,9 @@
       return { verdict: "MARGINAL", color: C.neg, why: "Does not clear the discount rate on these assumptions." };
     }
     function v2Saudi(p) {
-      const gp = 1 / Math.max(1, p.podsPerDentist || 1);
+      const gp = gpN(p);
       const heads = staffPerPod(p);
-      const saudi = (p.saudiGP ? gp : 0) + Math.min(p.saudiHygienists || 0, p.hygienists) + Math.min(p.saudiNurses || 0, p.nursesPerPod || 0) + (p.saudiReception ? (p.receptionists || 0) : 0);
+      const saudi = (p.saudiGP ? gp : 0) + Math.min(p.saudiHygienists || 0, p.hygienists) + Math.min(p.saudiNurses || 0, nurseN(p)) + Math.min(p.saudiSpecialists || 0, specN(p)) + (p.saudiReception ? (p.receptionists || 0) : 0);
       return { heads, saudi, pct: heads > 0 ? saudi / heads * 100 : 0 };
     }
     // mature appointments / chair / day at which a pod breaks even (pod level, and after its share of HQ + insurance)
@@ -427,7 +451,7 @@
       p = { ...POD_BASE, ...p };
       const base = computePods(p).npv;
       const d = [["Opening appts / chair / day", "apptsOpen"], ["Appts ramp / yr", "apptsRampPerYr"], ["Hygiene ticket", "hygieneTicket"], ["Mall rent", "rentPod"],
-        ["Hygienist salary", "hygSalary"], ["GP salary", "dentistSalary"], ["Insured share", "insuredPct"], ["Exit multiple", "exitMultiple"], ["Fit-out CapEx", "cxFitout"], ["Chairs per pod", "chairs"]];
+        ["Hygienist salary", "hygSalary"], ["GP salary", "dentistSalary"], ["Specialist salary", "specialistSalary"], ["Premium hygiene mix", "premiumMixPct"], ["Insured share", "insuredPct"], ["Exit multiple", "exitMultiple"], ["Fit-out CapEx", "cxFitout"], ["Chairs per pod", "chairs"]];
       return d.map(([label, k]) => {
         const a = computePods({ ...p, [k]: p[k] * 0.8 }).npv - base, b = computePods({ ...p, [k]: p[k] * 1.2 }).npv - base;
         return { label, lo: Math.round(Math.min(a, b)), hi: Math.round(Math.max(a, b)), swing: Math.abs(b - a) };
@@ -698,7 +722,7 @@
               </div>
               <V2Panel title="Thesis">
                 <ul style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.6, paddingLeft: 16 }}>
-                  <li>{totalPods} pods by Y5 ({inp.podsY1} pilot + {inp.podsPerYear}/yr), {inp.chairs} chairs each, run from a central HQ.</li>
+                  <li>{totalPods} pods by Y5 ({inp.podsY1} pilot + {inp.podsPerYear}/yr), {inp.chairs} chairs each, staffed to the MOH minimum or above ({specN(inp)} specialist, {gpN(inp)} GP, {nurseN(inp)} nurses, {inp.hygienists} hygienists), run from a central HQ.</li>
                   <li>A mature pod runs {v2.be.mature.toFixed(0)} appts/chair/day and earns {f0(m.mature.ebitda * 12)}K EBITDA a year ({f0(m.mature.netPerPod * 12)}K after its share of HQ and insurance).</li>
                   <li>Pod break-even: {v2.be.pod != null ? v2.be.pod.toFixed(1) : "—"} appts/chair/day; {v2.be.net != null ? v2.be.net.toFixed(1) : "—"} once HQ is covered.</li>
                   <li>Network reaches {f0(m.y5.revenue)}K revenue and {f0(m.y5.ebitda)}K EBITDA ({pctf(m.y5.ebitdaPct)}) in Y5.</li>
@@ -727,9 +751,23 @@
               <Card n="B" title="Demand ramp (appointments)" cols={2}>
                 <Slider label="Opening appts / chair / day" value={inp.apptsOpen} min={1} max={inp.apptsPerChairDay} step={1} unit="appts" onChange={(v) => set("apptsOpen", v)} hint={`${(100 * inp.apptsOpen / inp.apptsPerChairDay).toFixed(0)}% of capacity at opening`} />
                 <Slider label="Ramp / year (per pod age)" value={inp.apptsRampPerYr} min={0} max={6} step={0.5} unit="appts/yr" onChange={(v) => set("apptsRampPerYr", v)} hint={`matures at ${f0(m.mApptsPCD)} appts/chair/day (${(100 * m.mApptsPCD / inp.apptsPerChairDay).toFixed(0)}% of capacity), capped by capacity`} />
-                <Slider label="Hygiene ticket" value={inp.hygieneTicket} min={100} max={800} step={10} unit="SAR" onChange={(v) => set("hygieneTicket", v)} hint="scaling & polishing, airflow, fluoride" />
-                <Slider label="Whitening ticket" value={inp.whiteningTicket} min={200} max={2500} step={50} unit="SAR" onChange={(v) => set("whiteningTicket", v)} hint="in-office whitening — higher value, occasional" />
-                <Slider label="Whitening mix" value={inp.whiteningMixPct} min={0} max={60} step={1} unit="% of appts" onChange={(v) => set("whiteningMixPct", v)} hint={`blended ticket ≈ ${f0((inp.hygieneTicket * (1 - inp.whiteningMixPct / 100) + inp.whiteningTicket * inp.whiteningMixPct / 100))} SAR/appt`} />
+                <div style={{ ...fw, ...sub2, margin: "6px 0 2px" }}>Service menu · main visit (one per appointment)</div>
+                <Slider label="Basic hygiene price" value={inp.hygieneTicket} min={80} max={500} step={10} unit="SAR" onChange={(v) => set("hygieneTicket", v)} hint={`scale & polish · ${visitMix(inp).basic}% of visits (the remainder after premium & whitening)`} />
+                <Slider label="Premium hygiene price" value={inp.premiumTicket} min={100} max={800} step={10} unit="SAR" onChange={(v) => set("premiumTicket", v)} hint="deep clean / airflow / stain removal" />
+                <Slider label="Premium hygiene mix" value={inp.premiumMixPct} min={0} max={100 - inp.whiteningMixPct} step={1} unit="% of visits" onChange={(v) => set("premiumMixPct", v)} />
+                <Slider label="Whitening price" value={inp.whiteningTicket} min={100} max={2500} step={50} unit="SAR" onChange={(v) => set("whiteningTicket", v)} hint="in-office whitening session" />
+                <Slider label="Whitening mix" value={inp.whiteningMixPct} min={0} max={100 - inp.premiumMixPct} step={1} unit="% of visits" onChange={(v) => set("whiteningMixPct", v)} hint="share of appointments that are a whitening visit instead of a cleaning" />
+                <div style={{ ...fw, ...sub2, margin: "6px 0 2px" }}>Add-ons (% of visits that include it)</div>
+                <Slider label="Fluoride price" value={inp.fluorideTicket} min={0} max={200} step={5} unit="SAR" onChange={(v) => set("fluorideTicket", v)} />
+                <Slider label="Fluoride attach rate" value={inp.fluorideAttachPct} min={0} max={100} step={5} unit="% of visits" onChange={(v) => set("fluorideAttachPct", v)} />
+                <Slider label="X-ray assessment price" value={inp.xrayTicket} min={0} max={400} step={10} unit="SAR" onChange={(v) => set("xrayTicket", v)} hint="uses the pod X-ray unit (CapEx card)" />
+                <Slider label="X-ray attach rate" value={inp.xrayAttachPct} min={0} max={100} step={5} unit="% of visits" onChange={(v) => set("xrayAttachPct", v)} />
+                <Slider label="Filling price (avg)" value={inp.fillingTicket} min={0} max={1000} step={25} unit="SAR" onChange={(v) => set("fillingTicket", v)} hint="done by the GP / specialist" />
+                <Slider label="Filling attach rate" value={inp.fillingAttachPct} min={0} max={60} step={1} unit="% of visits" onChange={(v) => set("fillingAttachPct", v)} hint="fillings take longer chair time than a cleaning; keep capacity realistic" />
+                <div style={{ ...fw, fontFamily: SANS, fontSize: 11.5, color: C.text, background: "#F3EFE6", borderRadius: 7, padding: "8px 10px", margin: "2px 0 12px" }}>
+                  {SERVICE_LINES(inp).map((l) => <div key={l.name} className="flex justify-between" style={{ padding: "2px 0" }}><span style={{ color: C.sub }}>{l.name} · {l.pct}% × {l.price} SAR</span><span style={{ fontFamily: MONO }}>{l.perAppt.toFixed(1)}</span></div>)}
+                  <div className="flex justify-between" style={{ borderTop: `1px solid ${C.line}`, marginTop: 4, paddingTop: 4, fontWeight: 700 }}><span>Revenue per appointment</span><span style={{ fontFamily: MONO }}>{blendedTicket(inp).toFixed(0)} SAR</span></div>
+                </div>
                 <Slider label="Insured share (billed to insurers)" value={inp.insuredPct} min={0} max={100} step={5} unit="% of billings" onChange={(v) => set("insuredPct", v)} hint="the rest is paid cash/card at the visit" />
                 <Slider label="Claim rejection rate" value={inp.rejectionPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("rejectionPct", v)} hint="rejected insured claims are lost revenue" />
                 <Slider label="Insurer payment delay" value={inp.insurerDelayMo} min={0} max={9} step={1} unit="months" onChange={(v) => set("insurerDelayMo", v)} hint="delays insured collections — deepens the Year-1 cash trough" />
@@ -746,11 +784,14 @@
               <Card n="D" title="Pod costs — opex &amp; CapEx" cols={2}>
                 <div style={{ ...sub2, marginBottom: 6 }}>Staff &amp; operating (per pod / month)</div>
                 <Slider label="Mall rent" value={inp.rentPod} min={5} max={40} step={1} unit="K SAR" onChange={(v) => set("rentPod", v)} />
-                <Slider label="Resident GP salary" value={inp.dentistSalary} min={0} max={55} step={1} unit="K SAR/mo" onChange={(v) => set("dentistSalary", v)} hint={`+${inp.gosiPct}% GOSI, shared across ${inp.podsPerDentist} pods → ${(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist).toFixed(1)}K per pod`} />
-                <Slider label="Pods per resident GP" value={inp.podsPerDentist} min={1} max={3} step={1} unit="pods" onChange={(v) => set("podsPerDentist", v)} />
+                <div style={{ ...fw, fontFamily: SANS, fontSize: 11, color: C.brass, fontWeight: 700, margin: "0 0 8px" }}>MOH minimum per pod: 1 specialist · 1 GP · 2 nurses (sliders can't go below it)</div>
+                <Slider label="Specialists per pod" value={inp.specialistsPerPod} min={1} max={3} step={1} unit="staff" onChange={(v) => set("specialistsPerPod", v)} />
+                <Slider label="Specialist salary" value={inp.specialistSalary} min={10} max={80} step={1} unit="K SAR/mo" onChange={(v) => set("specialistSalary", v)} hint={`raw, +${inp.gosiPct}% GOSI → ${(inp.specialistsPerPod * inp.specialistSalary * gosiMulJS(inp)).toFixed(1)}K per pod`} />
+                <Slider label="GPs per pod" value={inp.gpPerPod} min={1} max={3} step={1} unit="staff" onChange={(v) => set("gpPerPod", v)} />
+                <Slider label="GP salary" value={inp.dentistSalary} min={0} max={55} step={1} unit="K SAR/mo" onChange={(v) => set("dentistSalary", v)} hint={`raw, +${inp.gosiPct}% GOSI → ${(inp.gpPerPod * inp.dentistSalary * gosiMulJS(inp)).toFixed(1)}K per pod`} />
                 <Slider label="Hygienists" value={inp.hygienists} min={1} max={4} step={1} unit="staff" onChange={(v) => set("hygienists", v)} />
                 <Slider label="Hygienist salary (loaded)" value={inp.hygSalary} min={0} max={22} step={0.5} unit="K SAR" onChange={(v) => set("hygSalary", v)} />
-                <Slider label="Nurses / assistants per pod" value={inp.nursesPerPod} min={0} max={3} step={1} unit="staff" onChange={(v) => set("nursesPerPod", v)} />
+                <Slider label="Nurses / assistants per pod" value={Math.max(2, inp.nursesPerPod)} min={2} max={5} step={1} unit="staff" onChange={(v) => set("nursesPerPod", v)} hint="MOH minimum 2" />
                 <Slider label="Nurse salary (loaded)" value={inp.nurseSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("nurseSalary", v)} />
                 <Slider label="Receptionists per pod" value={inp.receptionists} min={0} max={3} step={1} unit="staff" onChange={(v) => set("receptionists", v)} />
                 <Slider label="Receptionist salary (loaded)" value={inp.receptionSalary} min={0} max={12} step={0.5} unit="K SAR" onChange={(v) => set("receptionSalary", v)} />
@@ -862,9 +903,10 @@
               <div className="print-avoid" style={card}>
                 <div style={bTitle}>2 · Pod direct OpEx (SAR '000 / month)</div>
                 <div style={bRow}><span style={{ color: C.sub }}>Mall rent</span><span style={bVal}>{f0(inp.rentPod)}</span></div>
-                <div style={bRow}><span style={{ color: C.sub }}>Resident GP (loaded ÷ {inp.podsPerDentist})</span><span style={bVal}>{f0(inp.dentistSalary * gosiMulJS(inp) / inp.podsPerDentist)}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>Specialist ({inp.specialistsPerPod}, loaded)</span><span style={bVal}>{f0(inp.specialistsPerPod * inp.specialistSalary * gosiMulJS(inp))}</span></div>
+                <div style={bRow}><span style={{ color: C.sub }}>GP ({inp.gpPerPod}, loaded)</span><span style={bVal}>{f0(inp.gpPerPod * inp.dentistSalary * gosiMulJS(inp))}</span></div>
                 <div style={bRow}><span style={{ color: C.sub }}>Hygienists ({inp.hygienists})</span><span style={bVal}>{f0(inp.hygienists * inp.hygSalary)}</span></div>
-                {inp.nursesPerPod > 0 && <div style={bRow}><span style={{ color: C.sub }}>Nurses / assistants ({inp.nursesPerPod})</span><span style={bVal}>{f0(inp.nursesPerPod * inp.nurseSalary)}</span></div>}
+                <div style={bRow}><span style={{ color: C.sub }}>Nurses / assistants ({Math.max(2, inp.nursesPerPod)})</span><span style={bVal}>{f0(Math.max(2, inp.nursesPerPod) * inp.nurseSalary)}</span></div>
                 {inp.receptionists > 0 && <div style={bRow}><span style={{ color: C.sub }}>Receptionists ({inp.receptionists})</span><span style={bVal}>{f0(inp.receptionists * inp.receptionSalary)}</span></div>}
                 {inp.podOverheadMo > 0 && <div style={bRow}><span style={{ color: C.sub }}>Utilities, CAM & overhead</span><span style={bVal}>{f0(inp.podOverheadMo)}</span></div>}
                 {!inp.cssdCentralized && <div style={bRow}><span style={{ color: C.sub }}>CSSD (per-pod autoclave)</span><span style={bVal}>{f0(inp.cssdOpexPerPod)}</span></div>}
@@ -1172,13 +1214,14 @@
               </V2Panel>
               <V2Panel title="Saudization · per pod">
                 <div className="no-print">
-                  <V2Check label={`Resident GP is Saudi`} value={inp.saudiGP} onChange={(v) => set("saudiGP", v)} />
+                  <Slider label="Saudi specialists per pod" value={Math.min(inp.saudiSpecialists || 0, inp.specialistsPerPod)} min={0} max={inp.specialistsPerPod} step={1} unit={`of ${inp.specialistsPerPod}`} onChange={(v) => set("saudiSpecialists", v)} />
+                  <V2Check label={`GP(s) are Saudi`} value={inp.saudiGP} onChange={(v) => set("saudiGP", v)} />
                   <Slider label="Saudi hygienists per pod" value={Math.min(inp.saudiHygienists, inp.hygienists)} min={0} max={inp.hygienists} step={1} unit={`of ${inp.hygienists}`} onChange={(v) => set("saudiHygienists", v)} />
-                  <Slider label="Saudi nurses per pod" value={Math.min(inp.saudiNurses, inp.nursesPerPod)} min={0} max={Math.max(0, inp.nursesPerPod)} step={1} unit={`of ${inp.nursesPerPod}`} onChange={(v) => set("saudiNurses", v)} />
+                  <Slider label="Saudi nurses per pod" value={Math.min(inp.saudiNurses, Math.max(2, inp.nursesPerPod))} min={0} max={Math.max(2, inp.nursesPerPod)} step={1} unit={`of ${Math.max(2, inp.nursesPerPod)}`} onChange={(v) => set("saudiNurses", v)} />
                   {inp.receptionists > 0 && <V2Check label="Receptionists are Saudi" value={inp.saudiReception} onChange={(v) => set("saudiReception", v)} />}
                   <Slider label="Saudization target" value={inp.saudizationTarget} min={0} max={100} step={5} unit="%" onChange={(v) => set("saudizationTarget", v)} />
                 </div>
-                <V2Row k="Pod headcount (GP shared)" v={v2.saudi.heads.toFixed(1)} />
+                <V2Row k="Pod headcount" v={v2.saudi.heads.toFixed(0)} />
                 <V2Row k="Saudi share" v={pctf(v2.saudi.pct)} strong color={v2.saudi.pct >= inp.saudizationTarget ? C.pos : C.neg} />
                 <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 8, lineHeight: 1.5 }}>Set the target to the current MHRSD ratio for dental professions. Compliance check only; salaries aren't changed.</div>
               </V2Panel>
