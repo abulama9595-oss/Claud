@@ -257,7 +257,8 @@
             <div className="subhead">Mortgage</div>
             <Select value={mgW} onChange={(v) => setPlan(i, "mortgageWhen", v)} options={[["none", "No mortgage"], ["start", "At start — construction / purchase mortgage"], ["completion", "At completion — cash-out against the finished home"]]} />
             {mgW === "start" && <>
-              <Slider label="Your cash into the project" value={o.cashInPct} min={0} max={100} step={1} unit="% of cost" onChange={(v) => setPlan(i, "cashInPct", v)} hint={`= ${fS(prj.total * o.cashInPct / 100)} · bank requires ≥ ${100 - o.maxLtvPct}%`} />
+              {build && <Select value={o.mortgageScope} onChange={(v) => setPlan(i, "mortgageScope", v)} options={[["all", "Finances land + construction"], ["construction", "Finances construction only — land from my cash"]]} />}
+              <Slider label={o.mortgageScope === "construction" && build ? "Your cash into the construction" : "Your cash into the project"} value={o.cashInPct} min={0} max={100} step={1} unit="%" onChange={(v) => setPlan(i, "cashInPct", v)} hint={o.mortgageScope === "construction" && build ? `= ${fS((prj.total - prj.land - prj.rett) * o.cashInPct / 100)} on top of the land ${fS(prj.land + prj.rett)}` : `= ${fS(prj.total * o.cashInPct / 100)} · bank requires ≥ ${100 - o.maxLtvPct}%`} />
               <Slider label="Bank's max LTV" value={o.maxLtvPct} min={50} max={100} step={5} unit="%" onChange={(v) => setPlan(i, "maxLtvPct", v)} hint="90% first home (SAMA)" />
             </>}
             {mgW === "completion" && <>
