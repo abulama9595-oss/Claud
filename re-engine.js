@@ -81,7 +81,7 @@ const RE_BASE = {
                    "asNeeded"  before each new facility, settle existing loans (and an earlier personal loan) just enough to pass the bank's DBR test
                    "all"       settle every existing loan before the first new facility
    Every facility is sized down to what the bank's debt-burden ratio (dbrCap × income) and LTV allow, and the plan reports it. */
-const RE_EQ_DEFAULTS = { eqWhen: "none", eqMonth: 0, eqAmount: 0, eqRate: 6.0, eqTenure: 20, eqFeesPct: 1 }; // equity release on the property you already own (eqAmount 0 = maximum)
+const RE_EQ_DEFAULTS = { eqWhen: "none", eqMonth: 0, eqAmount: 0, eqRate: 6.0, eqTenure: 20, eqFeesPct: 1, mortgageScope: "all" }; // mortgageScope "all" = land + construction · "construction" = construction only, land paid from your cash // equity release on the property you already own (eqAmount 0 = maximum)
 const RE_PLAN_PRESETS = {
   mortgageFirst: { name: "Mortgage now → personal loan later to recover cash", ...RE_EQ_DEFAULTS,
     mortgageWhen: "start", cashInPct: 20, rate: 5.5, tenure: 25, graceMode: "capitalize", subsidyCap: 500000, subsidyPct: 100, feesPct: 1, maxLtvPct: 90,
@@ -403,7 +403,11 @@ function rePlanSimulate(p, prj, plan) {
   function originateMortgage(t, type) {
     const value = valueAt(t);
     let req, cap;
-    if (type === "construction") { req = Math.max(0, prj.total * (1 - plan.cashInPct / 100)); cap = prj.total * plan.maxLtvPct / 100; }
+    if (type === "construction") {
+      // scope: the bank finances the whole project, or only the construction (land + RETT always from your cash)
+      const financeable = plan.mortgageScope === "construction" && prj.build ? prj.total - prj.land - prj.rett : prj.total;
+      req = Math.max(0, financeable * (1 - plan.cashInPct / 100)); cap = Math.min(financeable, prj.total * plan.maxLtvPct / 100);
+    }
     else { cap = value * p.cashoutLtv / 100; req = plan.cashOutTarget > 0 ? plan.cashOutTarget : cap; }
     let amount = Math.min(req, cap);
     const ltvCapped = amount < req - 1;
@@ -428,7 +432,7 @@ function rePlanSimulate(p, prj, plan) {
     if (type === "construction") {
       equityRequired = prj.total - amount;
       mg.gm = Math.max(0, prj.bm); mg.amortFrom = mg.gm + 1;
-      events.push({ t, kind: "mortgage", text: `Construction mortgage approved: ${fS(amount)} at ${plan.rate}%${p.rateQuote === "flat" ? ` flat (≈${mRate.toFixed(2)}% APR)` : ""} over ${plan.tenure} yrs (${mg.ltv.toFixed(0)}% LTV, instalment ${fSAR(mgInstFor(amount))}/mo from month ${mg.amortFrom}; bank DBR ${mg.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ltvCapped ? ` — capped by ${plan.maxLtvPct}% LTV` : ""}. Your cash funds the first ${fS(equityRequired)}.` });
+      events.push({ t, kind: "mortgage", text: `Construction mortgage approved: ${fS(amount)} at ${plan.rate}%${p.rateQuote === "flat" ? ` flat (≈${mRate.toFixed(2)}% APR)` : ""} over ${plan.tenure} yrs (${mg.ltv.toFixed(0)}% LTV, instalment ${fSAR(mgInstFor(amount))}/mo from month ${mg.amortFrom}; bank DBR ${mg.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ltvCapped ? ` — capped by ${plan.maxLtvPct}% LTV` : ""}. Your cash funds the first ${fS(equityRequired)}${plan.mortgageScope === "construction" && prj.build ? " (land + RETT, then your share of construction)" : ""}.` });
     } else {
       mg.balS = Math.min(amount, plan.subsidyCap); mg.balU = amount - mg.balS; mg.drawn = amount;
       mg.pmtS = rePmt(mg.balS, rateS, n); mg.pmtU = rePmt(mg.balU, rateU, n); mg.amortFrom = t + 1; mg.gm = t;
