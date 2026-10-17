@@ -38,6 +38,7 @@ const RE_BASE = {
   builtPct: 0,                             // if > 0, built-up area = landArea × builtPct % (e.g. 70) and builtArea is ignored
   softPct: 8, contPct: 7, finishExtra: 150000, // design/permits/supervision %, contingency %, kitchen/AC/landscape SAR
   buildMonths: 18, devMarginPct: 10,       // construction duration; market value uplift of a self-built home over its cost
+  landMonth: 0, buildStart: 0, costInflation: 3, // timing: month the land is bought, month construction starts (≥ landMonth), construction-cost inflation %/yr
   // ready property
   propertyPrice: 2800000, brokerPct: 2.5,
   // taxes & fees (KSA)
@@ -144,13 +145,18 @@ function rePrincipalFor(pmt, rAnnual, n) {
 /* ---------- project cost build-up ---------- */
 function reProject(p) {
   const build = p.acquire === "build";
-  const land = build ? p.landArea * p.landPrice : 0;
-  const price = build ? 0 : p.propertyPrice;
+  const g = p.appreciation / 100;
+  const landMonth = Math.max(0, Math.round(p.landMonth || 0));
+  const start = build ? Math.max(landMonth, Math.round(p.buildStart || 0)) : landMonth;
+  const inflate = Math.pow(1 + (p.costInflation || 0) / 100, start / 12);   // construction priced at the month it starts
+  const landToday = build ? p.landArea * p.landPrice : 0;
+  const land = landToday * Math.pow(1 + g, landMonth / 12);                 // land priced at the month it is bought
+  const price = build ? 0 : p.propertyPrice * Math.pow(1 + g, landMonth / 12);
   const builtArea = p.builtPct > 0 ? p.landArea * p.builtPct / 100 : p.builtArea;
-  const hard = build ? builtArea * p.buildCost : 0;
+  const hard = build ? builtArea * p.buildCost * inflate : 0;
   const soft = hard * p.softPct / 100;
   const cont = (hard + soft) * p.contPct / 100;
-  const finish = p.finishExtra;
+  const finish = p.finishExtra * inflate;
   const vatConstr = (hard + soft + cont) * p.vatPct / 100;
   const vatFinish = finish * p.vatPct / 100;
   const broker = price * p.brokerPct / 100;
@@ -161,18 +167,27 @@ function reProject(p) {
   // market value at completion: what the finished home is worth (VAT, RETT, fees, contingency are sunk)
   const value0 = build ? (land + hard + soft + finish) * (1 + p.devMarginPct / 100) : price + finish;
   const bm = build ? Math.max(1, Math.round(p.buildMonths)) : 0;
-  const occupy = bm + 1; // first month of living in / letting
+  const occupy = start + bm + 1; // first month of living in / letting
   // monthly spend schedule, index = month
-  const schedule = new Array(bm + 1).fill(0);
+  const schedule = new Array(occupy).fill(0);
   if (build) {
-    schedule[0] = land + rett;
+    schedule[landMonth] += land + rett;
     const perMo = (hard + soft + cont + vatConstr) / bm;
-    for (let t = 1; t <= bm; t++) schedule[t] += perMo;
-    schedule[bm] += finish + vatFinish;
+    for (let t = start + 1; t <= start + bm; t++) schedule[t] += perMo;
+    schedule[start + bm] += finish + vatFinish;
   } else {
-    schedule[0] = price + rett + broker + finish + vatFinish;
+    schedule[landMonth] += price + rett + broker + finish + vatFinish;
   }
-  return { build, land, price, hard, soft, cont, finish, vat: vatConstr + vatFinish, broker, rett, rettExempt: exempt, total, value0, bm, occupy, schedule,
+  // market value path: nothing before the land is bought; land appreciates from purchase; the finished home is worth
+  // (land + construction) × (1 + uplift) at completion, with the construction share accruing in proportion to progress.
+  // With landMonth = buildStart = 0 this is identical to the original formula.
+  const compValue = build ? (land + hard + soft + finish) * (1 + p.devMarginPct / 100) : price + finish; // value at completion in purchase-month prices
+  const valueAt = (t) => {
+    if (t < landMonth) return 0;
+    const prog = build ? Math.min(1, Math.max(0, (t - start) / bm)) : 1;
+    return (land + (compValue - land) * prog) * Math.pow(1 + g, (t - landMonth) / 12);
+  };
+  return { build, land, landToday, price, hard, soft, cont, finish, vat: vatConstr + vatFinish, broker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), bm, occupy, start, landMonth, inflate, schedule, valueAt,
     builtArea, costPerSqm: build && builtArea > 0 ? (total - land - rett) / builtArea : 0 };
 }
 
@@ -206,7 +221,7 @@ function reSimulate(p, prj, opt) {
   const maxLoan = prj.total * opt.maxLtvPct / 100;
   const fundingGap = Math.max(0, loanCommit - maxLoan);                    // mortgage needed beyond the bank's LTV ceiling
   const fees = loanCommit * opt.feesPct / 100;
-  const gm = prj.build ? Math.max(opt.graceMonths, prj.bm) : Math.max(0, opt.graceMonths);
+  const gm = prj.build ? prj.start + Math.max(opt.graceMonths, prj.bm) : prj.landMonth + Math.max(0, opt.graceMonths);
   const n = Math.max(1, Math.round(opt.tenure * 12));
   const mRate = reEffRate(p, opt.rate, n);
   const rateS = mRate * (1 - Math.min(100, opt.subsidyPct) / 100), rateU = mRate;
@@ -227,7 +242,7 @@ function reSimulate(p, prj, opt) {
     const iS = balS * rateS / 100 / 12, iU = balU * rateU / 100 / 12;
     let interest = iS + iU;
     let payment = 0, principal = 0, plPayment = 0, plInterest = 0;
-    if (t === 0) {
+    if (t <= prj.landMonth) {
       // draws land in the subsidised bucket first
       const toS = Math.max(0, Math.min(draw, opt.subsidyCap - balS)); balS += toS; balU += draw - toS;
     } else if (t <= gm) {
@@ -257,8 +272,7 @@ function reSimulate(p, prj, opt) {
     payment += plPayment; interest += plInterest; principal += plPayment - plInterest;
     const bal = balS + balU + balPL;
     // property value path (continuous through construction)
-    const built = prj.build ? Math.min(1, t / prj.bm) : 1;
-    const value = (prj.land + (prj.value0 - prj.land) * built) * Math.pow(1 + g, t / 12);
+    const value = prj.valueAt(t);
     const occupied = t >= prj.occupy;
     const ownerCost = occupied ? value * p.maintPct / 100 / 12 + p.insurance / 12 : 0;
     const yrIdx = Math.floor(Math.max(0, t - 1) / 12);
@@ -431,7 +445,7 @@ function rePlanSimulate(p, prj, plan) {
     mg.dbrAt = (otherInst(t) + mgInstFor(amount)) / p.income * 100;
     if (type === "construction") {
       equityRequired = prj.total - amount;
-      mg.gm = Math.max(0, prj.bm); mg.amortFrom = mg.gm + 1;
+      mg.gm = prj.start + prj.bm; mg.amortFrom = mg.gm + 1;
       events.push({ t, kind: "mortgage", text: `Construction mortgage approved: ${fS(amount)} at ${plan.rate}%${p.rateQuote === "flat" ? ` flat (≈${mRate.toFixed(2)}% APR)` : ""} over ${plan.tenure} yrs (${mg.ltv.toFixed(0)}% LTV, instalment ${fSAR(mgInstFor(amount))}/mo from month ${mg.amortFrom}; bank DBR ${mg.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ltvCapped ? ` — capped by ${plan.maxLtvPct}% LTV` : ""}. Your cash funds the first ${fS(equityRequired)}${plan.mortgageScope === "construction" && prj.build ? " (land + RETT, then your share of construction)" : ""}.` });
     } else {
       mg.balS = Math.min(amount, plan.subsidyCap); mg.balU = amount - mg.balS; mg.drawn = amount;
@@ -477,7 +491,7 @@ function rePlanSimulate(p, prj, plan) {
     if (amount < req - 1) flags.push(`Personal loan cut to ${fS(amount)} (asked ${fS(req)}) by the debt-burden cap.`);
     if (t > 0 && recovered === null) { recovered = cash - cashBefore; recoveredGross = amount; recoveredT = t; }
   }
-  function valueAt(t) { const built = prj.build ? Math.min(1, t / prj.bm) : 1; return (prj.land + (prj.value0 - prj.land) * built) * Math.pow(1 + g, t / 12); }
+  const valueAt = prj.valueAt;
 
   const eqMonth = plan.eqWhen === "start" ? 0 : plan.eqWhen === "completion" ? prj.occupy : plan.eqWhen === "month" ? Math.max(0, Math.round(plan.eqMonth)) : -1;
   const plMonth = plan.plWhen === "start" ? 0 : plan.plWhen === "completion" ? prj.occupy : plan.plWhen === "month" ? Math.max(0, Math.round(plan.plMonth)) : -1;
@@ -491,9 +505,14 @@ function rePlanSimulate(p, prj, plan) {
     // ---- events (equity release first so its proceeds can settle loans before the other bank tests; personal loan before a cash-out so the cash-out can settle it) ----
     if (plan.eqWhen !== "none" && t === eqMonth) originateEquity(t);
     if (plan.plWhen !== "none" && t === plMonth && plan.mortgageWhen !== "start") originatePL(t);
-    if (plan.mortgageWhen === "start" && t === 0) originateMortgage(t, "construction");
+    // a land + construction facility is taken when the land is bought; a construction-only facility when building starts
+    if (plan.mortgageWhen === "start" && t === (plan.mortgageScope === "construction" && prj.build ? prj.start : prj.landMonth)) originateMortgage(t, "construction");
+    // planned early settlements (e.g. a loan you intend to clear at a known date)
+    loans.forEach((l) => { if (l.settledAt === null && l.bal > 0.5 && l.settleAt != null && l.settleAt > 0 && t === Math.round(l.settleAt)) doSettle(l, t, "planned settlement"); });
     if (plan.mortgageWhen === "completion" && t === prj.occupy) originateMortgage(t, "cashout");
     if (plan.plWhen !== "none" && t === plMonth && plan.mortgageWhen === "start") originatePL(t);
+    if (t === prj.landMonth && prj.build && t > 0) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett)} incl. RETT (today's price grown at ${p.appreciation}%/yr).` });
+    if (t === prj.start && prj.build && (prj.start > 0 || prj.landMonth > 0)) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (construction priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""}.` });
     if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Rent stops; upkeep starts.` });
     // ---- project spend: owner cash first (up to equityRequired), then mortgage draws ----
     const spend = prj.schedule[t] || 0;
@@ -574,7 +593,7 @@ function rePlanSimulate(p, prj, plan) {
   return { plan, months, years, events, flags, feasible, end,
     effRates: { mortgage: mRate, pl: pl.rate, eq: eqRate },
     mortgage: { ...mg, instalment: mg.pmtS + mg.pmtU || (mg.type ? mgInstFor(mg.commit) : 0) }, pl: { ...pl }, eq: { ...eqm }, loansEnd: loans.map((l) => ({ name: l.name, settledAt: l.settledAt, bal: l.bal, interestPaid: l.interestPaid })),
-    cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
+    cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, start: prj.start, landMonth: prj.landMonth, cashEnd: end.cash,
     recovered, recoveredGross, recoveredT, settledTotal, settleFees, totalInterest, newDebtInterest, peakDbr, peakInst, debtFreeT, breakEvenMonth,
     netWorthEnd: end.netWorth, renterEnd: end.renterNW, advantage: end.advantage, endDebt: end.debt, endValue: end.value,
     dbrOk: peakDbr <= p.dbrCap + 0.5 };
@@ -632,4 +651,21 @@ function tornadoRE(inp, idx) {
     const a = metric(computeRE(vary(k, 0.8))) - base, b = metric(computeRE(vary(k, 1.2))) - base;
     return { label, lo: Math.min(a, b), hi: Math.max(a, b), swing: Math.abs(b - a) };
   }).sort((x, y) => y.swing - x.swing);
+}
+
+// run one strategy at every construction-start month to find the best time to build
+function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
+  const p = mergeRE(inp);
+  maxDelay = maxDelay == null ? 48 : maxDelay; step = step || 3;
+  const rows = [];
+  for (let d = 0; d <= maxDelay; d += step) {
+    const q = { ...p, buildStart: d, landMonth: landWithBuild ? d : Math.min(p.landMonth || 0, d) };
+    const m = computeRE(q); const r = m.results[idx];
+    if (!r) continue;
+    rows.push({ delay: d, feasible: r.feasible, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.mortgage.commit, eq: r.eq.amount, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, advantage: r.advantage, total: m.prj.total, occupy: m.prj.occupy, bufferOk: r.minCash >= p.cashBuffer });
+  }
+  // for a home you will live in, "best" = the EARLIEST start that is executable and keeps the cash buffer (fallback: earliest executable)
+  const ok = rows.filter((r) => r.feasible);
+  const best = ok.find((r) => r.bufferOk) || ok[0] || null;
+  return { rows, best };
 }
