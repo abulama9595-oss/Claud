@@ -35,7 +35,7 @@ const RE_BASE = {
   // land & construction
   landArea: 400, landPrice: 3200,          // sqm, SAR/sqm
   builtArea: 520, buildCost: 2300,         // sqm built-up, SAR/sqm turnkey
-  builtPct: 0,                             // if > 0, built-up area = landArea × builtPct % (e.g. 70) and builtArea is ignored
+  builtPct: 0, floors: 1,                  // if builtPct > 0, built-up area = landArea × builtPct % (footprint) × floors; builtArea is then ignored
   softPct: 8, contPct: 7, finishExtra: 150000, // design/permits/supervision %, contingency %, kitchen/AC/landscape SAR
   buildMonths: 18, devMarginPct: 10,       // construction duration; market value uplift of a self-built home over its cost
   landMonth: 0, buildStart: 0, costInflation: 3, // timing: month the land is bought, month construction starts (≥ landMonth), construction-cost inflation %/yr
@@ -152,7 +152,7 @@ function reProject(p) {
   const landToday = build ? p.landArea * p.landPrice : 0;
   const land = landToday * Math.pow(1 + g, landMonth / 12);                 // land priced at the month it is bought
   const price = build ? 0 : p.propertyPrice * Math.pow(1 + g, landMonth / 12);
-  const builtArea = p.builtPct > 0 ? p.landArea * p.builtPct / 100 : p.builtArea;
+  const builtArea = p.builtPct > 0 ? p.landArea * p.builtPct / 100 * (p.floors || 1) : p.builtArea;
   const hard = build ? builtArea * p.buildCost * inflate : 0;
   const soft = hard * p.softPct / 100;
   const cont = (hard + soft) * p.contPct / 100;
