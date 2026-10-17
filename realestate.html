@@ -241,6 +241,7 @@
                 <div style={{ fontFamily: SANS, fontWeight: 700, color: r.feasible ? C.pos : C.neg, marginBottom: 2 }}>{r.feasible ? "✓ Executable" : "✗ Not executable as set"}</div>
                 {r.mortgage.type && <Mini k={r.mortgage.type === "construction" ? "Mortgage at start" : `Cash-out mortgage ${fMon(r.mortgage.startedAt)}`} v={`${fS(r.mortgage.commit)} · ${fSAR(r.mortgage.instalment)}/mo`} />}
                 {r.mortgage.type && <Mini k="Bank DBR at approval" v={pct1(r.mortgage.dbrAt)} color={r.mortgage.dbrAt > inp.dbrCap + 0.5 ? C.neg : C.text} />}
+                {r.eq.startedAt !== null && r.eq.amount > 0 && <Mini k={`Existing-property mortgage ${fMon(r.eq.startedAt)}`} v={`${fS(r.eq.amount)} · ${fSAR(r.eq.pmt)}/mo`} />}
                 {r.pl.startedAt !== null && <Mini k={`Personal loan ${fMon(r.pl.startedAt)}`} v={`${fS(r.pl.amount)} · ${fSAR(r.pl.pmt)}/mo`} />}
                 {r.settledTotal > 0 && <Mini k="Old loans settled" v={`${fS(r.settledTotal)} + ${fS(r.settleFees)} fees`} />}
                 <Mini k="Cash low point" v={`${fS(r.minCash)} ${fMon(r.minCashT)}`} color={r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text} />
@@ -267,6 +268,15 @@
               {o.subsidyCap > 0 && <Slider label="Subsidy on that portion" value={o.subsidyPct} min={0} max={100} step={5} unit="%" onChange={(v) => setPlan(i, "subsidyPct", v)} />}
               <Slider label="Bank fees (upfront)" value={o.feesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "feesPct", v)} />
               <Slider label="Extra prepayment" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setPlan(i, "extraMo", v)} />
+            </>}
+            <div className="subhead">Mortgage on the property I already own</div>
+            <Select value={o.eqWhen} onChange={(v) => setPlan(i, "eqWhen", v)} options={[["none", "Not used"], ["start", "At start — fund the build / clear old loans"], ["completion", "At completion — recover cash"], ["month", "At a month I choose"]]} />
+            {o.eqWhen === "month" && <Slider label="Month" value={o.eqMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "eqMonth", v)} hint={`construction completes month ${prj.occupy}`} />}
+            {o.eqWhen !== "none" && <>
+              <Slider label="Amount wanted" value={o.eqAmount} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "eqAmount", v)} hint={o.eqAmount === 0 ? `0 = maximum (${inp.ownedLtv}% of ${fS(inp.ownedValue)} = ${fS(inp.ownedValue * inp.ownedLtv / 100)})` : `capped at ${inp.ownedLtv}% of value and by the debt-burden test`} />
+              <Slider label="Rate" value={o.eqRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "eqRate", v)} hint="finance against an owned property; no REDF support" />
+              <Slider label="Tenure" value={o.eqTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "eqTenure", v)} />
+              <Slider label="Bank fees (upfront)" value={o.eqFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "eqFeesPct", v)} />
             </>}
             <div className="subhead">Personal loan</div>
             <Select value={plW} onChange={(v) => setPlan(i, "plWhen", v)} options={[["none", "No personal loan"], ["start", "At start — to fund the build"], ["completion", "At completion — to recover cash"], ["month", "At a month I choose"]]} />
@@ -329,6 +339,7 @@
         ["Mortgage", (r) => r.mortgage.type ? `${fS(r.mortgage.commit)} ${r.mortgage.type === "construction" ? "at start" : "cash-out " + fMon(r.mortgage.startedAt)}` : "none"],
         ["Mortgage instalment", (r) => r.mortgage.type ? fSAR(r.mortgage.instalment) + "/mo" : "—"],
         ["Bank DBR at mortgage approval", (r) => r.mortgage.type ? pct1(r.mortgage.dbrAt) : "—", (r) => r.mortgage.dbrAt > inp.dbrCap + 0.5 ? C.neg : C.text],
+        ["Mortgage on existing property", (r) => r.eq.startedAt !== null && r.eq.amount > 0 ? `${fS(r.eq.amount)} ${fMon(r.eq.startedAt)} · ${fSAR(r.eq.pmt)}/mo${r.eq.amount < r.eq.requested - 1 ? ` (asked ${fS(r.eq.requested)})` : ""}` : (r.plan.eqWhen !== "none" ? "refused (DBR)" : "none"), (r) => r.plan.eqWhen !== "none" && r.eq.amount < r.eq.requested - 1 ? C.neg : C.text],
         ["Personal loan taken", (r) => r.pl.startedAt !== null ? `${fS(r.pl.amount)} ${fMon(r.pl.startedAt)}${r.pl.amount < r.pl.requested - 1 ? ` (asked ${fS(r.pl.requested)})` : ""}` : (r.pl.requested > 0 ? "refused (DBR)" : "none"), (r) => r.pl.requested > 0 && r.pl.amount < r.pl.requested - 1 ? C.neg : C.text],
         ["Old loans settled early", (r) => r.settledTotal > 0 ? `${fS(r.settledTotal)} (+${fS(r.settleFees)} fees)` : "none"],
         ["Cash low point", (r) => `${fS(r.minCash)} ${fMon(r.minCashT)}`, (r) => r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text, true],
@@ -517,6 +528,9 @@
                   <Slider label="Cash buffer you want to keep" value={inp.cashBuffer} min={0} max={1000000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="dipping below is flagged; going negative makes a strategy non-executable" />
                   <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} hint="SAMA responsible-lending norm: 55% (65% for higher incomes)" />
                   <Slider label="Bank ceiling on one personal loan" value={inp.plCap} min={100000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("plCap", v)} />
+                  <div className="subhead">Property you already own</div>
+                  <Slider label="Market value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint="0 if none. Its value is the same in every strategy and in the renter path, so only the debt raised against it is counted" />
+                  <Slider label="LTV banks lend against it" value={inp.ownedLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("ownedLtv", v)} hint={`up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} of equity release`} />
                 </Card>
                 <Card n="E" title="Existing loans (as the bank sees them)">
                   <LoanTable loans={inp.existingLoans} onChange={(l) => set("existingLoans", l)} income={inp.income} dbrCap={inp.dbrCap} />
@@ -527,8 +541,8 @@
             {/* 02/03 financing */}
             {home ? (
               <SectionHeader id="financing" eyebrow="03 · Strategies" title="Four ways to sequence the financing"
-                sub="Each strategy is a timeline: what you pay in cash, when a personal loan is taken, when the mortgage is taken (a construction mortgage at the start, or a cash-out mortgage against the finished home), and what happens to your existing loans. Every facility is sized down to what the bank's debt-burden and LTV tests allow, and the red flags tell you why."
-                meta={<div className="no-print" style={{ fontFamily: SANS, fontSize: 11, color: C.sub, maxWidth: 300, textAlign: "right" }}>Presets cover your questions: mortgage-first then personal loan; cash + personal loan then cash-out; settle-all-first; all cash</div>} />
+                sub="Each strategy is a timeline: what you pay in cash, whether and when you mortgage the property you already own, when a personal loan is taken, when the new home's mortgage is taken (a construction mortgage at the start, or a cash-out against the finished home), and what happens to your existing loans. Every facility is sized down to what the bank's debt-burden and LTV tests allow, and the red flags tell you why."
+                meta={<div className="no-print" style={{ fontFamily: SANS, fontSize: 11, color: C.sub, maxWidth: 320, textAlign: "right" }}>Presets: mortgage-first then personal loan or existing-property mortgage; refinance old loans against your property first; cash + personal loan then cash-out; settle-all-first; all cash</div>} />
             ) : (
               <SectionHeader id="financing" eyebrow="02 · Financing options" title="Four ways to fund it — mix cash, personal loans and a mortgage"
                 sub="Each column is a capital stack. Own cash goes in first, then the personal loan (unsecured, short, repaid from month 1), and the mortgage covers the remainder — drawn in stages during construction with profit accruing in the grace period." />
@@ -560,7 +574,7 @@
             {home ? (
               <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 34 }}>
                 {LineChartBox({ title: "Your cash balance · year-end · SAR", keyPrefix: "cash", height: 280, extra: <ReferenceLine y={inp.cashBuffer} stroke={C.brass} strokeDasharray="4 4" label={{ value: "buffer", fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideTopRight" }} />, note: "The decisive chart: a line that crosses zero is a plan you cannot execute. Year-end values; the low point within the construction year can be lower — see the table." })}
-                {LineChartBox({ title: "Total debt outstanding (old loans + personal loan + mortgage) · SAR", keyPrefix: "debt", height: 280 })}
+                {LineChartBox({ title: "Total debt outstanding (old loans + property mortgages + personal loan) · SAR", keyPrefix: "debt", height: 280 })}
                 {LineChartBox({ title: "Monthly instalments, all debt · SAR/mo (annual average)", keyPrefix: "inst", height: 260, extra: <ReferenceLine y={inp.income * inp.dbrCap / 100} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% of income`, fontFamily: SANS, fontSize: 11, fill: C.neg, position: "insideTopRight" }} /> })}
                 {LineChartBox({ title: "Net worth · cash + home (after selling costs) − debt · vs renting", keyPrefix: "nw", height: 260, extra: <Line dataKey="renter" name="Keep renting" stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
               </div>
@@ -621,9 +635,9 @@
                     <tbody>
                       {(home ? [
                         ["Project spend", "spend", "neg"], ["  of which from your cash", "eq", "sub"], ["Rent paid while building", "rentPaid", "neg"],
-                        ["Existing-loan instalments", "existInst", "neg"], ["Personal-loan instalments", "plPay", "neg"], ["Mortgage instalments", "mgPay", "neg"], ["  of which profit (all debt)", "interest", "sub"],
+                        ["Existing-loan instalments", "existInst", "neg"], ["Existing-property mortgage instalments", "eqPay", "neg"], ["Personal-loan instalments", "plPay", "neg"], ["New-home mortgage instalments", "mgPay", "neg"], ["  of which profit (all debt)", "interest", "sub"],
                         ["Maintenance & insurance", "ownerCost", "neg"],
-                        ["Cash balance (year-end)", "cash", "head"], ["Debt outstanding (year-end)", "debt", "plain"], ["  mortgage", "debtMortgage", "sub"], ["  personal loan", "debtPL", "sub"], ["  existing loans", "debtExisting", "sub"],
+                        ["Cash balance (year-end)", "cash", "head"], ["Debt outstanding (year-end)", "debt", "plain"], ["  new-home mortgage", "debtMortgage", "sub"], ["  existing-property mortgage", "debtEq", "sub"], ["  personal loan", "debtPL", "sub"], ["  existing loans", "debtExisting", "sub"],
                         ["Home value", "value", "plain"], ["Net worth", "netWorth", "head"], ["Renter's net worth", "renterNW", "plain"], ["Advantage vs renting", "advantage", "head"],
                       ] : [
                         ["Project spend", "spend", "neg"], ["  of which from own cash / personal loan", "eq", "sub"],
@@ -633,7 +647,7 @@
                       ]).map(([label, key, kind]) => (
                         <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
                           <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "sub" ? C.sub : C.text, paddingLeft: label.startsWith("  ") ? 26 : 14 }}>{label.trim()}</td>
-                          {focusRes.years.map((y) => { const v = y[key]; const neg = v < 0; return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: kind === "ratio" ? (v != null && v < 1.2 ? C.neg : C.text) : neg && (kind === "head" || kind === "plain") ? C.neg : kind === "neg" || kind === "sub" ? C.sub : C.text }}>{kind === "ratio" ? (v == null ? "—" : v.toFixed(2)) : kind === "neg" || (kind === "sub" && !["debtMortgage", "debtPL", "debtExisting"].includes(key)) ? (Math.abs(v) < 0.5 ? "–" : `(${fS(Math.abs(v))})`) : (Math.abs(v) < 0.5 && kind === "sub" ? "–" : fS(v))}</td>; })}
+                          {focusRes.years.map((y) => { const v = y[key]; const neg = v < 0; return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: kind === "ratio" ? (v != null && v < 1.2 ? C.neg : C.text) : neg && (kind === "head" || kind === "plain") ? C.neg : kind === "neg" || kind === "sub" ? C.sub : C.text }}>{kind === "ratio" ? (v == null ? "—" : v.toFixed(2)) : kind === "neg" || (kind === "sub" && !["debtMortgage", "debtEq", "debtPL", "debtExisting"].includes(key)) ? (Math.abs(v) < 0.5 ? "–" : `(${fS(Math.abs(v))})`) : (Math.abs(v) < 0.5 && kind === "sub" ? "–" : fS(v))}</td>; })}
                         </tr>
                       ))}
                     </tbody>
