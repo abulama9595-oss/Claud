@@ -109,7 +109,7 @@ const HARD_CAPEX_KEYS = ["capexFitout","capexChairs","capexImaging","capexIT","c
 const hardCapex = (inp) => HARD_CAPEX_KEYS.reduce((s, k) => s + (inp[k] || 0), 0);
 // straight-line useful lives (years): fit-out & fire systems 10, clinical equipment & furniture 7, IT 4
 const DEP_LIVES = { capexFitout: 10, capexCivilDefence: 10, capexChairs: 7, capexImaging: 7, capexCSSD: 7, capexFurniture: 7, capexIT: 4 };
-const annualDepreciation = (inp) => Object.entries(DEP_LIVES).reduce((s, [k, life]) => s + (inp[k] || 0) / life, 0);
+const annualDepreciation = (inp, yr = 0) => Object.entries(DEP_LIVES).reduce((s, [k, life]) => s + (yr < life ? (inp[k] || 0) / life : 0), 0);
 // asset finance: the clinical/medical equipment that can be financed via a loan / hire-purchase
 const FINANCE_KEYS = ["capexChairs","capexImaging","capexCSSD"];
 const financeableBase = (inp) => FINANCE_KEYS.reduce((s, k) => s + (inp[k] || 0), 0);
@@ -222,7 +222,7 @@ function compute(inp) {
     const share = salariedProfit > 0 ? (salariedProfit * inp.profitShare) / 100 : 0;
     const preshare = gp - fixedStaff - lease - mkt - other - insUtil - foreign - seniorPay; // whole-clinic operating profit before the salaried share
     const ebitda = preshare - share;
-    const dep = annualDepreciation(inp);
+    const dep = annualDepreciation(inp, i);
     const interest = loan.perYear[i].interest;      // clinical-equipment finance interest (below EBITDA)
     const principal = loan.perYear[i].principal;     // finance principal repayment (cash flow, not P&L)
     const nibz = ebitda - dep - interest;
@@ -239,20 +239,27 @@ function compute(inp) {
   const cumNI = years.reduce((a, y) => a + y.ni, 0);
   // representative Year-1 monthly operating cost, used to size the minimum-cash policy
   const monthlyOpex = (y1.fixedStaff + y1.lease + y1.mkt + y1.other + y1.insUtil + y1.foreign + y1.materials + y1.seniorPay + y1.share) / 12;
-  // operating break-even revenue per chair/month: the revPerChair at which mature (Y5) operating profit BEFORE the dentist
-  // profit share = 0 — the clinic just covers its running costs (excl. share, capital, depreciation & finance). Above this a
-  // profit pool exists and dentists earn their share; use it as the per-chair threshold each dentist must clear before sharing.
-  // Senior production pay is variable with collections, so it lowers the margin rather than adding to fixed cost
-  // (the optional minimum guarantee is ignored here — near break-even it is a second-order refinement).
+  // operating break-even: the salaried revPerChair (full-time dentist's monthly production) at which
+  // mature (Y5) operating profit BEFORE the salaried profit share = 0 — the clinic just covers its
+  // running costs (excl. share, capital, depreciation & finance). Above it a profit pool exists and
+  // the salaried tier earns its share. At a fixed roster, Y5 operating profit is LINEAR in revPerChair:
+  //   preshare = R·(collFrac − materials%) − fcMature − seniorPay,  R = 12·(1+g)^4·(kSal·revPerChair + senProdMo)
+  // where kSal = salaried production supplied per unit of revPerChair (FTE-equivalent after part-time
+  // days & the chair-capacity cap), and both senProdMo and the senior pay tied to the seniors' own
+  // book are CONSTANTS in revPerChair — so senior pay sits on the fixed side, not in the margin.
+  // Inverting for revPerChair gives the exact threshold (correct under any staffing, part-time roster
+  // and senior mix; the earlier per-chair form was only right when kSal happened to equal chairs).
   const collFrac = 1 - (inp.insuredPct / 100) * (inp.rejectionPct / 100); // collected share of billings
   const fcMature = y5.fixedStaff + y5.lease + y5.mkt + y5.other + y5.insUtil + y5.foreign;
-  // senior pay drag on the contribution margin, by basis; under "profit" their pay vanishes at
-  // break-even (their session profit is ~0 there), so the drag is 0 (guarantee ignored here)
-  const seniorDrag = inp.seniorPayBasis === "profit" ? 0
-    : inp.seniorPayBasis === "netmat" ? sFracW * (collFrac - matSched[4] / 100) * (inp.seniorProdPct / 100)
-    : sFracW * collFrac * (inp.seniorProdPct / 100);
-  const matMargin = collFrac - matSched[4] / 100 - seniorDrag; // revenue left after denials, materials & senior pay
-  const opBreakEvenRev = (matMargin > 0 && inp.chairs > 0) ? (fcMature / matMargin) / (Math.pow(1 + inp.revenueGrowth / 100, 4) * 12 * inp.chairs) : null;
+  const contrib = collFrac - matSched[4] / 100;                       // contribution margin after denials & materials
+  const kSal = inp.dentistCount * ((inp.dentistDays ?? 6) / clinicDaysWk) * salariedRealization;
+  const matureRev = 12 * Math.pow(1 + inp.revenueGrowth / 100, 4);    // Y5 annualization of monthly production
+  // solve preshare = 0 for revPerChair; null when there is no positive threshold — either revPerChair has
+  // no leverage (no salaried production) or the senior books alone already cover opex (candidate ≤ 0)
+  const beCandidate = (contrib > 0 && kSal > 0 && inp.chairs > 0)
+    ? ((fcMature + y5.seniorPay) / (contrib * matureRev) - senProdMo) / kSal
+    : null;
+  const opBreakEvenRev = (beCandidate != null && beCandidate > 0) ? beCandidate : null;
 
   // Pre-opening (fit-out, F months) + 24 operating months (Y1–Y2) cash engine.
   // Rent cheques follow the selected payment terms; the lease year runs from fit-out start (grace: from opening).
@@ -264,7 +271,12 @@ function compute(inp) {
   const vatCapex = vatOnCapex(inp);
   // monthly ramp derives from the coverage-capped annual utilizations so the 12-month averages still foot
   const r1 = rev[0] * 100;
-  const uEnd = Math.min(capU * 100, r1 * 1.5);
+  // pick the Y1-end utilization so BOTH years' 12-month averages foot the annual ramp when feasible
+  // (midpoint of the feasible band; reproduces the prior value on the default ramp, fixes steep Y2 jumps
+  // that the old min(cap, 1.5×Y1) cap could not reach)
+  const _cap = capU * 100, _r2 = rev[1] * 100;
+  const _uLo = Math.max(0, 2 * r1 - _cap, 2 * _r2 - _cap), _uHi = Math.min(_cap, 2 * r1, 2 * _r2);
+  const uEnd = _uLo <= _uHi ? (_uLo + _uHi) / 2 : Math.min(_cap, r1 * 1.5);
   const uOpen = Math.max(0, 2 * r1 - uEnd);
   const u2End = Math.max(0, Math.min(capU * 100, 2 * rev[1] * 100 - uEnd));
   const sIns = inp.insuredPct / 100, rRej = inp.rejectionPct / 100, dLag = inp.insurerDelayMo;
@@ -290,24 +302,35 @@ function compute(inp) {
     return j === 12 - F ? years[1].lease : j === 24 - F ? years[2].lease : 0; // annual, upfront from fit-out start
   };
   const win = { coll: [0, 0], share: [0, 0], senior: [0, 0], rent: [0, 0], mat: [0, 0], debt: [0, 0] }; // per-operating-year cash sums for the statement
+  // year-to-date accumulators: profit-linked pay settles on YTD profit (floored/guaranteed once per operating
+  // year, not per month) so the monthly cash sums foot to the annual P&L instead of over-counting the early
+  // negative-profit months. Increments telescope to the annual figure exactly.
+  let accSalProfit = 0, accSharePaid = 0, accSenRev = 0, accSenMat = 0, accSenOps = 0, accSenPaid = 0;
   const opCf = Array.from({ length: 24 }, (_, j) => {
     const yi = j < 12 ? 0 : 1;
+    if (j % 12 === 0) { accSalProfit = accSharePaid = accSenRev = accSenMat = accSenOps = accSenPaid = 0; } // reset each operating year
+    const monthsElapsed = (j % 12) + 1;
     const yr = years[yi];
     const B = Bop[j];
     const fixedAcc = (yr.fixedStaff + yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12;
-    // senior pay is settled monthly on that month's collected billings under the selected basis (or the guarantee)
+    // senior tier: accumulate the raw components, then settle on YTD (min-guarantee scaled to elapsed months)
     const mSeniorRev = B * (1 - sIns * rRej) * sFracW;
-    const mSeniorBase = inp.seniorPayBasis === "profit"
-      ? Math.max(0, mSeniorRev - (B * matSched[yi] / 100) * sFracW - (allocFixedBase * STAFF_RAMP[yi] / 12 + (yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12) * sFracD)
-      : inp.seniorPayBasis === "netmat" ? Math.max(0, mSeniorRev - (B * matSched[yi] / 100) * sFracW)
-      : mSeniorRev;
-    const mSenior = Math.max(mSeniorBase * (inp.seniorProdPct / 100), (inp.seniorCount || 0) * (inp.seniorMinMo || 0));
+    const mSeniorMat = (B * matSched[yi] / 100) * sFracW;
+    const mSeniorOps = (allocFixedBase * STAFF_RAMP[yi] / 12 + (yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12) * sFracD;
+    accSenRev += mSeniorRev; accSenMat += mSeniorMat; accSenOps += mSeniorOps;
+    const ytdSenBase = inp.seniorPayBasis === "profit" ? Math.max(0, accSenRev - accSenMat - accSenOps)
+      : inp.seniorPayBasis === "netmat" ? Math.max(0, accSenRev - accSenMat)
+      : accSenRev;
+    const ytdSenPay = Math.max(ytdSenBase * (inp.seniorProdPct / 100), (inp.seniorCount || 0) * (inp.seniorMinMo || 0) * monthsElapsed);
+    const mSenior = ytdSenPay - accSenPaid; accSenPaid = ytdSenPay;
     const mPre = B * (1 - sIns * rRej) - (B * matSched[yi]) / 100 - fixedAcc - mSenior;
-    // salaried share settles monthly on the salaried tier's own-production profit (mirrors the annual figure)
+    // salaried share: settle profitShare% on YTD own-production profit (floored once), so it mirrors the annual figure
     const mDentSalary = dentistBaseAnnual * (1 + inp.gosiPct / 100) * STAFF_RAMP[yi] / 12;
     const mSharedOps = (allocFixedBase * STAFF_RAMP[yi] + yr.lease + yr.mkt + yr.other + yr.insUtil + yr.foreign) / 12;
     const mSalProfit = B * (1 - sIns * rRej) * (1 - sFracW) - (B * matSched[yi] / 100) * (1 - sFracW) - mDentSalary - mSharedOps * (1 - sFracD);
-    const mShare = mSalProfit > 0 ? mSalProfit * inp.profitShare / 100 : 0;
+    accSalProfit += mSalProfit;
+    const ytdShare = Math.max(0, accSalProfit) * inp.profitShare / 100;
+    const mShare = ytdShare - accSharePaid; accSharePaid = ytdShare;
     win.senior[yi] += mSenior;
     // share accrues on P&L profit; cash adds back accrued rent & insurance, shifts insured collections by the lag, pays cheques when due
     const collAdj = sIns * (1 - rRej) * (Bat(j - dLag) - B);
