@@ -14,7 +14,8 @@
   <script src="re-engine.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #F1EDE4; }
+    html { scroll-behavior: smooth; }
+    body { background: #F1EDE4; overflow-x: hidden; }
     .flex { display: flex; }
     .items-center { align-items: center; }
     .items-baseline { align-items: baseline; }
@@ -22,26 +23,50 @@
     .justify-between { justify-content: space-between; }
     .flex-wrap { flex-wrap: wrap; }
     .grid { display: grid; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
     input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
     input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #DBD4C5; }
     input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; margin-top: -5px; background: var(--accent, #B0823A); cursor: pointer; }
-    input[type=text], input[type=number], select, textarea { font-family: Inter, system-ui, sans-serif; font-size: 12.5px; padding: 6px 8px; border: 1px solid #DBD4C5; border-radius: 6px; background: #fff; color: #1B2733; }
+    input[type=text], input[type=number], select, textarea { font-family: Inter, system-ui, sans-serif; font-size: 12.5px; padding: 6px 8px; border: 1px solid #DBD4C5; border-radius: 6px; background: #fff; color: #1B2733; max-width: 100%; }
     input[type=number] { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; text-align: right; width: 100%; padding: 4px 6px; }
     textarea { width: 100%; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; }
-    html { scroll-behavior: smooth; }
-    .navlink { cursor: pointer; transition: color .15s; }
-    .navlink:hover { color: #D9B36A !important; }
     .sel { width: 100%; margin-bottom: 10px; }
     .lbl { font-family: Inter, system-ui, sans-serif; font-size: 12.5px; color: #1B2733; font-weight: 500; margin-bottom: 4px; display: block; }
     .subhead { font-family: Inter, system-ui, sans-serif; font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #B0823A; margin: 10px 0 8px; padding-top: 10px; border-top: 1px dashed #DBD4C5; }
-    .ev { display: grid; grid-template-columns: 78px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid #ECE7DA; font-family: Inter, system-ui, sans-serif; font-size: 12.5px; line-height: 1.5; }
-    .ev .m { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: #64707C; }
+    .subhead:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+    /* progressive disclosure */
+    details.adv { border: 1px dashed #DBD4C5; border-radius: 8px; padding: 0 12px; margin-top: 8px; background: #FBFAF6; }
+    details.adv > summary { list-style: none; cursor: pointer; font-family: Inter, system-ui, sans-serif; font-size: 12px; font-weight: 600; color: #64707C; padding: 9px 0; display: flex; align-items: center; gap: 8px; }
+    details.adv > summary::-webkit-details-marker { display: none; }
+    details.adv > summary::before { content: ""; width: 7px; height: 7px; border-right: 1.5px solid #B0823A; border-bottom: 1.5px solid #B0823A; transform: rotate(-45deg); transition: transform .15s; flex: none; }
+    details.adv[open] > summary::before { transform: rotate(45deg); }
+    details.adv > summary:hover { color: #1B2733; }
+    details.adv > .adv-body { padding: 4px 0 8px; }
+    /* step nav */
+    .stepnav { position: sticky; top: 0; z-index: 20; background: rgba(241,237,228,0.96); backdrop-filter: blur(6px); border-bottom: 1px solid #DBD4C5; }
+    .stepnav .row { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 8px 0; }
+    .stepnav .row::-webkit-scrollbar { display: none; }
+    .stepbtn { flex: none; display: inline-flex; align-items: center; gap: 8px; border: 1px solid transparent; background: transparent; border-radius: 999px; padding: 6px 12px 6px 6px; cursor: pointer; font-family: Inter, system-ui, sans-serif; font-size: 12.5px; font-weight: 600; color: #64707C; white-space: nowrap; }
+    .stepbtn .num { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 700; background: #DBD4C5; color: #1B2733; }
+    .stepbtn.on { background: #0E1A2B; color: #ECE4D3; }
+    .stepbtn.on .num { background: #B0823A; color: #0E1A2B; }
+    .stepbtn:hover:not(.on) { background: #E7E1D3; }
+    /* timeline */
+    .ev { display: grid; grid-template-columns: 92px 112px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid #ECE7DA; font-family: Inter, system-ui, sans-serif; font-size: 12.5px; line-height: 1.5; align-items: start; }
+    .ev .m { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: #64707C; padding-top: 2px; }
+    .tag { display: inline-block; font-family: Inter, system-ui, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; white-space: nowrap; }
+    @media (max-width: 640px) { .ev { grid-template-columns: 1fr; gap: 3px; } .ev .m { padding-top: 0; } }
+    .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+    @media (max-width: 820px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
+    .tbl { width: 100%; border-collapse: collapse; }
+    .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     @media print {
       @page { margin: 12mm; }
       body { background: #fff !important; }
-      .no-print { display: none !important; }
+      .no-print, .stepnav { display: none !important; }
       input[type=range] { display: none !important; }
       .print-section { break-inside: avoid; }
+      details.adv { display: none; }
     }
   </style>
 </head>
@@ -50,42 +75,47 @@
 
   <script type="text/babel" src="components.jsx" data-presets="react"></script>
   <script type="text/babel" data-presets="react">
-    const { useState, useMemo } = React;
-    const { ComposedChart, BarChart, LineChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } = window.Recharts;
+    const { useState, useMemo, useEffect } = React;
+    const { BarChart, LineChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } = window.Recharts;
 
-    const OPT_COLORS = [C.ink2, C.brass, C.pos, "#7B4F9E"];
+    /* strategy identity colours — fixed per slot (colour follows the strategy, never its rank); validated for CVD on the paper surface */
+    const OPT_COLORS = ["#2F6DB5", "#B0823A", "#1F9A80", "#A24FB8"];
     const STORE_KEY = "re_scenarios";
+    const SOFT = "#F3EFE6", SOFT_NEG = "#F6E7E3", SOFT_POS = "#E6F0EC";
 
-    /* ---------- presentation ---------- */
-    function SectionHeader({ id, eyebrow, title, sub, meta }) {
+    /* ---------- presentation primitives ---------- */
+    function SectionHeader({ eyebrow, title, sub, meta }) {
       return (
-        <div id={id} className="flex items-baseline justify-between" style={{ flexWrap: "wrap", gap: 10, marginBottom: 16, scrollMarginTop: 70 }}>
-          <div>
+        <div className="flex items-baseline justify-between" style={{ flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+          <div style={{ minWidth: 0 }}>
             {eyebrow && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: C.brass, marginBottom: 4 }}>{eyebrow}</div>}
             <h2 style={{ fontFamily: SANS, fontSize: 19, fontWeight: 700, color: C.text, letterSpacing: "-0.01em", margin: 0 }}>{title}</h2>
-            {sub && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, maxWidth: 860, lineHeight: 1.5 }}>{sub}</div>}
+            {sub && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, maxWidth: 820, lineHeight: 1.5 }}>{sub}</div>}
           </div>
-          {meta && <div style={{ textAlign: "right" }}>{meta}</div>}
+          {meta && <div>{meta}</div>}
         </div>
       );
     }
     function Kpi({ label, value, sub, accent }) {
       return (
-        <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${C.line}`, borderRight: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}`, borderTop: `3px solid ${accent || C.brass}`, borderRadius: 9, padding: "13px 15px" }}>
+        <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${C.line}`, borderRight: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}`, borderTop: `3px solid ${accent || C.brass}`, borderRadius: 9, padding: "12px 14px", minWidth: 0 }}>
           <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub, marginBottom: 5 }}>{label}</div>
-          <div style={{ fontFamily: MONO, fontSize: 23, fontWeight: 700, color: accent || C.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+          <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: accent || C.text, letterSpacing: "-0.03em", lineHeight: 1, overflowWrap: "anywhere" }}>{value}</div>
           {sub && <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 5, lineHeight: 1.4 }}>{sub}</div>}
         </div>
       );
     }
-    const Panel = ({ title, children, style }) => (
-      <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px", ...style }}>
-        {title && <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 10px 6px" }}>{title}</h3>}
+    const Panel = ({ title, children, style, right }) => (
+      <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 14px 10px", minWidth: 0, ...style }}>
+        {(title || right) && <div className="flex items-center justify-between flex-wrap" style={{ gap: 8, marginBottom: 10 }}>
+          {title && <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 0 4px" }}>{title}</h3>}
+          {right}
+        </div>}
         {children}
       </div>
     );
     const Toggle = ({ value, options, onChange, dark }) => (
-      <div className="flex" style={{ gap: 6 }}>
+      <div className="flex flex-wrap" style={{ gap: 6 }}>
         {options.map(([id, label]) => (
           <button key={id} onClick={() => onChange(id)} style={{ ...btn(value === id ? C.brass : "transparent", value === id ? C.ink : (dark ? C.invSub : C.sub), value === id ? C.brass : (dark ? C.lineDk : C.line)), fontSize: 12, padding: "6px 11px" }}>{label}</button>
         ))}
@@ -96,20 +126,98 @@
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /> {label}
       </label>
     );
-    const Select = ({ label, value, onChange, options }) => (
+    const Select = ({ label, value, onChange, options, hint }) => (
       <div style={{ marginBottom: 10 }}>
         {label && <span className="lbl">{label}</span>}
         <select className="sel" value={value} onChange={(e) => onChange(e.target.value)} style={{ marginBottom: 0 }}>{options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        {hint && <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>{hint}</div>}
       </div>
     );
-    const tipStyle = { fontFamily: SANS, fontSize: 12, border: `1px solid ${C.line}` };
+    /* collapsible group for secondary inputs (native <details>; open state lives in the DOM) */
+    const Adv = ({ title, children, open }) => (
+      <details className="adv" open={open}>
+        <summary>{title}</summary>
+        <div className="adv-body">{children}</div>
+      </details>
+    );
+    const Badge = ({ ok, text }) => (
+      <div style={{ background: ok ? SOFT_POS : SOFT_NEG, borderRadius: 6, padding: "6px 9px", fontFamily: SANS, fontSize: 11.5, lineHeight: 1.4, color: C.text }}>
+        <span className="tag" style={{ background: ok ? C.pos : C.neg, color: "#fff", marginRight: text ? 6 : 0 }}>{ok ? "✓ Executable" : "✗ Not executable"}</span>{text}
+      </div>
+    );
+    const Stat = ({ label, value, color, sub }) => (
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, letterSpacing: "0.04em", textTransform: "uppercase" }}>{label}</div>
+        <div style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, color: color || C.text, letterSpacing: "-0.02em", overflowWrap: "anywhere" }}>{value}</div>
+        {sub && <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub }}>{sub}</div>}
+      </div>
+    );
+    const Mini = ({ k, v, color }) => <div className="flex justify-between" style={{ gap: 8 }}><span style={{ fontFamily: SANS, color: C.sub }}>{k}</span><span style={{ color: color || C.text, textAlign: "right" }}>{v}</span></div>;
+    const Note = ({ children }) => <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, lineHeight: 1.5, marginTop: 8 }}>{children}</div>;
+
+    /* chart hygiene: hairline solid grid, 2px lines, text in text tokens */
+    const tipStyle = { fontFamily: SANS, fontSize: 12, border: `1px solid ${C.line}`, borderRadius: 6 };
     const axisT = { fontFamily: MONO, fontSize: 11, fill: C.sub };
+    const axisS = { fontFamily: SANS, fontSize: 11, fill: C.sub };
+    const legendStyle = { fontFamily: SANS, fontSize: 12, color: C.text };
+
     const fYr = (m) => m == null ? "—" : m < 12 ? `${m} mo` : `${(m / 12).toFixed(1)} yrs`;
     const T0 = new Date(); T0.setDate(1);
     const fCal = (t) => { const d = new Date(T0.getFullYear(), T0.getMonth() + Math.round(t || 0), 1); return d.toLocaleString("en-US", { month: "short", year: "numeric" }); };
     const fMon = (t) => t == null ? "—" : `M${t} · ${fCal(t)}`;
     const pct1 = (v) => v == null ? "—" : `${v.toFixed(1)}%`;
-    const Mini = ({ k, v, color }) => <div className="flex justify-between" style={{ gap: 8 }}><span style={{ fontFamily: SANS, color: C.sub }}>{k}</span><span style={{ color: color || C.text, textAlign: "right" }}>{v}</span></div>;
+    const pct0 = (v) => v == null ? "—" : `${v.toFixed(0)}%`;
+
+    /* timeline event kinds → label + colour */
+    const EV_KIND = {
+      settle:    { label: "Settle",         bg: SOFT_NEG, fg: C.neg },
+      mortgage:  { label: "Mortgage",       bg: "#E4ECF6", fg: "#2F6DB5" },
+      pl:        { label: "Personal loan",  bg: "#F1E6F6", fg: "#A24FB8" },
+      eq:        { label: "Own property",   bg: "#E2F2EE", fg: "#1F9A80" },
+      milestone: { label: "Milestone",      bg: SOFT, fg: C.sub },
+      cash:      { label: "Cash",           bg: "#F6EFE1", fg: C.brass },
+      end:       { label: "Horizon",        bg: SOFT_POS, fg: C.pos },
+    };
+    const EvRow = ({ t, kind, children, last }) => {
+      const k = EV_KIND[kind] || EV_KIND.milestone;
+      return <div className="ev" style={last ? { borderBottom: "none" } : null}><span className="m">{t}</span><span><span className="tag" style={{ background: k.bg, color: k.fg }}>{k.label}</span></span><span style={{ color: kind === "milestone" ? C.sub : C.text }}>{children}</span></div>;
+    };
+
+    /* ---------- plain-English description of a strategy, generated from its settings (presentation only) ---------- */
+    function rateTxt(inp, rate, yrs) { return `${rate}%${inp.rateQuote === "flat" ? " flat" : ""} over ${yrs} yrs`; }
+    function describePlan(o, inp, prj, build) {
+      const s = [];
+      const landTxt = build ? "buy the land in cash" : "pay the purchase in cash";
+      if (o.mortgageWhen === "start") {
+        if (build && o.mortgageScope === "construction") s.push(`Buy the land in cash, then take a construction-only mortgage at ${rateTxt(inp, o.rate, o.tenure)} (your cash covers ${o.cashInPct}% of the construction)`);
+        else s.push(`Take a ${build ? "construction" : "purchase"} mortgage at the start at ${rateTxt(inp, o.rate, o.tenure)}, putting ${o.cashInPct}% of the cost from your cash`);
+        if (o.subsidyCap > 0 && o.subsidyPct > 0) s[s.length - 1] += `, with REDF support on the first ${fS(o.subsidyCap)}`;
+      } else if (o.mortgageWhen === "completion") {
+        s.push(`${landTxt[0].toUpperCase() + landTxt.slice(1)} and ${build ? "fund the build from cash" : "pay everything from cash"}, then take a cash-out mortgage on the finished home in ${fCal(prj.occupy)} at ${rateTxt(inp, o.rate, o.tenure)}${o.cashOutTarget > 0 ? ` for ${fS(o.cashOutTarget)}` : " for the maximum the bank allows"}`);
+      } else {
+        s.push(`Pay for everything from cash — no mortgage on the new home`);
+      }
+      if (o.eqWhen !== "none") {
+        const when = o.eqWhen === "start" ? "at the start" : o.eqWhen === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(o.eqMonth)}`;
+        s.push(`mortgage the property you already own ${when} for ${o.eqAmount > 0 ? fS(o.eqAmount) : "the maximum"} at ${rateTxt(inp, o.eqRate, o.eqTenure)}`);
+      }
+      if (o.plWhen !== "none" && o.plAmount > 0) {
+        const when = o.plWhen === "start" ? "at the start" : o.plWhen === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(o.plMonth)}`;
+        s.push(`take a ${fS(o.plAmount)} personal loan ${when} at ${rateTxt(inp, o.plRate, o.plTenure)}`);
+      }
+      const planned = (inp.existingLoans || []).filter((l) => l.balance > 0 && l.settleAt != null && l.settleAt > 0).map((l) => `settle ${l.name} in ${fCal(l.settleAt)}`);
+      if (planned.length) s.push(planned.join(", "));
+      s.push(o.settlePolicy === "all" ? "clear all existing loans before the first new facility" : o.settlePolicy === "asNeeded" ? "settle existing loans only when a bank test requires it" : "keep all existing loans running");
+      return s.join("; ") + ".";
+    }
+    function describeOption(o, inp, prj) {
+      const cash = prj.total * o.cashPct / 100, pl = Math.max(0, Math.min(o.plAmount, prj.total - cash)), mg = Math.max(0, prj.total - cash - pl);
+      const s = [`${o.cashPct}% of the cost (${fS(cash)}) from your own cash`];
+      if (pl > 0) s.push(`a ${fS(pl)} personal loan at ${rateTxt(inp, o.plRate, o.plTenure)}`);
+      if (mg > 0) s.push(`a ${fS(mg)} mortgage at ${rateTxt(inp, o.rate, o.tenure)} with ${o.graceMonths} months' grace (${o.graceMode === "capitalize" ? "profit added to the loan" : "profit paid monthly"})${o.subsidyCap > 0 && o.subsidyPct > 0 ? `, REDF support on the first ${fS(o.subsidyCap)}` : ""}`);
+      return s.join(", then ") + ".";
+    }
+    const newDebtOf = (r) => (r.mortgage.commit || 0) + (r.eq.amount || 0) + (r.pl.amount || 0);
 
     /* ---------- scenarios (localStorage) ---------- */
     const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } };
@@ -132,12 +240,12 @@
       const bal = loans.reduce((a, l) => a + (+l.balance || 0), 0);
       const dbr = income > 0 ? inst / income * 100 : 0;
       const room = Math.max(0, income * dbrCap / 100 - inst);
-      const cols = [["name", "Loan", "text"], ["balance", "Balance SAR", "number"], ["installment", "Instalment / mo", "number"], ["monthsLeft", "Months left", "number"], ["rate", "Rate %", "number"], ["settleAt", "Settle in month", "number"], ["canSettle", "May settle?", "check"]];
+      const cols = [["name", "Loan", "text"], ["balance", "Balance SAR", "number"], ["installment", "Instalment / mo", "number"], ["monthsLeft", "Months left", "number"], ["rate", "APR %", "number"], ["settleAt", "Settle in month", "number"], ["canSettle", "May settle?", "check"]];
       return (
         <div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12 }}>
-              <thead><tr>{cols.map(([k, l]) => <th key={k} style={{ ...th, textAlign: k === "name" ? "left" : "right", padding: "7px 8px", whiteSpace: "normal" }}>{k === "rate" ? "APR %" : l}</th>)}<th style={{ ...th, padding: "7px 8px" }} className="no-print"></th></tr></thead>
+          <div className="scroll-x">
+            <table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
+              <thead><tr>{cols.map(([k, l]) => <th key={k} style={{ ...th, textAlign: k === "name" ? "left" : "right", padding: "7px 8px", whiteSpace: "normal" }}>{l}</th>)}<th style={{ ...th, padding: "7px 8px" }} className="no-print"></th></tr></thead>
               <tbody>
                 {loans.map((l, i) => (
                   <tr key={l.id || i}>
@@ -149,7 +257,7 @@
                     <td style={{ ...td, padding: "4px 6px" }} className="no-print"><button title="Remove" onClick={() => onChange(loans.filter((_, j) => j !== i))} style={iconBtn}><Trash2 size={15} color={C.neg} /></button></td>
                   </tr>
                 ))}
-                <tr style={{ background: "#F3EFE6", fontWeight: 700 }}>
+                <tr style={{ background: SOFT, fontWeight: 700 }}>
                   <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>Total ({loans.length})</td><td style={td}>{fSAR(bal)}</td><td style={td}>{fSAR(inst)}</td><td style={td}></td><td style={td}></td><td style={td}></td><td style={td}></td><td style={td} className="no-print"></td>
                 </tr>
               </tbody>
@@ -161,21 +269,26 @@
             <span style={{ flex: 1 }} />
             <span style={{ fontFamily: SANS, fontSize: 12, color: dbr > dbrCap ? C.neg : C.text }}>Instalments use <b>{dbr.toFixed(0)}%</b> of income · room under the {dbrCap}% cap: <b style={{ fontFamily: MONO }}>{fSAR(room)}/mo</b></span>
           </div>
-          <details className="no-print" style={{ marginTop: 10 }}>
-            <summary style={{ fontFamily: SANS, fontSize: 12, color: C.brass, cursor: "pointer", fontWeight: 600 }}>Import / paste loans (Qist export JSON, or one per line: name, balance, instalment, months, rate)</summary>
-            <textarea rows={4} value={txt} onChange={(e) => setTxt(e.target.value)} placeholder={'[{"name":"Al Rajhi personal","balance":350000,"installment":7900,"monthsLeft":54,"rate":6.5}]\nor\nCar finance, 95000, 2950, 36, 5'} style={{ marginTop: 8 }} />
-            <div className="flex" style={{ gap: 8, marginTop: 6 }}>
+          <Adv title="Import / paste loans (Qist export JSON, or one per line: name, balance, instalment, months, rate)">
+            <textarea rows={4} value={txt} onChange={(e) => setTxt(e.target.value)} placeholder={'[{"name":"Al Rajhi personal","balance":350000,"installment":7900,"monthsLeft":54,"rate":6.5}]\nor\nCar finance, 95000, 2950, 36, 5'} />
+            <div className="flex flex-wrap" style={{ gap: 8, marginTop: 6 }}>
               <button onClick={() => { const l = parseLoans(txt); if (l.length) { onChange(l); setTxt(""); } else alert("Nothing recognisable — check the format."); }} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "5px 10px" }}>Replace with these</button>
               <button onClick={() => { const l = parseLoans(txt); if (l.length) { onChange([...loans, ...l]); setTxt(""); } else alert("Nothing recognisable — check the format."); }} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "5px 10px" }}>Append</button>
             </div>
-          </details>
+          </Adv>
         </div>
       );
     }
 
+    /* ---------- the app ---------- */
     function App() {
       const [inp, setInp] = useState(() => mergeRE({}));
-      const [focus, setFocus] = useState(0);
+      const [step, setStep] = useState(0);
+      const [focus, setFocus] = useState(-1);          // -1 = follow the recommendation
+      const [editing, setEditing] = useState({});      // strategy/option cards in edit mode
+      const [allRows, setAllRows] = useState(false);
+      const [landWithBuild, setLandWithBuild] = useState(false);
+      const [printAll, setPrintAll] = useState(false);
       const [saved, setSaved] = useState(loadStore);
       const [name, setName] = useState("");
       const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
@@ -188,12 +301,26 @@
       const home = inp.mode === "home", build = inp.acquire === "build";
       const { prj, household } = m;
       const liveIdx = m.results.map((r, i) => r ? i : -1).filter((i) => i >= 0);
-      const focusIdx = m.results[focus] ? focus : liveIdx[0] ?? -1;
+      const bestF = m.bestFeasible, best = m.best, lead = bestF || best;
+      const recIdx = lead ? m.results.indexOf(lead) : -1;
+      const focusIdx = focus >= 0 && m.results[focus] ? focus : recIdx;
       const focusRes = focusIdx >= 0 ? m.results[focusIdx] : null;
       const tornado = useMemo(() => focusIdx >= 0 ? tornadoRE(inp, focusIdx) : [], [inp, focusIdx]);
-      const [landWithBuild, setLandWithBuild] = useState(false);
-      const sweep = useMemo(() => home && focusIdx >= 0 ? timingSweepRE(inp, focusIdx, 60, 3, landWithBuild) : null, [inp, focusIdx, home, landWithBuild]);
+      const sweepRec = useMemo(() => home && recIdx >= 0 ? timingSweepRE(inp, recIdx, 60, 3, landWithBuild) : null, [inp, recIdx, home, landWithBuild]);
+      const sweep = useMemo(() => home && focusIdx >= 0 ? (focusIdx === recIdx ? null : timingSweepRE(inp, focusIdx, 60, 3, landWithBuild)) : null, [inp, focusIdx, recIdx, home, landWithBuild]) || sweepRec;
       const nameOf = (r) => home ? r.plan.name : r.opt.name;
+      const renting = inp.rentNow > 0; // baseline: keep renting the same home, or (no rent) stay put and keep the cash invested
+      const baseLbl = renting ? "renting" : "not building";
+
+      /* steps */
+      const steps = home
+        ? [["you", "You"], ["home", build ? "The home" : "The property"], ["fin", "Financing"], ["res", "Results"], ["when", "When to start"], ["scen", "Scenarios"]]
+        : [["home", "The property"], ["you", "Letting & you"], ["fin", "Financing"], ["res", "Results"], ["scen", "Scenarios"]];
+      const stepI = Math.min(step, steps.length - 1);
+      const cur = steps[stepI][0];
+      const go = (i) => { setStep(Math.max(0, Math.min(steps.length - 1, i))); const el = document.getElementById("steps"); if (el) window.scrollTo({ top: el.offsetTop - 8, behavior: "smooth" }); };
+      useEffect(() => { if (!printAll) return; const t = setTimeout(() => { window.print(); setPrintAll(false); }, 150); return () => clearTimeout(t); }, [printAll]);
+      const show = (id) => printAll || cur === id;
 
       /* chart data */
       const nY = focusRes ? focusRes.years.length : 0;
@@ -204,7 +331,7 @@
           if (home) { row[`cash${i}`] = Math.round(yr.cash); row[`debt${i}`] = Math.round(yr.debt); row[`inst${i}`] = Math.round(yr.instMo); row[`nw${i}`] = Math.round(yr.netWorth); }
           else { row[`nw${i}`] = Math.round(yr.ownerEquity); row[`bal${i}`] = Math.round(yr.bal); row[`out${i}`] = Math.round((yr.payment + yr.rentPaid + yr.ownerCost) / (y === 0 ? 1 : 12)); row[`cf${i}`] = Math.round(yr.cf); }
         });
-        if (focusRes) { const yr = focusRes.years[y]; row.renter = Math.round(home ? yr.renterNW : yr.portfolio); row.rent = Math.round(yr.rentEq / (y === 0 ? 1 : 12)); }
+        if (focusRes) { const yr = focusRes.years[y]; row.renter = Math.round(home ? yr.renterNW : yr.portfolio); }
         return row;
       });
       const stackData = !home ? liveIdx.map((i) => { const r = m.results[i]; return { name: `Option ${i + 1}`, full: r.opt.name, "Own cash": Math.round(r.cash), "Personal loan": Math.round(r.pl), "Mortgage": Math.round(r.loanCommit) }; }) : [];
@@ -221,529 +348,647 @@
       const doImport = (e) => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { const j = JSON.parse(rd.result); const inc = j.scenarios || (j.inp ? { [f.name]: j } : { [f.name]: { inp: j } }); persist({ ...saved, ...inc }); } catch (err) { alert("Could not read file"); } }; rd.readAsText(f); e.target.value = ""; };
       const savedRows = Object.entries(saved).map(([n, s]) => { const r = computeRE(s.inp); const b = r.bestFeasible || r.best; return { n, mode: r.p.mode, total: r.prj.total, best: b ? (r.p.mode === "home" ? b.plan.name : b.opt.name) : "—", metric: b ? (r.p.mode === "home" ? fS(b.advantage) : pct1(b.irr == null ? null : b.irr * 100)) : "—", pmt: b ? (r.p.mode === "home" ? b.peakInst : b.monthlyPayment) : 0, verdict: r.verdict, vColor: r.vColor }; });
 
-      const bestF = m.bestFeasible, best = m.best, lead = bestF || best;
-      const renting = inp.rentNow > 0; // baseline: keep renting the same home, or (no rent) stay put and keep the cash invested
-      const baseLbl = renting ? "renting" : "not building";
-      const navItems = [["project", "Project"], ["you", home ? "You & your loans" : "Letting"], ["financing", home ? "Strategies" : "Financing"], ["compare", "Compare"], ["detail", home ? "Timeline" : "Detail"], ...(home ? [["timing", "When to start"]] : []), ["sensitivity", "Sensitivity"], ["scenarios", "Scenarios"]];
-
-      /* ---------- plan card ---------- */
-      const PlanCard = ({ o, i }) => {
-        const r = m.results[i], col = OPT_COLORS[i];
-        const mgW = o.mortgageWhen, plW = o.plWhen;
-        return (
-          <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${o.enabled ? col : C.line}`, borderRight: `1px solid ${o.enabled ? col : C.line}`, borderBottom: `1px solid ${o.enabled ? col : C.line}`, borderTop: `4px solid ${col}`, borderRadius: 10, padding: "14px 16px", opacity: o.enabled ? 1 : 0.55 }}>
-            <div className="flex items-center justify-between" style={{ gap: 8, marginBottom: 8 }}>
-              <label className="flex items-center" style={{ gap: 6, cursor: "pointer" }}>
-                <input type="checkbox" checked={o.enabled} onChange={(e) => setPlan(i, "enabled", e.target.checked)} />
-                <span style={{ fontFamily: MONO, fontSize: 11, color: col, fontWeight: 700 }}>STRATEGY {i + 1}</span>
-              </label>
-              <select className="no-print" value="" onChange={(e) => e.target.value && applyPlanPreset(i, e.target.value)} style={{ fontSize: 11, padding: "3px 6px", maxWidth: 150 }}>
-                <option value="">preset…</option>
-                {Object.entries(RE_PLAN_PRESETS).map(([k, pr]) => <option key={k} value={k}>{pr.name}</option>)}
-              </select>
-            </div>
-            <input type="text" value={o.name} onChange={(e) => setPlan(i, "name", e.target.value)} style={{ width: "100%", fontWeight: 700, marginBottom: 12 }} />
-            {r && (
-              <div style={{ fontFamily: MONO, fontSize: 11.5, background: r.feasible ? "#F3EFE6" : "#F6E7E3", borderRadius: 7, padding: "8px 10px", marginBottom: 12, lineHeight: 1.7 }}>
-                <div style={{ fontFamily: SANS, fontWeight: 700, color: r.feasible ? C.pos : C.neg, marginBottom: 2 }}>{r.feasible ? "✓ Executable" : "✗ Not executable as set"}</div>
-                {r.mortgage.type && <Mini k={r.mortgage.type === "construction" ? "Mortgage at start" : `Cash-out mortgage ${fMon(r.mortgage.startedAt)}`} v={`${fS(r.mortgage.commit)} · ${fSAR(r.mortgage.instalment)}/mo`} />}
-                {r.mortgage.type && <Mini k="Bank DBR at approval" v={pct1(r.mortgage.dbrAt)} color={r.mortgage.dbrAt > inp.dbrCap + 0.5 ? C.neg : C.text} />}
-                {r.eq.startedAt !== null && r.eq.amount > 0 && <Mini k={`Existing-property mortgage ${fMon(r.eq.startedAt)}`} v={`${fS(r.eq.amount)} · ${fSAR(r.eq.pmt)}/mo`} />}
-                {r.pl.startedAt !== null && <Mini k={`Personal loan ${fMon(r.pl.startedAt)}`} v={`${fS(r.pl.amount)} · ${fSAR(r.pl.pmt)}/mo`} />}
-                {r.settledTotal > 0 && <Mini k="Old loans settled" v={`${fS(r.settledTotal)} + ${fS(r.settleFees)} fees`} />}
-                <Mini k="Cash low point" v={`${fS(r.minCash)} ${fMon(r.minCashT)}`} color={r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text} />
-                {r.recovered != null && <Mini k={`Cash recovered ${fMon(r.recoveredT)}`} v={`${fS(r.recovered)} net`} color={C.pos} />}
-                <Mini k="Profit on new debt + fees" v={fS(r.newDebtInterest)} color={C.neg} />
-                <Mini k={`Wealth vs ${baseLbl} @ Y${inp.horizon}`} v={fS(r.advantage)} color={r.advantage >= 0 ? C.pos : C.neg} />
-                {r.flags.map((f, k) => <div key={k} style={{ color: f.startsWith("Cash goes NEGATIVE") || f.startsWith("Mortgage impossible") ? C.neg : C.brass, fontFamily: SANS, fontSize: 11, lineHeight: 1.4, marginTop: 4 }}>▲ {f}</div>)}
-              </div>
-            )}
-            <div className="subhead">Mortgage</div>
-            <Select value={mgW} onChange={(v) => setPlan(i, "mortgageWhen", v)} options={[["none", "No mortgage"], ["start", "At start — construction / purchase mortgage"], ["completion", "At completion — cash-out against the finished home"]]} />
-            {mgW === "start" && <>
-              {build && <Select value={o.mortgageScope} onChange={(v) => setPlan(i, "mortgageScope", v)} options={[["all", "Finances land + construction"], ["construction", "Finances construction only — land from my cash"]]} />}
-              <Slider label={o.mortgageScope === "construction" && build ? "Your cash into the construction" : "Your cash into the project"} value={o.cashInPct} min={0} max={100} step={1} unit="%" onChange={(v) => setPlan(i, "cashInPct", v)} hint={o.mortgageScope === "construction" && build ? `= ${fS((prj.total - prj.land - prj.rett) * o.cashInPct / 100)} on top of the land ${fS(prj.land + prj.rett)}` : `= ${fS(prj.total * o.cashInPct / 100)} · bank requires ≥ ${100 - o.maxLtvPct}%`} />
-              <Slider label="Bank's max LTV" value={o.maxLtvPct} min={50} max={100} step={5} unit="%" onChange={(v) => setPlan(i, "maxLtvPct", v)} hint="90% first home (SAMA)" />
-            </>}
-            {mgW === "completion" && <>
-              <Slider label="Cash-out amount wanted" value={o.cashOutTarget} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "cashOutTarget", v)} hint={o.cashOutTarget === 0 ? `0 = maximum (${inp.cashoutLtv}% of value ≈ ${fS(prj.value0 * Math.pow(1 + inp.appreciation / 100, prj.occupy / 12) * inp.cashoutLtv / 100)})` : `capped at ${inp.cashoutLtv}% of the home's value`} />
-            </>}
-            {mgW !== "none" && <>
-              <Slider label="Mortgage profit rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "rate", v)} hint={(inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.rate, o.tenure * 12).toFixed(2)}% APR · ` : "") + (mgW === "completion" ? "cash-out / owned-property finance usually prices higher" : "fixed for the term")} />
-              <Slider label="Mortgage tenure" value={o.tenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "tenure", v)} />
-              {mgW === "start" && build && <Select label="Profit during construction grace" value={o.graceMode} onChange={(v) => setPlan(i, "graceMode", v)} options={[["capitalize", "added to the loan"], ["interestOnly", "paid monthly"]]} />}
-              <Slider label="REDF-subsidised portion" value={o.subsidyCap} min={0} max={1000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "subsidyCap", v)} hint={mgW === "completion" ? "Sakani support does not apply to cash-out finance — keep 0 unless confirmed" : "Sakani bears the profit on the first 500K for eligible citizens"} />
-              {o.subsidyCap > 0 && <Slider label="Subsidy on that portion" value={o.subsidyPct} min={0} max={100} step={5} unit="%" onChange={(v) => setPlan(i, "subsidyPct", v)} />}
-              <Slider label="Bank fees (upfront)" value={o.feesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "feesPct", v)} />
-              <Slider label="Extra prepayment" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setPlan(i, "extraMo", v)} />
-            </>}
-            <div className="subhead">Mortgage on the property I already own</div>
-            <Select value={o.eqWhen} onChange={(v) => setPlan(i, "eqWhen", v)} options={[["none", "Not used"], ["start", "At start — fund the build / clear old loans"], ["completion", "At completion — recover cash"], ["month", "At a month I choose"]]} />
-            {o.eqWhen === "month" && <Slider label="Month" value={o.eqMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "eqMonth", v)} hint={`construction completes month ${prj.occupy}`} />}
-            {o.eqWhen !== "none" && <>
-              <Slider label="Amount wanted" value={o.eqAmount} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "eqAmount", v)} hint={o.eqAmount === 0 ? `0 = maximum (${inp.ownedLtv}% of ${fS(inp.ownedValue)} = ${fS(inp.ownedValue * inp.ownedLtv / 100)})` : `capped at ${inp.ownedLtv}% of value and by the debt-burden test`} />
-              <Slider label="Rate" value={o.eqRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "eqRate", v)} hint={(inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.eqRate, o.eqTenure * 12).toFixed(2)}% APR · ` : "") + "finance against an owned property; no REDF support"} />
-              <Slider label="Tenure" value={o.eqTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "eqTenure", v)} />
-              <Slider label="Bank fees (upfront)" value={o.eqFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "eqFeesPct", v)} />
-            </>}
-            <div className="subhead">Personal loan</div>
-            <Select value={plW} onChange={(v) => setPlan(i, "plWhen", v)} options={[["none", "No personal loan"], ["start", "At start — to fund the build"], ["completion", "At completion — to recover cash"], ["month", "At a month I choose"]]} />
-            {plW === "month" && <Slider label="Month" value={o.plMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "plMonth", v)} hint={`construction completes month ${prj.occupy}`} />}
-            {plW !== "none" && <>
-              <Slider label="Amount wanted" value={o.plAmount} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => setPlan(i, "plAmount", v)} hint="sized down to what the debt-burden cap allows" />
-              <Slider label="Rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setPlan(i, "plRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.plRate, o.plTenure * 12).toFixed(2)}% APR` : ""} />
-              <Slider label="Tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setPlan(i, "plTenure", v)} />
-            </>}
-            <div className="subhead">Existing loans</div>
-            <Select value={o.settlePolicy} onChange={(v) => setPlan(i, "settlePolicy", v)} options={[["none", "Keep them all (new debt sized to what's left)"], ["asNeeded", "Settle just enough to pass each bank test"], ["all", "Settle everything before the first new facility"]]} />
-          </div>
-        );
-      };
-
-      /* ---------- option card (rental) ---------- */
-      const OptionCard = ({ o, i }) => {
-        const r = m.results[i], col = OPT_COLORS[i];
-        return (
-          <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${o.enabled ? col : C.line}`, borderRight: `1px solid ${o.enabled ? col : C.line}`, borderBottom: `1px solid ${o.enabled ? col : C.line}`, borderTop: `4px solid ${col}`, borderRadius: 10, padding: "14px 16px", opacity: o.enabled ? 1 : 0.55 }}>
-            <div className="flex items-center justify-between" style={{ gap: 8, marginBottom: 8 }}>
-              <label className="flex items-center" style={{ gap: 6, cursor: "pointer" }}>
-                <input type="checkbox" checked={o.enabled} onChange={(e) => setOpt(i, "enabled", e.target.checked)} />
-                <span style={{ fontFamily: MONO, fontSize: 11, color: col, fontWeight: 700 }}>OPTION {i + 1}</span>
-              </label>
-              <select className="no-print" value="" onChange={(e) => e.target.value && applyPreset(i, e.target.value)} style={{ fontSize: 11, padding: "3px 6px" }}>
-                <option value="">preset…</option>
-                {Object.entries(RE_OPTION_PRESETS).map(([k, pr]) => <option key={k} value={k}>{pr.name}</option>)}
-              </select>
-            </div>
-            <input type="text" value={o.name} onChange={(e) => setOpt(i, "name", e.target.value)} style={{ width: "100%", fontWeight: 700, marginBottom: 12 }} />
-            {r && (
-              <div style={{ fontFamily: MONO, fontSize: 11.5, background: "#F3EFE6", borderRadius: 7, padding: "8px 10px", marginBottom: 12, lineHeight: 1.7 }}>
-                <Mini k="Own cash" v={fS(r.cash)} /><Mini k="Personal loan" v={fS(r.pl)} /><Mini k="Mortgage" v={`${fS(r.loanCommit)} (${prj.total > 0 ? Math.round(r.loanCommit / prj.total * 100) : 0}% LTV)`} />
-                <div className="flex justify-between" style={{ borderTop: `1px solid ${C.line}`, fontWeight: 700 }}><span style={{ fontFamily: SANS }}>Instalment</span><span>{fSAR(r.monthlyPayment)}/mo</span></div>
-                {!r.ltvOk && <div style={{ color: C.neg, fontFamily: SANS }}>▲ {fS(r.fundingGap)} above the bank's {o.maxLtvPct}% LTV ceiling</div>}
-                {!r.cashOk && <div style={{ color: C.neg, fontFamily: SANS }}>▲ needs {fS(r.cashNeeded)} cash, you have {fS(inp.cashAvailable)}</div>}
-                {!r.affordable && <div style={{ color: C.neg, fontFamily: SANS }}>▲ instalment is {r.dbr.toFixed(0)}% of income (cap {inp.dbrCap}%)</div>}
-              </div>
-            )}
-            <Slider label="Own cash" value={o.cashPct} min={0} max={100} step={1} unit="% of cost" onChange={(v) => setOpt(i, "cashPct", v)} hint={`= ${fS(prj.total * o.cashPct / 100)}`} />
-            <Slider label="Personal loan" value={o.plAmount} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => setOpt(i, "plAmount", v)} />
-            {o.plAmount > 0 && <><Slider label="Personal-loan rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setOpt(i, "plRate", v)} /><Slider label="Personal-loan tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setOpt(i, "plTenure", v)} /></>}
-            <div style={{ borderTop: `1px dashed ${C.line}`, margin: "4px 0 12px" }} />
-            <Slider label="Mortgage profit rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setOpt(i, "rate", v)} />
-            <Slider label="Mortgage tenure" value={o.tenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setOpt(i, "tenure", v)} />
-            <Slider label="Grace period" value={o.graceMonths} min={0} max={36} step={1} unit="months" onChange={(v) => setOpt(i, "graceMonths", v)} hint={build ? `at least the ${prj.bm}-month build` : "0 for a ready property"} />
-            <Select label="Profit during grace" value={o.graceMode} onChange={(v) => setOpt(i, "graceMode", v)} options={[["capitalize", "added to the loan"], ["interestOnly", "paid monthly"]]} />
-            <Slider label="Subsidised portion (REDF)" value={o.subsidyCap} min={0} max={1000000} step={50000} unit="SAR" onChange={(v) => setOpt(i, "subsidyCap", v)} />
-            {o.subsidyCap > 0 && <Slider label="Subsidy on that portion" value={o.subsidyPct} min={0} max={100} step={5} unit="%" onChange={(v) => setOpt(i, "subsidyPct", v)} />}
-            <Slider label="Bank fees (upfront)" value={o.feesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setOpt(i, "feesPct", v)} />
-            <Slider label="Extra prepayment" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setOpt(i, "extraMo", v)} />
-            <Slider label="Bank's max LTV" value={o.maxLtvPct} min={50} max={100} step={5} unit="%" onChange={(v) => setOpt(i, "maxLtvPct", v)} />
-          </div>
-        );
-      };
-
+      /* comparison rows — `key` rows show by default */
       const homeRows = [
-        ["Executable?", (r) => r.feasible ? "yes" : "NO", (r) => r.feasible ? C.pos : C.neg, true],
-        ["Mortgage", (r) => r.mortgage.type ? `${fS(r.mortgage.commit)} ${r.mortgage.type === "construction" ? "at start" : "cash-out " + fMon(r.mortgage.startedAt)}` : "none"],
+        ["Executable?", (r) => r.feasible ? "yes" : "NO", (r) => r.feasible ? C.pos : C.neg, true, true],
+        ["Mortgage on the new home", (r) => r.mortgage.type ? `${fS(r.mortgage.commit)} ${r.mortgage.type === "construction" ? "at start" : "cash-out " + fMon(r.mortgage.startedAt)}` : "none", null, false, true],
         ["Mortgage instalment", (r) => r.mortgage.type ? fSAR(r.mortgage.instalment) + "/mo" : "—"],
         ["Bank DBR at mortgage approval", (r) => r.mortgage.type ? pct1(r.mortgage.dbrAt) : "—", (r) => r.mortgage.dbrAt > inp.dbrCap + 0.5 ? C.neg : C.text],
         ["Mortgage on existing property", (r) => r.eq.startedAt !== null && r.eq.amount > 0 ? `${fS(r.eq.amount)} ${fMon(r.eq.startedAt)} · ${fSAR(r.eq.pmt)}/mo${r.eq.amount < r.eq.requested - 1 ? ` (asked ${fS(r.eq.requested)})` : ""}` : (r.plan.eqWhen !== "none" ? "refused (DBR)" : "none"), (r) => r.plan.eqWhen !== "none" && r.eq.amount < r.eq.requested - 1 ? C.neg : C.text],
         ["Personal loan taken", (r) => r.pl.startedAt !== null ? `${fS(r.pl.amount)} ${fMon(r.pl.startedAt)}${r.pl.amount < r.pl.requested - 1 ? ` (asked ${fS(r.pl.requested)})` : ""}` : (r.pl.requested > 0 ? "refused (DBR)" : "none"), (r) => r.pl.requested > 0 && r.pl.amount < r.pl.requested - 1 ? C.neg : C.text],
         ["Old loans settled early", (r) => r.settledTotal > 0 ? `${fS(r.settledTotal)} (+${fS(r.settleFees)} fees)` : "none"],
-        ["Cash low point", (r) => `${fS(r.minCash)} ${fMon(r.minCashT)}`, (r) => r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text, true],
+        ["Cash low point", (r) => `${fS(r.minCash)} ${fMon(r.minCashT)}`, (r) => r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text, true, true],
         ["Cash when you move in", (r) => fS(r.cashAtCompletion)],
         ["Cash recovered (net of settlements & fees)", (r) => r.recovered != null ? `${fS(r.recovered)} ${fMon(r.recoveredT)}` : "—", () => C.pos],
         ["Months below your cash buffer", (r) => r.belowBufferMonths ? `${r.belowBufferMonths}` : "0", (r) => r.belowBufferMonths ? C.brass : C.text],
-        ["Peak monthly instalments (all debt)", (r) => fSAR(r.peakInst)],
-        ["Peak debt burden (instalments ÷ income)", (r) => pct1(r.peakDbr), (r) => r.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text],
-        ["Profit paid on new debt + settlement fees", (r) => fS(r.newDebtInterest), () => C.neg, true],
+        ["Peak monthly instalments (all debt)", (r) => `${fSAR(r.peakInst)}/mo`, null, false, true],
+        ["Peak debt burden (instalments ÷ income)", (r) => pct1(r.peakDbr), (r) => r.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text, false, true],
+        ["Profit paid on new debt + settlement fees", (r) => fS(r.newDebtInterest), () => C.neg, true, true],
         ["Total profit paid (incl. existing loans)", (r) => fS(r.totalInterest), () => C.neg],
         [`Debt still owed at Y${inp.horizon}`, (r) => fS(r.endDebt)],
         [`Cash at Y${inp.horizon}`, (r) => fS(r.cashEnd)],
         [`Net worth at Y${inp.horizon} (cash + home after selling costs − debt)`, (r) => fS(r.netWorthEnd), () => C.text, true],
         [renting ? "Renter's net worth (same income, kept renting)" : "Net worth if you don't build (same income, cash invested)", (r) => fS(r.renterEnd)],
-        [`Wealth advantage vs ${baseLbl}`, (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, true],
+        [`Wealth advantage vs ${baseLbl}`, (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, true, true],
         [`Break-even vs ${baseLbl}`, (r) => r.breakEvenMonth != null ? fYr(r.breakEvenMonth) : `> ${inp.horizon} yrs`],
-        ["Debt-free", (r) => r.debtFreeT != null ? fMon(r.debtFreeT) : `> Y${inp.horizon}`],
+        ["Debt-free", (r) => r.debtFreeT != null ? fMon(r.debtFreeT) : `> Y${inp.horizon}`, null, false, true],
       ];
       const rentalRows = [
-        ["Own cash in", (r) => fS(r.cash)], ["Personal loan", (r) => fS(r.pl)], ["Mortgage", (r) => fS(r.loanCommit)],
+        ["Own cash in", (r) => fS(r.cash), null, false, true], ["Personal loan", (r) => fS(r.pl)], ["Mortgage", (r) => fS(r.loanCommit), null, false, true],
         ["Peak equity committed", (r) => fS(r.invested), (r) => r.cashOk ? C.text : C.neg],
-        ["Levered IRR", (r) => pct1(r.irr == null ? null : r.irr * 100), (r) => r.irr != null && r.irr * 100 >= inp.discountRate ? C.pos : C.neg, true],
+        ["Levered IRR", (r) => pct1(r.irr == null ? null : r.irr * 100), (r) => r.irr != null && r.irr * 100 >= inp.discountRate ? C.pos : C.neg, true, true],
         ["Unlevered (property) IRR", (r) => pct1(r.irrUnlev == null ? null : r.irrUnlev * 100)],
-        [`NPV @ ${inp.discountRate}%`, (r) => fS(r.npv), (r) => r.npv >= 0 ? C.pos : C.neg, true],
-        ["Equity multiple", (r) => r.moic == null ? "—" : r.moic.toFixed(2) + "×"],
+        [`NPV @ ${inp.discountRate}%`, (r) => fS(r.npv), (r) => r.npv >= 0 ? C.pos : C.neg, true, true],
+        ["Equity multiple", (r) => r.moic == null ? "—" : r.moic.toFixed(2) + "×", null, false, true],
         ["Cash-on-cash (first full year)", (r) => pct1(r.cashOnCash), (r) => r.cashOnCash != null && r.cashOnCash >= 0 ? C.text : C.neg],
         ["Gross yield on cost", (r) => pct1(r.grossYield)], ["Net yield (NOI) on cost", (r) => pct1(r.netYield)],
-        ["Min. debt-service cover (DSCR)", (r) => r.dscrMin == null ? "no debt" : r.dscrMin.toFixed(2) + "×", (r) => r.dscrMin == null || r.dscrMin >= 1.2 ? C.text : C.neg],
-        ["Monthly instalment (post-grace)", (r) => fSAR(r.monthlyPayment)],
-        ["Instalment ÷ income (bank DBR)", (r) => pct1(r.dbr), (r) => r.affordable ? C.text : C.neg],
+        ["Min. debt-service cover (DSCR)", (r) => r.dscrMin == null ? "no debt" : r.dscrMin.toFixed(2) + "×", (r) => r.dscrMin == null || r.dscrMin >= 1.2 ? C.text : C.neg, false, true],
+        ["Monthly instalment (post-grace)", (r) => fSAR(r.monthlyPayment), null, false, true],
+        ["Instalment ÷ income (bank DBR)", (r) => pct1(r.dbr), (r) => r.affordable ? C.text : C.neg, false, true],
         ["Total profit paid to banks", (r) => fS(r.totalInterest), () => C.neg],
         ["Cumulative cash flow after debt", (r) => fS(r.totalCf)],
         ["Net sale proceeds at exit", (r) => fS(r.exitProceeds)],
         ["Payback (equity recovered)", (r) => r.payback ? `Y${r.payback}` : `> Y${inp.exitYear}`],
       ];
 
-      const LineChartBox = ({ title, keyPrefix, extra, height = 260, note }) => (
-        <Panel title={title}>
+      /* ---------- charts (called as functions, not mounted as components) ---------- */
+      const LineChartBox = ({ title, keyPrefix, extra, height = 260, note, right }) => (
+        <Panel title={title} right={right}>
           <ResponsiveContainer width="100%" height={height}>
-            <LineChart data={yearSeries} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-              <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} />
-              <YAxis tick={axisT} tickFormatter={fS} />
+            <LineChart data={yearSeries} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={C.line} vertical={false} />
+              <XAxis dataKey="year" tick={axisS} tickLine={false} axisLine={{ stroke: C.line }} />
+              <YAxis tick={axisT} tickFormatter={fS} tickLine={false} axisLine={false} width={56} />
               <Tooltip formatter={(v) => fSAR(v)} contentStyle={tipStyle} />
-              <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+              <Legend wrapperStyle={legendStyle} iconType="plainline" />
               <ReferenceLine y={0} stroke={C.sub} />
               {extra}
-              {liveIdx.map((i) => <Line key={i} dataKey={`${keyPrefix}${i}`} name={nameOf(m.results[i])} stroke={OPT_COLORS[i]} strokeWidth={2.2} dot={false} />)}
+              {liveIdx.map((i) => <Line key={i} dataKey={`${keyPrefix}${i}`} name={nameOf(m.results[i])} stroke={OPT_COLORS[i]} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: C.paper }} />)}
             </LineChart>
           </ResponsiveContainer>
-          {note && <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, margin: "6px 6px 4px", lineHeight: 1.5 }}>{note}</div>}
+          {note && <Note>{note}</Note>}
         </Panel>
       );
 
-      return (
-        <div style={{ minHeight: "100vh", background: C.bone }}>
-          {/* header */}
-          <div style={{ background: C.ink, padding: "26px 4vw 18px" }}>
-            <div style={{ maxWidth: 1240, margin: "0 auto" }}>
-              <div className="flex items-start justify-between flex-wrap" style={{ gap: 14 }}>
-                <div>
-                  <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt, marginBottom: 5 }}>Scenario tool · Riyadh, KSA · SAR</div>
-                  <h1 style={{ fontFamily: SANS, fontSize: 24, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em", margin: 0 }}>{home ? "Financing My Own Home" : "Residential Rental Investment"} — Scenario Evaluator</h1>
-                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.invSub, marginTop: 6, maxWidth: 780, lineHeight: 1.5 }}>
-                    {home ? "Which order of cash, personal loans, old-loan settlements and mortgage gets the house built, keeps your cash safe, and leaves you wealthiest? Each strategy is simulated month by month through the bank's debt-burden and LTV tests, then measured against simply renting."
-                          : "Compare up to four capital stacks for a buy-to-let: levered and unlevered IRR, NPV, yields, debt-service cover and the cash each option ties up."} <a href="index.html" style={{ color: C.brassLt }}>← all models</a>
-                  </div>
-                </div>
-                <div className="no-print" style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-                  <div className="flex items-center" style={{ gap: 10 }}>
-                    <span style={{ fontFamily: SANS, fontSize: 11, color: C.invSub, letterSpacing: "0.06em", textTransform: "uppercase" }}>Purpose</span>
-                    <Toggle dark value={inp.mode} onChange={(v) => set("mode", v)} options={[["home", "My own home"], ["rental", "Rental investment"]]} />
-                  </div>
-                  <div className="flex items-center" style={{ gap: 10 }}>
-                    <span style={{ fontFamily: SANS, fontSize: 11, color: C.invSub, letterSpacing: "0.06em", textTransform: "uppercase" }}>Acquire</span>
-                    <Toggle dark value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land & build"], ["buy", "Buy ready"]]} />
-                  </div>
-                </div>
-              </div>
-              <div className="flex no-print" style={{ gap: 18, marginTop: 16, borderTop: `1px solid ${C.lineDk}`, paddingTop: 10, flexWrap: "wrap" }}>
-                {navItems.map(([id, l]) => <a key={id} href={`#${id}`} className="navlink" style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 600, color: C.invSub, textDecoration: "none", letterSpacing: "0.04em" }}>{l}</a>)}
-                <span style={{ flex: 1 }} />
-                <button onClick={() => window.print()} style={{ ...btn("transparent", C.invSub, C.lineDk), fontSize: 11.5, padding: "4px 10px" }}>Print / PDF</button>
-              </div>
+      /* ---------- strategy card (home) ---------- */
+      const PlanCard = ({ o, i }) => {
+        const r = m.results[i], col = OPT_COLORS[i], edit = !!editing[i];
+        const mgW = o.mortgageWhen, plW = o.plWhen;
+        const isRec = r && r === lead;
+        return (
+          <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${o.enabled ? col : C.line}`, borderRight: `1px solid ${o.enabled ? col : C.line}`, borderBottom: `1px solid ${o.enabled ? col : C.line}`, borderTop: `4px solid ${col}`, borderRadius: 10, padding: "14px 16px", opacity: o.enabled ? 1 : 0.6, minWidth: 0 }}>
+            <div className="flex items-center justify-between" style={{ gap: 8, marginBottom: 8 }}>
+              <label className="flex items-center flex-wrap" style={{ gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={o.enabled} onChange={(e) => setPlan(i, "enabled", e.target.checked)} />
+                <span style={{ fontFamily: MONO, fontSize: 11, color: col, fontWeight: 700, whiteSpace: "nowrap" }}>STRATEGY {i + 1}</span>
+                {isRec && <span className="tag" style={{ background: C.ink, color: C.brassLt }}>★ Recommended</span>}
+              </label>
+              <select className="no-print" value="" onChange={(e) => e.target.value && applyPlanPreset(i, e.target.value)} style={{ fontSize: 11, padding: "3px 6px", maxWidth: 140 }}>
+                <option value="">Preset…</option>
+                {Object.entries(RE_PLAN_PRESETS).map(([k, pr]) => <option key={k} value={k}>{pr.name}</option>)}
+              </select>
             </div>
-          </div>
-
-          <div style={{ maxWidth: 1240, margin: "0 auto", padding: "26px 4vw 60px" }}>
-            {/* verdict + KPIs */}
-            <div className="print-section" style={{ background: C.paper, borderTop: `1px solid ${C.line}`, borderRight: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}`, borderLeft: `6px solid ${m.vColor}`, borderRadius: 10, padding: "16px 20px", marginBottom: 16 }}>
-              <div className="flex items-baseline flex-wrap" style={{ gap: 14 }}>
-                <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: m.vColor, letterSpacing: "0.1em" }}>{m.verdict}</span>
-                <span style={{ fontFamily: SANS, fontSize: 14, color: C.text, lineHeight: 1.5 }}>
-                  {!lead ? "Enable at least one strategy." : home ? (
-                    bestF ? <>Best executable strategy: <b>{bestF.plan.name}</b>. Over {inp.horizon} years it leaves you <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "better" : "worse"} off than {renting ? "renting" : "not building"}</b>{renting ? " the same home" : " (staying where you live now, cash kept invested)"}. Cash never drops below {fS(bestF.minCash)}{bestF.recovered != null ? `, and you get ${fS(bestF.recovered)} back ${fMon(bestF.recoveredT)}` : ""}.{best !== bestF && <> <i>{best.plan.name}</i> would score higher but cannot be executed: {best.flags[0]}</>}</>
-                          : <>None of the enabled strategies can be executed with {fS(inp.cashAvailable)} of cash and {fSAR(household.dbrRoom)}/mo of debt-burden room. {best.flags[0]}</>
-                  ) : <>Best capital stack: <b>{lead.opt.name}</b> at <b>{pct1(lead.irr == null ? null : lead.irr * 100)} levered IRR</b> vs {pct1(lead.irrUnlev == null ? null : lead.irrUnlev * 100)} unlevered{bestF && bestF !== best && <> (<i>{best.opt.name}</i> ranks higher but fails your cash, LTV or debt-burden limits)</>}.</>}
-                </span>
+            <input type="text" value={o.name} onChange={(e) => setPlan(i, "name", e.target.value)} style={{ width: "100%", fontWeight: 700, marginBottom: 8 }} />
+            <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5, marginBottom: 10 }}>{describePlan(o, inp, prj, build)}</div>
+            {r && <>
+              <div style={{ marginBottom: 10 }}><Badge ok={r.feasible} text={r.flags[0] ? r.flags[0].replace(/ — this plan cannot be executed as set\./, "") : null} /></div>
+              <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "10px 12px", marginBottom: 12 }}>
+                <Stat label="Cash low point" value={fS(r.minCash)} sub={fCal(r.minCashT)} color={r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text} />
+                <Stat label="Peak instalments" value={`${fSAR(r.peakInst)}/mo`} sub={`${r.peakDbr.toFixed(0)}% of income`} color={r.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text} />
+                <Stat label="New debt taken" value={fS(newDebtOf(r))} sub={`profit + fees ${fS(r.newDebtInterest)}`} />
+                <Stat label={`Wealth vs ${baseLbl}`} value={fS(r.advantage)} sub={`at year ${inp.horizon}`} color={r.advantage >= 0 ? C.pos : C.neg} />
               </div>
-            </div>
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 30 }}>
-              <Kpi label="All-in project cost" value={fS(prj.total)} sub={build ? `${fSAR(prj.costPerSqm)} SAR/m² built, excl. land` : "price + RETT + broker + finishing"} />
-              <Kpi label="Market value at completion" value={fS(prj.value0)} sub={build ? `${inp.devMarginPct}% uplift over cost (ex VAT/fees)` : "price + finishing"} accent={prj.value0 >= prj.total ? C.pos : C.neg} />
-              {home ? <>
-                <Kpi label="Debt-burden room today" value={fSAR(household.dbrRoom) + "/mo"} sub={`existing instalments ${fSAR(household.existingInst)} = ${household.existingDbr.toFixed(0)}% of income · cap ${inp.dbrCap}%`} accent={household.dbrRoom > 0 ? C.text : C.neg} />
-                <Kpi label="Monthly savings today" value={fSAR(household.savings)} sub="income − living − rent − existing instalments" accent={household.savings >= 0 ? C.pos : C.neg} />
-                {bestF ? <Kpi label="Peak instalments" value={fSAR(bestF.peakInst) + "/mo"} sub={`${bestF.plan.name.split("→")[0].trim()} · peak DBR ${bestF.peakDbr.toFixed(0)}%`} accent={bestF.peakDbr <= inp.dbrCap ? C.text : C.neg} /> : <Kpi label="Peak instalments" value="—" />}
-                {bestF ? <Kpi label="Profit on new debt" value={fS(bestF.newDebtInterest)} sub="mortgage + personal loan + settlement fees" accent={C.neg} /> : <Kpi label="Profit on new debt" value="—" />}
-              </> : <>
-                {bestF ? <Kpi label="Cash you must bring" value={fS(bestF.cashNeeded)} sub={`${bestF.opt.name} · you have ${fS(inp.cashAvailable)}`} accent={bestF.cashOk ? C.pos : C.neg} /> : <Kpi label="Cash you must bring" value="—" />}
-                {bestF ? <Kpi label="Monthly instalment" value={fSAR(bestF.monthlyPayment)} sub={`${bestF.dbr.toFixed(0)}% of income · cap ${inp.dbrCap}%`} accent={bestF.affordable ? C.text : C.neg} /> : <Kpi label="Monthly instalment" value="—" />}
-                {bestF ? <Kpi label="Total profit paid to banks" value={fS(bestF.totalInterest)} sub={`${fS(bestF.mortgageInterest)} mortgage + ${fS(bestF.plInterestTotal)} personal loan`} /> : <Kpi label="Total profit paid" value="—" />}
-                {bestF ? <Kpi label="NPV @ discount rate" value={fS(bestF.npv)} sub={`${inp.discountRate}% · equity multiple ${bestF.moic ? bestF.moic.toFixed(2) + "×" : "—"}`} accent={bestF.npv >= 0 ? C.pos : C.neg} /> : null}
+            </>}
+            <button className="no-print" onClick={() => setEditing((s) => ({ ...s, [i]: !s[i] }))} style={{ ...btn(edit ? C.ink : "transparent", edit ? C.inv : C.sub, edit ? C.ink : C.line), fontSize: 11.5, padding: "5px 10px", width: "100%", justifyContent: "center" }}>{edit ? "Done editing" : "Edit strategy"}</button>
+            {edit && <div style={{ marginTop: 12 }}>
+              {r && (
+                <div style={{ fontFamily: MONO, fontSize: 11.5, background: SOFT, borderRadius: 7, padding: "8px 10px", marginBottom: 12, lineHeight: 1.7 }}>
+                  {r.mortgage.type && <Mini k={r.mortgage.type === "construction" ? "Mortgage at start" : `Cash-out mortgage ${fMon(r.mortgage.startedAt)}`} v={`${fS(r.mortgage.commit)} · ${fSAR(r.mortgage.instalment)}/mo`} />}
+                  {r.mortgage.type && <Mini k="Bank DBR at approval" v={pct1(r.mortgage.dbrAt)} color={r.mortgage.dbrAt > inp.dbrCap + 0.5 ? C.neg : C.text} />}
+                  {r.eq.startedAt !== null && r.eq.amount > 0 && <Mini k={`Existing-property mortgage ${fMon(r.eq.startedAt)}`} v={`${fS(r.eq.amount)} · ${fSAR(r.eq.pmt)}/mo`} />}
+                  {r.pl.startedAt !== null && <Mini k={`Personal loan ${fMon(r.pl.startedAt)}`} v={`${fS(r.pl.amount)} · ${fSAR(r.pl.pmt)}/mo`} />}
+                  {r.settledTotal > 0 && <Mini k="Old loans settled" v={`${fS(r.settledTotal)} + ${fS(r.settleFees)} fees`} />}
+                  {r.recovered != null && <Mini k={`Cash recovered ${fMon(r.recoveredT)}`} v={`${fS(r.recovered)} net`} color={C.pos} />}
+                  {r.flags.slice(1).map((f, k) => <div key={k} style={{ color: C.brass, fontFamily: SANS, fontSize: 11, lineHeight: 1.4, marginTop: 4 }}>▲ {f}</div>)}
+                </div>
+              )}
+              <div className="subhead">New-home mortgage</div>
+              <Select value={mgW} onChange={(v) => setPlan(i, "mortgageWhen", v)} options={[["none", "No mortgage"], ["start", "At start — construction / purchase mortgage"], ["completion", "At completion — cash-out against the finished home"]]} />
+              {mgW === "start" && <>
+                {build && <Select value={o.mortgageScope} onChange={(v) => setPlan(i, "mortgageScope", v)} options={[["all", "Finances land + construction"], ["construction", "Finances construction only — land from my cash"]]} />}
+                <Slider label={o.mortgageScope === "construction" && build ? "Your cash into the construction" : "Your cash into the project"} value={o.cashInPct} min={0} max={100} step={1} unit="%" onChange={(v) => setPlan(i, "cashInPct", v)} hint={o.mortgageScope === "construction" && build ? `= ${fS((prj.total - prj.land - prj.rett) * o.cashInPct / 100)} on top of the land ${fS(prj.land + prj.rett)}` : `= ${fS(prj.total * o.cashInPct / 100)} · bank requires ≥ ${100 - o.maxLtvPct}%`} />
               </>}
-            </div>
+              {mgW === "completion" && <Slider label="Cash-out amount wanted" value={o.cashOutTarget} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "cashOutTarget", v)} hint={o.cashOutTarget === 0 ? `0 = maximum (${inp.cashoutLtv}% of value ≈ ${fS(prj.value0 * Math.pow(1 + inp.appreciation / 100, prj.occupy / 12) * inp.cashoutLtv / 100)})` : `capped at ${inp.cashoutLtv}% of the home's value`} />}
+              {mgW !== "none" && <>
+                <Slider label="Mortgage profit rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "rate", v)} hint={(inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.rate, o.tenure * 12).toFixed(2)}% APR · ` : "") + (mgW === "completion" ? "cash-out / owned-property finance usually prices higher" : "fixed for the term")} />
+                <Slider label="Mortgage tenure" value={o.tenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "tenure", v)} />
+                <Adv title="Mortgage details: LTV, grace, REDF subsidy, fees, prepayment">
+                  {mgW === "start" && <Slider label="Bank's max LTV" value={o.maxLtvPct} min={50} max={100} step={5} unit="%" onChange={(v) => setPlan(i, "maxLtvPct", v)} hint="90% first home (SAMA)" />}
+                  {mgW === "start" && build && <Select label="Profit during construction grace" value={o.graceMode} onChange={(v) => setPlan(i, "graceMode", v)} options={[["capitalize", "added to the loan"], ["interestOnly", "paid monthly"]]} />}
+                  <Slider label="REDF-subsidised portion" value={o.subsidyCap} min={0} max={1000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "subsidyCap", v)} hint={mgW === "completion" ? "Sakani support does not apply to cash-out finance — keep 0 unless confirmed" : "Sakani bears the profit on the first 500K for eligible citizens"} />
+                  {o.subsidyCap > 0 && <Slider label="Subsidy on that portion" value={o.subsidyPct} min={0} max={100} step={5} unit="%" onChange={(v) => setPlan(i, "subsidyPct", v)} />}
+                  <Slider label="Bank fees (upfront)" value={o.feesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "feesPct", v)} />
+                  <Slider label="Extra prepayment" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setPlan(i, "extraMo", v)} />
+                </Adv>
+              </>}
+              <div className="subhead">Existing property (equity release)</div>
+              <Select value={o.eqWhen} onChange={(v) => setPlan(i, "eqWhen", v)} options={[["none", "Not used"], ["start", "At start — fund the build / clear old loans"], ["completion", "At completion — recover cash"], ["month", "At a month I choose"]]} hint={inp.ownedValue > 0 ? `you own a ${fS(inp.ownedValue)} property (set in step 1)` : "set the property's value in step 1 first"} />
+              {o.eqWhen === "month" && <Slider label="Month" value={o.eqMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "eqMonth", v)} hint={`${fCal(o.eqMonth)} · construction completes ${fCal(prj.occupy)}`} />}
+              {o.eqWhen !== "none" && <>
+                <Slider label="Amount wanted" value={o.eqAmount} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "eqAmount", v)} hint={o.eqAmount === 0 ? `0 = maximum (${inp.ownedLtv}% of ${fS(inp.ownedValue)} = ${fS(inp.ownedValue * inp.ownedLtv / 100)})` : `capped at ${inp.ownedLtv}% of value and by the debt-burden test`} />
+                <Slider label="Rate" value={o.eqRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "eqRate", v)} hint={(inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.eqRate, o.eqTenure * 12).toFixed(2)}% APR · ` : "") + "finance against an owned property; no REDF support"} />
+                <Slider label="Tenure" value={o.eqTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "eqTenure", v)} />
+                <Slider label="Bank fees (upfront)" value={o.eqFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "eqFeesPct", v)} />
+              </>}
+              <div className="subhead">Personal loan</div>
+              <Select value={plW} onChange={(v) => setPlan(i, "plWhen", v)} options={[["none", "No personal loan"], ["start", "At start — to fund the build"], ["completion", "At completion — to recover cash"], ["month", "At a month I choose"]]} />
+              {plW === "month" && <Slider label="Month" value={o.plMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "plMonth", v)} hint={`${fCal(o.plMonth)} · construction completes ${fCal(prj.occupy)}`} />}
+              {plW !== "none" && <>
+                <Slider label="Amount wanted" value={o.plAmount} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => setPlan(i, "plAmount", v)} hint="sized down to what the debt-burden cap allows" />
+                <Slider label="Rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setPlan(i, "plRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.plRate, o.plTenure * 12).toFixed(2)}% APR` : ""} />
+                <Slider label="Tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setPlan(i, "plTenure", v)} />
+              </>}
+              <div className="subhead">Existing loans</div>
+              <Select value={o.settlePolicy} onChange={(v) => setPlan(i, "settlePolicy", v)} options={[["none", "Keep them all (new debt sized to what's left)"], ["asNeeded", "Settle just enough to pass each bank test"], ["all", "Settle everything before the first new facility"]]} hint="the loans themselves are edited in step 1" />
+            </div>}
+          </div>
+        );
+      };
 
-            {/* 01 project */}
-            <SectionHeader id="project" eyebrow="01 · The project" title={build ? "Land, construction & market" : "Property purchase & market"} sub="Defaults describe a mid-size Riyadh villa. All amounts in SAR. Taxes follow KSA rules: 15% VAT on construction & finishing (land is VAT-exempt), 5% Real Estate Transaction Tax with the first-home relief on the first 1M SAR." />
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 16, marginBottom: 34 }}>
-              <Card n="A" title={build ? "Land & construction" : "Purchase"}>
-                {build ? <>
-                  <Slider label="Land area" value={inp.landArea} min={200} max={2000} step={25} unit="m²" onChange={(v) => set("landArea", v)} />
-                  <Slider label="Land price" value={inp.landPrice} min={500} max={12000} step={100} unit="SAR/m²" onChange={(v) => set("landPrice", v)} hint={`land ${fS(prj.land)}`} />
-                  <Slider label="Built-up area as % of land" value={inp.builtPct} min={0} max={300} step={5} unit="%" onChange={(v) => set("builtPct", v)} hint={inp.builtPct > 0 ? `= ${Math.round(prj.builtArea)} m² total building area · set 0 to enter m² directly` : "0 = enter the area directly below"} />
-                  {inp.builtPct === 0 && <Slider label="Built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
-                  <Slider label="Construction cost (turnkey)" value={inp.buildCost} min={1200} max={6000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`structure + finishing ${fS(prj.hard)} before VAT`} />
+      /* ---------- option card (rental) ---------- */
+      const OptionCard = ({ o, i }) => {
+        const r = m.results[i], col = OPT_COLORS[i], edit = !!editing[i];
+        const ok = r && r.affordable && r.cashOk && r.ltvOk;
+        const flag = r ? (!r.ltvOk ? `${fS(r.fundingGap)} above the ${o.maxLtvPct}% LTV ceiling` : !r.cashOk ? `needs ${fS(r.cashNeeded)} cash, you have ${fS(inp.cashAvailable)}` : !r.affordable ? `instalment is ${r.dbr.toFixed(0)}% of income (cap ${inp.dbrCap}%)` : null) : null;
+        return (
+          <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${o.enabled ? col : C.line}`, borderRight: `1px solid ${o.enabled ? col : C.line}`, borderBottom: `1px solid ${o.enabled ? col : C.line}`, borderTop: `4px solid ${col}`, borderRadius: 10, padding: "14px 16px", opacity: o.enabled ? 1 : 0.6, minWidth: 0 }}>
+            <div className="flex items-center justify-between" style={{ gap: 8, marginBottom: 8 }}>
+              <label className="flex items-center" style={{ gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={o.enabled} onChange={(e) => setOpt(i, "enabled", e.target.checked)} />
+                <span style={{ fontFamily: MONO, fontSize: 11, color: col, fontWeight: 700 }}>OPTION {i + 1}</span>
+                {r && r === lead && <span className="tag" style={{ background: C.ink, color: C.brassLt }}>★ Best</span>}
+              </label>
+              <select className="no-print" value="" onChange={(e) => e.target.value && applyPreset(i, e.target.value)} style={{ fontSize: 11, padding: "3px 6px", maxWidth: 140 }}>
+                <option value="">Preset…</option>
+                {Object.entries(RE_OPTION_PRESETS).map(([k, pr]) => <option key={k} value={k}>{pr.name}</option>)}
+              </select>
+            </div>
+            <input type="text" value={o.name} onChange={(e) => setOpt(i, "name", e.target.value)} style={{ width: "100%", fontWeight: 700, marginBottom: 8 }} />
+            <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5, marginBottom: 10 }}>{describeOption(o, inp, prj)}</div>
+            {r && <>
+              <div style={{ marginBottom: 10 }}><Badge ok={ok} text={flag} /></div>
+              <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "10px 12px", marginBottom: 12 }}>
+                <Stat label="Levered IRR" value={pct1(r.irr == null ? null : r.irr * 100)} sub={`unlevered ${pct1(r.irrUnlev == null ? null : r.irrUnlev * 100)}`} color={r.irr != null && r.irr * 100 >= inp.discountRate ? C.pos : C.neg} />
+                <Stat label={`NPV @ ${inp.discountRate}%`} value={fS(r.npv)} sub={`equity multiple ${r.moic ? r.moic.toFixed(2) + "×" : "—"}`} color={r.npv >= 0 ? C.pos : C.neg} />
+                <Stat label="Cash you must bring" value={fS(r.cashNeeded)} sub={`you have ${fS(inp.cashAvailable)}`} color={r.cashOk ? C.text : C.neg} />
+                <Stat label="Instalment" value={`${fSAR(r.monthlyPayment)}/mo`} sub={`${r.dbr.toFixed(0)}% of income`} color={r.affordable ? C.text : C.neg} />
+              </div>
+            </>}
+            <button className="no-print" onClick={() => setEditing((s) => ({ ...s, [i]: !s[i] }))} style={{ ...btn(edit ? C.ink : "transparent", edit ? C.inv : C.sub, edit ? C.ink : C.line), fontSize: 11.5, padding: "5px 10px", width: "100%", justifyContent: "center" }}>{edit ? "Done editing" : "Edit option"}</button>
+            {edit && <div style={{ marginTop: 12 }}>
+              <div className="subhead">Capital stack</div>
+              <Slider label="Own cash" value={o.cashPct} min={0} max={100} step={1} unit="% of cost" onChange={(v) => setOpt(i, "cashPct", v)} hint={`= ${fS(prj.total * o.cashPct / 100)}`} />
+              <Slider label="Personal loan" value={o.plAmount} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => setOpt(i, "plAmount", v)} />
+              {o.plAmount > 0 && <><Slider label="Personal-loan rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setOpt(i, "plRate", v)} /><Slider label="Personal-loan tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setOpt(i, "plTenure", v)} /></>}
+              <div className="subhead">Mortgage</div>
+              <Slider label="Mortgage profit rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setOpt(i, "rate", v)} />
+              <Slider label="Mortgage tenure" value={o.tenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setOpt(i, "tenure", v)} />
+              <Slider label="Grace period" value={o.graceMonths} min={0} max={36} step={1} unit="months" onChange={(v) => setOpt(i, "graceMonths", v)} hint={build ? `at least the ${prj.bm}-month build` : "0 for a ready property"} />
+              <Adv title="Mortgage details: grace profit, REDF subsidy, fees, prepayment, LTV">
+                <Select label="Profit during grace" value={o.graceMode} onChange={(v) => setOpt(i, "graceMode", v)} options={[["capitalize", "added to the loan"], ["interestOnly", "paid monthly"]]} />
+                <Slider label="Subsidised portion (REDF)" value={o.subsidyCap} min={0} max={1000000} step={50000} unit="SAR" onChange={(v) => setOpt(i, "subsidyCap", v)} />
+                {o.subsidyCap > 0 && <Slider label="Subsidy on that portion" value={o.subsidyPct} min={0} max={100} step={5} unit="%" onChange={(v) => setOpt(i, "subsidyPct", v)} />}
+                <Slider label="Bank fees (upfront)" value={o.feesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setOpt(i, "feesPct", v)} />
+                <Slider label="Extra prepayment" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setOpt(i, "extraMo", v)} />
+                <Slider label="Bank's max LTV" value={o.maxLtvPct} min={50} max={100} step={5} unit="%" onChange={(v) => setOpt(i, "maxLtvPct", v)} />
+              </Adv>
+            </div>}
+          </div>
+        );
+      };
+
+      /* ---------- step footer ---------- */
+      const StepFooter = () => (
+        <div className="flex items-center justify-between no-print" style={{ gap: 10, marginTop: 22, paddingTop: 14, borderTop: `1px solid ${C.line}` }}>
+          <button onClick={() => go(stepI - 1)} disabled={stepI === 0} style={{ ...btn("transparent", stepI === 0 ? C.line : C.sub, C.line), opacity: stepI === 0 ? 0.5 : 1 }}>← {stepI > 0 ? steps[stepI - 1][1] : "Previous"}</button>
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>Step {stepI + 1} of {steps.length}</span>
+          <button onClick={() => go(stepI + 1)} disabled={stepI === steps.length - 1} style={{ ...btn(C.brass, C.ink), opacity: stepI === steps.length - 1 ? 0.5 : 1 }}>{stepI < steps.length - 1 ? steps[stepI + 1][1] : "Done"} →</button>
+        </div>
+      );
+
+      /* ---------- answer card ---------- */
+      const blockers = [];
+      if (home) {
+        if (bestF) { bestF.flags.forEach((f) => blockers.push({ warn: true, text: f })); if (best && best !== bestF) blockers.push({ warn: false, text: `${best.plan.name} would leave you ${fS(best.advantage - bestF.advantage)} richer but cannot be executed: ${best.flags[0]}` }); }
+        else liveIdx.forEach((i) => { const r = m.results[i]; blockers.push({ warn: true, text: `Strategy ${i + 1} (${r.plan.name}): ${r.flags[0] || "not executable"}` }); });
+        if (household.dbrRoom <= 0) blockers.push({ warn: true, text: `Your existing instalments (${fSAR(household.existingInst)}/mo) already exceed the bank's ${inp.dbrCap}% debt-burden cap — no new facility is possible without settling loans.` });
+        if (household.savings < 0) blockers.push({ warn: true, text: `You spend ${fSAR(-household.savings)}/mo more than you earn (income − living − rent − instalments).` });
+        if (sweepRec && !sweepRec.best) blockers.push({ warn: true, text: "No construction start within the next 5 years makes the recommended strategy executable." });
+      } else if (lead) {
+        if (!lead.ltvOk) blockers.push({ warn: true, text: `${fS(lead.fundingGap)} of the mortgage sits above the bank's ${lead.opt.maxLtvPct}% LTV ceiling.` });
+        if (!lead.cashOk) blockers.push({ warn: true, text: `Needs ${fS(lead.cashNeeded)} cash; you can commit ${fS(inp.cashAvailable)}.` });
+        if (!lead.affordable) blockers.push({ warn: true, text: `Instalment is ${lead.dbr.toFixed(0)}% of income (cap ${inp.dbrCap}%).` });
+        if (bestF && bestF !== best) blockers.push({ warn: false, text: `${best.opt.name} ranks higher by IRR but fails your cash, LTV or debt-burden limits.` });
+      }
+      const startBest = sweepRec && sweepRec.best;
+      const startNow = startBest && startBest.delay <= Math.max(inp.buildStart, inp.landMonth);
+
+      const Answer = () => (
+        <div className="print-section" style={{ background: C.paper, borderTop: `1px solid ${C.line}`, borderRight: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}`, borderLeft: `6px solid ${m.vColor}`, borderRadius: 10, padding: "18px 20px", marginBottom: 14 }}>
+          <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>The answer · <span style={{ color: m.vColor }}>{m.verdict}</span></div>
+          {!lead ? <div style={{ fontFamily: SANS, fontSize: 15, color: C.text }}>Enable at least one {home ? "strategy" : "option"} in step 3.</div> : home ? <>
+            <div style={{ fontFamily: SANS, fontSize: 17, fontWeight: 700, color: C.text, lineHeight: 1.35, letterSpacing: "-0.01em" }}>
+              {bestF ? <>Finance it with <span style={{ borderBottom: `3px solid ${OPT_COLORS[recIdx]}` }}>{bestF.plan.name}</span>{startBest ? <>, and {startNow ? <>start as planned in <b>{fCal(Math.max(inp.buildStart, inp.landMonth))}</b></> : <>wait until <b>{fCal(startBest.delay)}</b> to start building</>}</> : null}.</>
+                   : <>None of the enabled strategies works with {fS(inp.cashAvailable)} of cash and {fSAR(household.dbrRoom)}/mo of debt-burden room.</>}
+            </div>
+            {bestF && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(bestF.plan, inp, prj, build)} Over {inp.horizon} years this leaves you <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "better" : "worse"} off than {baseLbl}</b>{renting ? " the same home" : " (staying where you live now, cash kept invested)"}.{startBest && !startNow ? ` Starting ${fCal(startBest.delay)} means moving in ${fCal(startBest.occupy)}.` : ""}</div>}
+            {bestF && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 14 }}>
+              <Kpi label="Cash low point" value={fS(bestF.minCash)} sub={`${fCal(bestF.minCashT)} · buffer ${fS(inp.cashBuffer)}`} accent={bestF.minCash < 0 ? C.neg : bestF.minCash < inp.cashBuffer ? C.brass : C.pos} />
+              <Kpi label="Peak monthly instalments" value={`${fSAR(bestF.peakInst)}`} sub={`${bestF.peakDbr.toFixed(0)}% of income · bank cap ${inp.dbrCap}%`} accent={bestF.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text} />
+              <Kpi label="New debt taken" value={fS(newDebtOf(bestF))} sub={`costs ${fS(bestF.newDebtInterest)} in profit & fees`} accent={C.text} />
+              <Kpi label={`Wealth vs ${baseLbl}`} value={fS(bestF.advantage)} sub={`at year ${inp.horizon} · break-even ${bestF.breakEvenMonth != null ? fYr(bestF.breakEvenMonth) : `> ${inp.horizon} yrs`}`} accent={bestF.advantage >= 0 ? C.pos : C.neg} />
+              {startBest && <Kpi label="Earliest workable start" value={fCal(startBest.delay)} sub={`move in ${fCal(startBest.occupy)} · cost ${fS(startBest.total)}`} accent={C.brass} />}
+            </div>}
+          </> : <>
+            <div style={{ fontFamily: SANS, fontSize: 17, fontWeight: 700, color: C.text, lineHeight: 1.35 }}>Best capital stack: <span style={{ borderBottom: `3px solid ${OPT_COLORS[recIdx]}` }}>{lead.opt.name}</span> — {pct1(lead.irr == null ? null : lead.irr * 100)} levered IRR vs {pct1(lead.irrUnlev == null ? null : lead.irrUnlev * 100)} unlevered.</div>
+            <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.5 }}>{describeOption(lead.opt, inp, prj)}</div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 14 }}>
+              <Kpi label="Cash you must bring" value={fS(lead.cashNeeded)} sub={`you have ${fS(inp.cashAvailable)}`} accent={lead.cashOk ? C.pos : C.neg} />
+              <Kpi label="Monthly instalment" value={fSAR(lead.monthlyPayment)} sub={`${lead.dbr.toFixed(0)}% of income · cap ${inp.dbrCap}%`} accent={lead.affordable ? C.text : C.neg} />
+              <Kpi label="Total profit paid to banks" value={fS(lead.totalInterest)} sub={`${fS(lead.mortgageInterest)} mortgage + ${fS(lead.plInterestTotal)} personal loan`} />
+              <Kpi label={`NPV @ ${inp.discountRate}%`} value={fS(lead.npv)} sub={`equity multiple ${lead.moic ? lead.moic.toFixed(2) + "×" : "—"}`} accent={lead.npv >= 0 ? C.pos : C.neg} />
+            </div>
+          </>}
+          {blockers.length > 0 && <div style={{ marginTop: 14, borderTop: `1px dashed ${C.line}`, paddingTop: 10 }}>
+            <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.sub, marginBottom: 6 }}>Watch out for</div>
+            {blockers.map((b, k) => <div key={k} className="flex items-start" style={{ gap: 8, fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5, marginBottom: 4 }}><AlertTriangle size={14} color={b.warn ? C.neg : C.brass} style={{ flex: "none", marginTop: 3 }} /><span>{b.text}</span></div>)}
+          </div>}
+          <div className="flex flex-wrap" style={{ gap: 14, marginTop: 12, fontFamily: SANS, fontSize: 11.5, color: C.sub }}>
+            <span>All-in cost <b style={{ fontFamily: MONO, color: C.text }}>{fS(prj.total)}</b></span>
+            <span>Value at completion <b style={{ fontFamily: MONO, color: C.text }}>{fS(prj.value0)}</b></span>
+            {home && <span>Debt-burden room today <b style={{ fontFamily: MONO, color: household.dbrRoom > 0 ? C.text : C.neg }}>{fSAR(household.dbrRoom)}/mo</b></span>}
+            {home && <span>Monthly savings today <b style={{ fontFamily: MONO, color: household.savings >= 0 ? C.text : C.neg }}>{fSAR(household.savings)}</b></span>}
+          </div>
+        </div>
+      );
+
+      /* ---------- step panels ---------- */
+      const StepYou = () => (
+        <div>
+          <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "you") + 1} · ${home ? "You" : "Letting & you"}`} title={home ? "Income, spending, cash — and the loans you already carry" : "What the property earns, and what the bank sees"}
+            sub={home ? "Every new facility passes one test: all monthly instalments (old loans + new) ÷ income must stay under the bank's cap. Existing loans therefore decide how much you can borrow. The two loans below are examples — replace them with yours." : "Rent, vacancy and management set the property's income; your income and cash set what the bank will lend."} />
+          <div className={home ? "two-col" : "grid"} style={home ? null : { gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 16 }}>
+            {home ? <>
+              <Card n="A" title="Household">
+                <Slider label="Monthly income (bank-recognised)" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} />
+                <Slider label="Living expenses (excl. rent & loans)" value={inp.livingExpenses} min={3000} max={80000} step={500} unit="SAR/mo" onChange={(v) => set("livingExpenses", v)} />
+                <Slider label="Rent you pay today" value={inp.rentNow} min={0} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint="paid while building. Set 0 if you live in your own home — the comparison then becomes 'don't build'" />
+                <Slider label="Cash you have today" value={inp.cashAvailable} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
+                <Slider label="Cash buffer you want to keep" value={inp.cashBuffer} min={0} max={1000000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="dipping below is flagged; going negative makes a strategy non-executable" />
+                <Slider label="Property you already own — market value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint={inp.ownedValue > 0 ? `banks would lend up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} against it` : "0 if none"} />
+                <Adv title="Advanced: bank rules, rent growth, rate quoting">
+                  <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} hint="SAMA responsible-lending norm: 55% (65% for higher incomes)" />
+                  <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
+                  <Slider label="LTV banks lend against your existing property" value={inp.ownedLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("ownedLtv", v)} />
+                  <Slider label="Cash-out LTV on the finished home" value={inp.cashoutLtv} min={40} max={90} step={5} unit="% of value" onChange={(v) => set("cashoutLtv", v)} hint="mortgage raised against an owned, completed home" />
+                  <Slider label="Bank ceiling on one personal loan" value={inp.plCap} min={100000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("plCap", v)} />
+                  <Slider label="Early-settlement fee" value={inp.settleFeeMonths} min={0} max={3} step={1} unit="months' profit" onChange={(v) => set("settleFeeMonths", v)} hint="SAMA cap: the next 3 months' term cost" />
+                  <Select label="Rates of NEW facilities are entered as" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "APR — reducing balance"], ["flat", "Flat 'hamish' % per year (KSA bank quotes)"]]} />
+                </Adv>
+              </Card>
+              <Card n="B" title="Existing loans (as the bank sees them)">
+                <LoanTable loans={inp.existingLoans} onChange={(l) => set("existingLoans", l)} income={inp.income} dbrCap={inp.dbrCap} />
+                <Note>Untick "May settle?" to protect cheap debt from early settlement. "Settle in month" plans a settlement from cash on a date you choose, in every strategy.</Note>
+              </Card>
+            </> : <>
+              <Card n="A" title="Letting">
+                <Slider label="Rent achievable" value={inp.rentMo} min={2000} max={60000} step={500} unit="SAR/mo" onChange={(v) => set("rentMo", v)} hint={`gross yield ${pct1(inp.rentMo * 12 / prj.total * 100)} on all-in cost`} />
+                <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
+                <Slider label="Vacancy & collection loss" value={inp.vacancyPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("vacancyPct", v)} />
+                <Adv title="Advanced: management, zakat">
+                  <Slider label="Property management" value={inp.mgmtPct} min={0} max={15} step={0.5} unit="% of rent" onChange={(v) => set("mgmtPct", v)} />
+                  <Slider label="Zakat on net rent" value={inp.zakatPct} min={0} max={2.5} step={0.5} unit="%" onChange={(v) => set("zakatPct", v)} hint="individuals: usually 0 unless held for trade" />
+                </Adv>
+              </Card>
+              <Card n="B" title="You (for the bank's tests)">
+                <Slider label="Your monthly income" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} hint="for the bank's debt-burden test" />
+                <Slider label="Cash you can commit" value={inp.cashAvailable} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
+                <Adv title="Advanced: debt-burden cap, rate quoting">
+                  <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} />
+                  <Select label="Rates of new facilities are entered as" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "APR — reducing balance"], ["flat", "Flat 'hamish' % per year"]]} />
+                </Adv>
+              </Card>
+            </>}
+          </div>
+        </div>
+      );
+
+      const StepHome = () => (
+        <div>
+          <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "home") + 1} · ${build ? "The home" : "The property"}`} title={build ? "Land, construction & timing" : "Property purchase"}
+            sub="Defaults describe a mid-size Riyadh villa. All amounts in SAR. Taxes follow KSA rules: 15% VAT on construction & finishing (land is VAT-exempt), 5% RETT with first-home relief on the first 1M SAR — all under Advanced."
+            meta={<div className="flex items-center no-print" style={{ gap: 8 }}><span style={{ fontFamily: SANS, fontSize: 11, color: C.sub, textTransform: "uppercase", letterSpacing: "0.06em" }}>Acquire</span><Toggle value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land & build"], ["buy", "Buy ready"]]} /></div>} />
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 16 }}>
+            <Card n="A" title={build ? "Land & construction" : "Purchase"}>
+              {build ? <>
+                <Slider label="Land area" value={inp.landArea} min={200} max={2000} step={25} unit="m²" onChange={(v) => set("landArea", v)} />
+                <Slider label="Land price" value={inp.landPrice} min={500} max={12000} step={100} unit="SAR/m²" onChange={(v) => set("landPrice", v)} hint={`land ${fS(prj.land)}`} />
+                <Slider label="Built-up area as % of land" value={inp.builtPct} min={0} max={300} step={5} unit="%" onChange={(v) => set("builtPct", v)} hint={inp.builtPct > 0 ? `= ${Math.round(prj.builtArea)} m² total building area · set 0 to enter m² directly` : "0 = enter the area directly below"} />
+                {inp.builtPct === 0 && <Slider label="Built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
+                <Slider label="Construction cost (turnkey)" value={inp.buildCost} min={1200} max={6000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`structure + finishing ${fS(prj.hard)} before VAT`} />
+                <Slider label="Construction duration" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} hint={home ? "you keep paying rent until you move in" : "no rental income until complete"} />
+                <Adv title="Advanced: design & permits, contingency, extras, inflation, value uplift, VAT & RETT">
                   <Slider label="Design, permits & supervision" value={inp.softPct} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("softPct", v)} />
                   <Slider label="Contingency" value={inp.contPct} min={0} max={25} step={1} unit="%" onChange={(v) => set("contPct", v)} hint="overruns are the norm — keep ≥ 5%" />
                   <Slider label="Extras: kitchen, AC, landscape" value={inp.finishExtra} min={0} max={600000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
-                  <Slider label="Construction duration" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} hint={home ? "you keep paying rent until you move in" : "no rental income until complete"} />
-                  <div className="subhead">Timing</div>
-                  <Slider label="Buy the land in month" value={inp.landMonth} min={0} max={72} step={1} unit="" onChange={(v) => { set("landMonth", v); if (inp.buildStart < v) set("buildStart", v); }} hint={`${fCal(inp.landMonth)} · land priced at today's value grown ${inp.appreciation}%/yr`} />
-                  <Slider label="Start construction in month" value={Math.max(inp.buildStart, inp.landMonth)} min={0} max={72} step={1} unit="" onChange={(v) => set("buildStart", Math.max(v, inp.landMonth))} hint={`${fCal(Math.max(inp.buildStart, inp.landMonth))} → move in ${fCal(prj.occupy)}${prj.inflate > 1 ? ` · construction +${((prj.inflate - 1) * 100).toFixed(0)}% vs today` : ""}`} />
                   <Slider label="Construction-cost inflation" value={inp.costInflation} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("costInflation", v)} />
                   <Slider label="Value uplift of self-build" value={inp.devMarginPct} min={-10} max={30} step={1} unit="%" onChange={(v) => set("devMarginPct", v)} hint="finished home's market value vs. land + construction cost" />
-                </> : <>
-                  <Slider label="Purchase price" value={inp.propertyPrice} min={500000} max={10000000} step={50000} unit="SAR" onChange={(v) => set("propertyPrice", v)} />
+                  <Slider label="VAT" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} />
+                  <Slider label="RETT" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
+                  {home && <Check checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home RETT relief (state bears RETT on the first ${fS(inp.rettExemptCap)})`} />}
+                </Adv>
+              </> : <>
+                <Slider label="Purchase price" value={inp.propertyPrice} min={500000} max={10000000} step={50000} unit="SAR" onChange={(v) => set("propertyPrice", v)} />
+                <Slider label="Finishing / furnishing" value={inp.finishExtra} min={0} max={600000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
+                <Slider label="Buy in month" value={inp.landMonth} min={0} max={72} step={1} unit="" onChange={(v) => { set("landMonth", v); if (inp.buildStart < v) set("buildStart", v); }} hint={`${fCal(inp.landMonth)} · price grown ${inp.appreciation}%/yr until then`} />
+                <Adv title="Advanced: broker, VAT & RETT">
                   <Slider label="Broker fee" value={inp.brokerPct} min={0} max={5} step={0.5} unit="%" onChange={(v) => set("brokerPct", v)} />
-                  <Slider label="Finishing / furnishing" value={inp.finishExtra} min={0} max={600000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
-                </>}
-                <Slider label="RETT" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
-                {home && <Check checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home RETT relief (state bears RETT on the first ${fS(inp.rettExemptCap)})`} />}
-                <Slider label="VAT" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} />
-              </Card>
-              <Card n="B" title="Market, horizon & holding costs">
+                  <Slider label="VAT" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} />
+                  <Slider label="RETT" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
+                  {home && <Check checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home RETT relief (state bears RETT on the first ${fS(inp.rettExemptCap)})`} />}
+                </Adv>
+              </>}
+            </Card>
+            <div className="grid" style={{ gap: 16, alignContent: "start" }}>
+              {build && <Card n="B" title="Timing">
+                <Slider label="Buy the land in month" value={inp.landMonth} min={0} max={72} step={1} unit="" onChange={(v) => { set("landMonth", v); if (inp.buildStart < v) set("buildStart", v); }} hint={`${fCal(inp.landMonth)} · land priced at today's value grown ${inp.appreciation}%/yr`} />
+                <Slider label="Start construction in month" value={Math.max(inp.buildStart, inp.landMonth)} min={0} max={72} step={1} unit="" onChange={(v) => set("buildStart", Math.max(v, inp.landMonth))} hint={`${fCal(Math.max(inp.buildStart, inp.landMonth))} → move in ${fCal(prj.occupy)}${prj.inflate > 1 ? ` · construction +${((prj.inflate - 1) * 100).toFixed(0)}% vs today` : ""}`} />
+                {home && <Note>Not sure when? Step 5 ("When to start") tests every start date for you.</Note>}
+              </Card>}
+              <Card n={build ? "C" : "B"} title="Market & horizon">
                 <Slider label="Property appreciation" value={inp.appreciation} min={-5} max={12} step={0.5} unit="%/yr" onChange={(v) => set("appreciation", v)} />
                 {home ? <Slider label="Analysis horizon" value={inp.horizon} min={5} max={30} step={1} unit="yrs" onChange={(v) => set("horizon", v)} />
                       : <Slider label="Exit (sale) year" value={inp.exitYear} min={3} max={30} step={1} unit="yrs" onChange={(v) => set("exitYear", v)} />}
-                <Slider label="Return your cash earns" value={inp.altReturn} min={0} max={15} step={0.5} unit="%/yr" onChange={(v) => set("altReturn", v)} hint="on cash balances (sukuk / funds / business); the renter's cash earns the same" />
-                <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} />
-                <Slider label="Selling costs at exit" value={inp.sellCostPct} min={0} max={12} step={0.5} unit="%" onChange={(v) => set("sellCostPct", v)} hint="5% RETT (seller) + ~2.5% broker" />
-                <Slider label="Maintenance" value={inp.maintPct} min={0} max={3} step={0.1} unit="% value/yr" onChange={(v) => set("maintPct", v)} />
-                <Slider label="Insurance & fees" value={inp.insurance} min={0} max={20000} step={500} unit="SAR/yr" onChange={(v) => set("insurance", v)} />
-                {home && <Slider label="Cash-out LTV banks allow" value={inp.cashoutLtv} min={40} max={90} step={5} unit="% of value" onChange={(v) => set("cashoutLtv", v)} hint="mortgage raised against an owned, completed home" />}
-                {home && <Slider label="Early-settlement fee" value={inp.settleFeeMonths} min={0} max={3} step={1} unit="months' profit" onChange={(v) => set("settleFeeMonths", v)} hint="SAMA cap: the next 3 months' term cost" />}
-              </Card>
-              {!home && (
-                <Card n="C" title="Letting assumptions">
-                  <Slider label="Rent achievable" value={inp.rentMo} min={2000} max={60000} step={500} unit="SAR/mo" onChange={(v) => set("rentMo", v)} hint={`gross yield ${pct1(inp.rentMo * 12 / prj.total * 100)} on all-in cost`} />
-                  <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
-                  <Slider label="Vacancy & collection loss" value={inp.vacancyPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("vacancyPct", v)} />
-                  <Slider label="Property management" value={inp.mgmtPct} min={0} max={15} step={0.5} unit="% of rent" onChange={(v) => set("mgmtPct", v)} />
-                  <Slider label="Zakat on net rent" value={inp.zakatPct} min={0} max={2.5} step={0.5} unit="%" onChange={(v) => set("zakatPct", v)} hint="individuals: usually 0 unless held for trade" />
-                  <Select label="Rates of new facilities are entered as" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "APR — reducing balance"], ["flat", "Flat 'hamish' % per year"]]} />
-                  <Slider label="Your monthly income" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} hint="for the bank's debt-burden test" />
-                  <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} />
-                  <Slider label="Cash you can commit" value={inp.cashAvailable} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
-                </Card>
-              )}
-              <Card n={home ? "C" : "D"} title="Cost build-up">
-                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
-                  <tbody>
-                    {costRows.map(([l, v]) => <tr key={l}><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub, whiteSpace: "normal" }}>{l}</td><td style={td}>{fSAR(v)}</td></tr>)}
-                    <tr style={{ background: "#F3EFE6" }}><td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 700 }}>All-in project cost</td><td style={{ ...td, fontWeight: 700 }}>{fSAR(prj.total)}</td></tr>
-                    <tr><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub }}>Market value at completion</td><td style={{ ...td, color: prj.value0 >= prj.total ? C.pos : C.neg }}>{fSAR(prj.value0)}</td></tr>
-                  </tbody>
-                </table>
-                <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 10, lineHeight: 1.5 }}>Spend timing: {build ? `land + RETT at month 0, construction evenly over ${prj.bm} months, extras at completion.` : "everything at month 0."} {home ? "Your cash pays first; a construction mortgage is drawn only after your share is spent." : "The mortgage is drawn only after your cash and any personal loan are spent."}</div>
+                <Adv title="Advanced: return on cash, discount rate, selling costs, upkeep">
+                  <Slider label="Return your cash earns" value={inp.altReturn} min={0} max={15} step={0.5} unit="%/yr" onChange={(v) => set("altReturn", v)} hint="on cash balances (sukuk / funds / business); the renter's cash earns the same" />
+                  <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} />
+                  <Slider label="Selling costs at exit" value={inp.sellCostPct} min={0} max={12} step={0.5} unit="%" onChange={(v) => set("sellCostPct", v)} hint="5% RETT (seller) + ~2.5% broker" />
+                  <Slider label="Maintenance" value={inp.maintPct} min={0} max={3} step={0.1} unit="% value/yr" onChange={(v) => set("maintPct", v)} />
+                  <Slider label="Insurance & fees" value={inp.insurance} min={0} max={20000} step={500} unit="SAR/yr" onChange={(v) => set("insurance", v)} />
+                </Adv>
               </Card>
             </div>
+            <Card n={build ? "D" : "C"} title="Cost build-up">
+              <table className="tbl" style={{ fontFamily: MONO, fontSize: 12.5 }}>
+                <tbody>
+                  {costRows.map(([l, v]) => <tr key={l}><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub, whiteSpace: "normal", paddingLeft: 0 }}>{l}</td><td style={{ ...td, paddingRight: 0 }}>{fSAR(v)}</td></tr>)}
+                  <tr style={{ background: SOFT }}><td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 700 }}>All-in project cost</td><td style={{ ...td, fontWeight: 700 }}>{fSAR(prj.total)}</td></tr>
+                  <tr><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub, paddingLeft: 0 }}>Market value at completion</td><td style={{ ...td, color: prj.value0 >= prj.total ? C.pos : C.neg, paddingRight: 0 }}>{fSAR(prj.value0)}</td></tr>
+                  {build && <tr><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub, paddingLeft: 0 }}>Cost per m² built (excl. land)</td><td style={{ ...td, paddingRight: 0 }}>{fSAR(prj.costPerSqm)}</td></tr>}
+                </tbody>
+              </table>
+              <Note>Spend timing: {build ? `land + RETT in ${fCal(prj.landMonth)}, construction evenly over ${prj.bm} months from ${fCal(prj.start)}, extras at completion (${fCal(prj.occupy)}).` : `everything in ${fCal(prj.landMonth)}.`} {home ? "Your cash pays first; a construction mortgage is drawn only after your share is spent." : "The mortgage is drawn only after your cash and any personal loan are spent."}</Note>
+            </Card>
+          </div>
+        </div>
+      );
 
-            {/* 01b you & loans (home) */}
-            {home && <>
-              <SectionHeader id="you" eyebrow="02 · You" title="Income, spending, cash — and the loans you already carry" sub="The bank's test on every new facility: all monthly instalments (old loans + new) ÷ income must stay under the debt-burden cap. Existing loans therefore decide how much you can borrow, and settling them early (at a fee) is sometimes the price of a mortgage. The two loans below are EXAMPLES — replace them with yours or import from Qist." />
-              <div className="grid" style={{ gridTemplateColumns: "minmax(290px, 1fr) minmax(420px, 2fr)", gap: 16, marginBottom: 34 }}>
-                <Card n="D" title="Household">
-                  <Select label="Rates of NEW facilities are entered as" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "APR — reducing balance"], ["flat", "Flat 'hamish' % per year (KSA bank quotes)"]]} />
-                  <Slider label="Monthly income (bank-recognised)" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} />
-                  <Slider label="Living expenses (excl. rent & loans)" value={inp.livingExpenses} min={3000} max={80000} step={500} unit="SAR/mo" onChange={(v) => set("livingExpenses", v)} />
-                  <Slider label="Rent of an equivalent home today" value={inp.rentNow} min={0} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint="paid while building; the baseline keeps paying it. Set 0 if you live in your own home — the baseline then becomes 'don't build'" />
-                  <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
-                  <Slider label="Cash you have today" value={inp.cashAvailable} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
-                  <Slider label="Cash buffer you want to keep" value={inp.cashBuffer} min={0} max={1000000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="dipping below is flagged; going negative makes a strategy non-executable" />
-                  <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} hint="SAMA responsible-lending norm: 55% (65% for higher incomes)" />
-                  <Slider label="Bank ceiling on one personal loan" value={inp.plCap} min={100000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("plCap", v)} />
-                  <div className="subhead">Property you already own</div>
-                  <Slider label="Market value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint="0 if none. Its value is the same in every strategy and in the renter path, so only the debt raised against it is counted" />
-                  <Slider label="LTV banks lend against it" value={inp.ownedLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("ownedLtv", v)} hint={`up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} of equity release`} />
-                </Card>
-                <Card n="E" title="Existing loans (as the bank sees them) — untick 'May settle?' to protect cheap debt">
-                  <LoanTable loans={inp.existingLoans} onChange={(l) => set("existingLoans", l)} income={inp.income} dbrCap={inp.dbrCap} />
-                </Card>
+      const StepFin = () => (
+        <div>
+          <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "fin") + 1} · Financing`} title={home ? "Four ways to sequence the financing" : "Four ways to fund it"}
+            sub={home ? "Each strategy is a sequence: cash, a mortgage on the property you already own, a personal loan, the new home's mortgage (at the start or as a cash-out at completion) and what happens to your existing loans. Every facility is sized down to what the bank's debt-burden and LTV tests allow. Pick a preset or press Edit to change the order and terms."
+                      : "Each option is a capital stack: own cash first, then a personal loan (unsecured, short, repaid from month 1), and a mortgage for the remainder — drawn in stages during construction with profit accruing in the grace period."} />
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 14, alignItems: "start" }}>
+            {home ? inp.plans.map((o, i) => <React.Fragment key={i}>{PlanCard({ o, i })}</React.Fragment>) : inp.options.map((o, i) => <React.Fragment key={i}>{OptionCard({ o, i })}</React.Fragment>)}
+          </div>
+        </div>
+      );
+
+      const rows = home ? homeRows : rentalRows;
+      const visRows = allRows ? rows : rows.filter((r) => r[4]);
+      const FocusPicker = () => <div className="flex flex-wrap no-print" style={{ gap: 6 }}>{liveIdx.map((i) => <button key={i} onClick={() => setFocus(i)} style={{ ...btn(focusIdx === i ? OPT_COLORS[i] : "transparent", focusIdx === i ? "#fff" : C.sub, focusIdx === i ? OPT_COLORS[i] : C.line), fontSize: 11.5, padding: "5px 10px" }}>{home ? "Strategy" : "Option"} {i + 1}</button>)}</div>;
+
+      const StepRes = () => (
+        <div>
+          <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "res") + 1} · Results`} title={home ? "Which sequence works, and which leaves you wealthiest?" : "Which capital stack earns the most?"}
+            sub={home ? `Ranked by net worth at year ${inp.horizon} (cash + home after selling costs − all debt) against ${renting ? "a renter with the same income who keeps the cash invested" : "not building at all: same income, same old loans, cash kept invested"} at ${inp.altReturn}%. A strategy whose cash goes negative is not executable, however good its end result looks.`
+                      : "Ranked by levered IRR on the cash you actually put in. Unlevered IRR is the property's own return and is the same for every stack; the difference is what the debt adds or destroys."} />
+          {/* comparison table */}
+          <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
+            <div className="scroll-x">
+              <table className="tbl" style={{ fontFamily: MONO, fontSize: 12.5 }}>
+                <thead><tr><th style={{ ...th, textAlign: "left" }}>Metric</th>{liveIdx.map((i) => <th key={i} style={{ ...th, borderTop: `4px solid ${OPT_COLORS[i]}`, whiteSpace: "normal", minWidth: 150 }}>{nameOf(m.results[i])}{m.results[i] === lead && <span style={{ color: C.brassLt }}> ★</span>}</th>)}</tr></thead>
+                <tbody>
+                  {visRows.map(([label, fn, colorFn, head]) => (
+                    <tr key={label} style={{ background: head ? SOFT : "transparent" }}>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: head ? 700 : 400, whiteSpace: "normal", maxWidth: 320, minWidth: 160 }}>{label}</td>
+                      {liveIdx.map((i) => { const r = m.results[i]; return <td key={i} style={{ ...td, fontWeight: head ? 700 : 400, color: colorFn ? colorFn(r) : C.text, whiteSpace: "normal" }}>{fn(r)}</td>; })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between no-print" style={{ padding: "8px 14px", borderTop: `1px solid ${C.line}` }}>
+              <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>{allRows ? `All ${rows.length} rows` : `${visRows.length} key rows of ${rows.length}`}</span>
+              <button onClick={() => setAllRows(!allRows)} style={{ ...btn("transparent", C.brass, C.line), fontSize: 11.5, padding: "4px 10px" }}>{allRows ? "Show key rows only" : "Show all rows"}</button>
+            </div>
+          </div>
+
+          {/* hero chart */}
+          {home ? LineChartBox({ title: "Your cash balance · year-end · SAR", keyPrefix: "cash", height: 300,
+              extra: <ReferenceLine y={inp.cashBuffer} stroke={C.brass} strokeDasharray="4 4" label={{ value: "your buffer", fontFamily: SANS, fontSize: 11, fill: C.sub, position: "insideTopRight" }} />,
+              note: "The decisive chart: a line that crosses zero is a plan you cannot execute. Year-end values — the low point inside the construction year can be lower; see 'Cash low point' in the table." })
+            : <Panel title="Capital stack per option · SAR">
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={stackData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} barCategoryGap="30%">
+                    <CartesianGrid stroke={C.line} vertical={false} />
+                    <XAxis dataKey="name" tick={axisS} interval={0} tickLine={false} axisLine={{ stroke: C.line }} />
+                    <YAxis tick={axisT} tickFormatter={fS} tickLine={false} axisLine={false} width={56} />
+                    <Tooltip formatter={(v) => fSAR(v)} labelFormatter={(l, pl) => pl && pl[0] ? pl[0].payload.full : l} contentStyle={tipStyle} cursor={{ fill: SOFT }} />
+                    <Legend wrapperStyle={legendStyle} />
+                    <Bar dataKey="Own cash" stackId="s" fill="#1F9A80" stroke={C.paper} strokeWidth={2} maxBarSize={48} /><Bar dataKey="Personal loan" stackId="s" fill="#A24FB8" stroke={C.paper} strokeWidth={2} maxBarSize={48} /><Bar dataKey="Mortgage" stackId="s" fill="#2F6DB5" stroke={C.paper} strokeWidth={2} radius={[4, 4, 0, 0]} maxBarSize={48} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Panel>}
+
+          <Adv title={home ? "More charts: debt outstanding · monthly instalments · net worth" : "More charts: instalments · annual cash flow · debt outstanding"}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16, padding: "6px 0" }}>
+              {home ? <>
+                {LineChartBox({ title: "Total debt outstanding · SAR", keyPrefix: "debt", height: 240, note: "old loans + property mortgages + personal loan" })}
+                {LineChartBox({ title: "Monthly instalments, all debt · SAR/mo (annual average)", keyPrefix: "inst", height: 240, extra: <ReferenceLine y={inp.income * inp.dbrCap / 100} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% of income`, fontFamily: SANS, fontSize: 11, fill: C.sub, position: "insideTopRight" }} /> })}
+                {LineChartBox({ title: `Net worth · cash + home (after selling costs) − debt`, keyPrefix: "nw", height: 240, extra: <Line dataKey="renter" name={renting ? "Keep renting" : "Don't build"} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
+              </> : <>
+                {LineChartBox({ title: "Monthly instalments + upkeep · SAR/mo (annual average)", keyPrefix: "out", height: 240 })}
+                <Panel title="Annual cash flow after debt service · SAR">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={yearSeries} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                      <CartesianGrid stroke={C.line} vertical={false} />
+                      <XAxis dataKey="year" tick={axisS} tickLine={false} axisLine={{ stroke: C.line }} />
+                      <YAxis tick={axisT} tickFormatter={fS} tickLine={false} axisLine={false} width={56} />
+                      <Tooltip formatter={(v) => fSAR(v)} contentStyle={tipStyle} cursor={{ fill: SOFT }} />
+                      <Legend wrapperStyle={legendStyle} />
+                      <ReferenceLine y={0} stroke={C.sub} />
+                      {liveIdx.map((i) => <Bar key={i} dataKey={`cf${i}`} name={m.results[i].opt.name} fill={OPT_COLORS[i]} maxBarSize={24} radius={[3, 3, 0, 0]} />)}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Panel>
+                {LineChartBox({ title: "Debt outstanding · SAR", keyPrefix: "bal", height: 240 })}
+              </>}
+            </div>
+          </Adv>
+
+          {/* timeline */}
+          {focusRes && <div style={{ marginTop: 26 }}>
+            <SectionHeader eyebrow="Step by step" title={`${nameOf(focusRes)} — ${home ? "what happens, in order" : "year by year"}`}
+              sub={home ? "Every bank decision, settlement and milestone in order." : "Y0 is the signing month. Instalments include the personal loan. Values are cash actually moving in the year."}
+              meta={<FocusPicker />} />
+            {home && (
+              <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 16px", marginBottom: 14 }}>
+                <EvRow t="M0 · today" kind="cash">Start with <b>{fS(inp.cashAvailable)}</b> cash, income {fSAR(inp.income)}/mo, existing instalments {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income).</EvRow>
+                {focusRes.events.map((e, k) => <EvRow key={k} t={fMon(e.t)} kind={e.kind}>{e.text}</EvRow>)}
+                <EvRow t={fMon(focusRes.minCashT)} kind="cash">Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</EvRow>
+                {focusRes.debtFreeT != null && <EvRow t={fMon(focusRes.debtFreeT)} kind="end">Debt-free.</EvRow>}
+                <EvRow t={`Y${inp.horizon}`} kind="end" last>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.endValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>.</EvRow>
               </div>
-            </>}
-
-            {/* 02/03 financing */}
-            {home ? (
-              <SectionHeader id="financing" eyebrow="03 · Strategies" title="Four ways to sequence the financing"
-                sub="Each strategy is a timeline: what you pay in cash, whether and when you mortgage the property you already own, when a personal loan is taken, when the new home's mortgage is taken (a construction mortgage at the start, or a cash-out against the finished home), and what happens to your existing loans. Every facility is sized down to what the bank's debt-burden and LTV tests allow, and the red flags tell you why."
-                meta={<div className="no-print" style={{ fontFamily: SANS, fontSize: 11, color: C.sub, maxWidth: 320, textAlign: "right" }}>Presets: mortgage-first then personal loan or existing-property mortgage; refinance old loans against your property first; cash + personal loan then cash-out; settle-all-first; all cash</div>} />
-            ) : (
-              <SectionHeader id="financing" eyebrow="02 · Financing options" title="Four ways to fund it — mix cash, personal loans and a mortgage"
-                sub="Each column is a capital stack. Own cash goes in first, then the personal loan (unsecured, short, repaid from month 1), and the mortgage covers the remainder — drawn in stages during construction with profit accruing in the grace period." />
             )}
-            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", gap: 14, marginBottom: 20 }}>
-              {home ? inp.plans.map((o, i) => <React.Fragment key={i}>{PlanCard({ o, i })}</React.Fragment>) : inp.options.map((o, i) => <React.Fragment key={i}>{OptionCard({ o, i })}</React.Fragment>)}
-            </div>
-
-            {/* compare */}
-            <SectionHeader id="compare" eyebrow={home ? "04 · Side by side" : "03 · Side by side"} title={home ? "Which sequence works, and which leaves you wealthiest?" : "Which capital stack earns the most?"}
-              sub={home ? `Strategies are ranked by net worth at year ${inp.horizon} (cash + home after selling costs − all debt) against ${renting ? "a renter with the same income who keeps the cash invested" : "not building at all: same income, same old loans, cash kept invested"} at ${inp.altReturn}%. A strategy whose cash goes negative is not executable, however good its end result looks.`
-                        : "Ranked by levered IRR on the cash you actually put in. Unlevered IRR is the property's own return and is the same for every stack; the difference is what the debt adds or destroys."} />
-            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 18 }}>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
-                  <thead><tr><th style={{ ...th, textAlign: "left" }}>Metric</th>{liveIdx.map((i) => <th key={i} style={{ ...th, borderTop: `4px solid ${OPT_COLORS[i]}`, whiteSpace: "normal", minWidth: 150 }}>{nameOf(m.results[i])}{m.ranked[0] === m.results[i] && <span style={{ color: C.brassLt }}> ★</span>}</th>)}</tr></thead>
+            <Adv title="Year-by-year table" open={!home}>
+              <div className="scroll-x" style={{ margin: "4px 0 6px" }}>
+                <table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
+                  <thead><tr><th style={{ ...th, textAlign: "left" }}>Line</th>{focusRes.years.map((y) => <th key={y.year} style={th}>{y.label}</th>)}</tr></thead>
                   <tbody>
-                    {(home ? homeRows : rentalRows).map(([label, fn, colorFn, head]) => (
-                      <tr key={label} style={{ background: head ? "#F3EFE6" : "transparent" }}>
-                        <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: head ? 700 : 400, whiteSpace: "normal", maxWidth: 320 }}>{label}</td>
-                        {liveIdx.map((i) => { const r = m.results[i]; return <td key={i} style={{ ...td, fontWeight: head ? 700 : 400, color: colorFn ? colorFn(r) : C.text, whiteSpace: "normal" }}>{fn(r)}</td>; })}
+                    {(home ? [
+                      ["Project spend", "spend", "neg"], ["  of which from your cash", "eq", "sub"], ["Rent paid while building", "rentPaid", "neg"],
+                      ["Existing-loan instalments", "existInst", "neg"], ["Existing-property mortgage instalments", "eqPay", "neg"], ["Personal-loan instalments", "plPay", "neg"], ["New-home mortgage instalments", "mgPay", "neg"], ["  of which profit (all debt)", "interest", "sub"],
+                      ["Maintenance & insurance", "ownerCost", "neg"],
+                      ["Cash balance (year-end)", "cash", "head"], ["Debt outstanding (year-end)", "debt", "plain"], ["  new-home mortgage", "debtMortgage", "sub"], ["  existing-property mortgage", "debtEq", "sub"], ["  personal loan", "debtPL", "sub"], ["  existing loans", "debtExisting", "sub"],
+                      ["Home value", "value", "plain"], ["Net worth", "netWorth", "head"], [renting ? "Renter's net worth" : "Net worth if you don't build", "renterNW", "plain"], [`Advantage vs ${baseLbl}`, "advantage", "head"],
+                    ] : [
+                      ["Project spend", "spend", "neg"], ["  of which from own cash / personal loan", "eq", "sub"],
+                      ["Rent collected (net of vacancy & mgmt)", "rentIn", "head"], ["Maintenance & insurance", "opex", "neg"], ["Net operating income", "noi", "head"],
+                      ["Mortgage instalments", "mortgagePayment", "neg"], ["Personal-loan instalments", "plPayment", "neg"], ["  of which profit", "interest", "sub"],
+                      ["Cash flow after debt", "cf", "head"], ["Equity cash flow (incl. exit)", "lev", "head"], ["Debt outstanding (year-end)", "bal", "plain"], ["Property value", "value", "plain"], ["DSCR", "dscr", "ratio"],
+                    ]).map(([label, key, kind]) => (
+                      <tr key={key} style={{ background: kind === "head" ? SOFT : "transparent" }}>
+                        <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "sub" ? C.sub : C.text, paddingLeft: label.startsWith("  ") ? 26 : 14 }}>{label.trim()}</td>
+                        {focusRes.years.map((y) => { const v = y[key]; const neg = v < 0; return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: kind === "ratio" ? (v != null && v < 1.2 ? C.neg : C.text) : neg && (kind === "head" || kind === "plain") ? C.neg : kind === "neg" || kind === "sub" ? C.sub : C.text }}>{kind === "ratio" ? (v == null ? "—" : v.toFixed(2)) : kind === "neg" || (kind === "sub" && !["debtMortgage", "debtEq", "debtPL", "debtExisting"].includes(key)) ? (Math.abs(v) < 0.5 ? "–" : `(${fS(Math.abs(v))})`) : (Math.abs(v) < 0.5 && kind === "sub" ? "–" : fS(v))}</td>; })}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-
-            {home ? (
-              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 34 }}>
-                {LineChartBox({ title: "Your cash balance · year-end · SAR", keyPrefix: "cash", height: 280, extra: <ReferenceLine y={inp.cashBuffer} stroke={C.brass} strokeDasharray="4 4" label={{ value: "buffer", fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideTopRight" }} />, note: "The decisive chart: a line that crosses zero is a plan you cannot execute. Year-end values; the low point within the construction year can be lower — see the table." })}
-                {LineChartBox({ title: "Total debt outstanding (old loans + property mortgages + personal loan) · SAR", keyPrefix: "debt", height: 280 })}
-                {LineChartBox({ title: "Monthly instalments, all debt · SAR/mo (annual average)", keyPrefix: "inst", height: 260, extra: <ReferenceLine y={inp.income * inp.dbrCap / 100} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% of income`, fontFamily: SANS, fontSize: 11, fill: C.neg, position: "insideTopRight" }} /> })}
-                {LineChartBox({ title: `Net worth · cash + home (after selling costs) − debt · vs ${baseLbl}`, keyPrefix: "nw", height: 260, extra: <Line dataKey="renter" name={renting ? "Keep renting" : "Don't build"} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
-              </div>
-            ) : (
-              <>
-                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 16 }}>
-                  <Panel title="Capital stack per option · SAR">
-                    <ResponsiveContainer width="100%" height={240}>
-                      <BarChart data={stackData} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                        <XAxis dataKey="name" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} interval={0} />
-                        <YAxis tick={axisT} tickFormatter={fS} />
-                        <Tooltip formatter={(v) => fSAR(v)} labelFormatter={(l, pl) => pl && pl[0] ? pl[0].payload.full : l} contentStyle={tipStyle} />
-                        <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
-                        <Bar dataKey="Own cash" stackId="s" fill={C.pos} /><Bar dataKey="Personal loan" stackId="s" fill={C.neg} /><Bar dataKey="Mortgage" stackId="s" fill={C.ink2} radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Panel>
-                  {LineChartBox({ title: "Monthly instalments + upkeep per option · SAR/mo (annual average)", keyPrefix: "out", height: 240 })}
-                </div>
-                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 34 }}>
-                  <Panel title="Annual cash flow after debt service per option · SAR">
-                    <ResponsiveContainer width="100%" height={280}>
-                      <BarChart data={yearSeries} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
-                        <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} />
-                        <YAxis tick={axisT} tickFormatter={fS} />
-                        <Tooltip formatter={(v) => fSAR(v)} contentStyle={tipStyle} />
-                        <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
-                        <ReferenceLine y={0} stroke={C.sub} />
-                        {liveIdx.map((i) => <Bar key={i} dataKey={`cf${i}`} name={m.results[i].opt.name} fill={OPT_COLORS[i]} />)}
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Panel>
-                  {LineChartBox({ title: "Debt outstanding per option · SAR", keyPrefix: "bal", height: 280 })}
-                </div>
-              </>
-            )}
-
-            {/* detail / timeline */}
-            <SectionHeader id="detail" eyebrow={home ? "05 · Step by step" : "04 · Year by year"} title={focusRes ? `${nameOf(focusRes)} — ${home ? "what happens, month by month" : "annual schedule"}` : "Detail"}
-              sub={home ? "Every bank decision, settlement and milestone in order, then the year-by-year cash and debt picture." : "Y0 is the signing month. Instalments include the personal loan. Values are cash actually moving in the year."}
-              meta={<div className="flex no-print" style={{ gap: 6 }}>{liveIdx.map((i) => <button key={i} onClick={() => setFocus(i)} style={{ ...btn(focusIdx === i ? OPT_COLORS[i] : "transparent", focusIdx === i ? "#fff" : C.sub, focusIdx === i ? OPT_COLORS[i] : C.line), fontSize: 11.5, padding: "5px 10px" }}>{home ? "Strategy" : "Option"} {i + 1}</button>)}</div>} />
-            {focusRes && home && (
-              <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
-                <div className="ev" style={{ borderBottom: `1px solid ${C.line}` }}><span className="m">M0</span><span>Start with <b>{fS(inp.cashAvailable)}</b> cash, income {fSAR(inp.income)}/mo, existing instalments {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income).</span></div>
-                {focusRes.events.map((e, k) => <div key={k} className="ev"><span className="m">{fMon(e.t)}</span><span style={{ color: e.kind === "settle" ? C.neg : e.kind === "milestone" ? C.sub : C.text }}>{e.text}</span></div>)}
-                <div className="ev"><span className="m">{fMon(focusRes.minCashT)}</span><span>Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</span></div>
-                {focusRes.debtFreeT != null && <div className="ev"><span className="m">{fMon(focusRes.debtFreeT)}</span><span>Debt-free.</span></div>}
-                <div className="ev" style={{ borderBottom: "none" }}><span className="m">Y{inp.horizon}</span><span>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.endValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>.</span></div>
-              </div>
-            )}
-            {focusRes && (
-              <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 34 }}>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12 }}>
-                    <thead><tr><th style={{ ...th, textAlign: "left" }}>Line</th>{focusRes.years.map((y) => <th key={y.year} style={th}>{y.label}</th>)}</tr></thead>
-                    <tbody>
-                      {(home ? [
-                        ["Project spend", "spend", "neg"], ["  of which from your cash", "eq", "sub"], ["Rent paid while building", "rentPaid", "neg"],
-                        ["Existing-loan instalments", "existInst", "neg"], ["Existing-property mortgage instalments", "eqPay", "neg"], ["Personal-loan instalments", "plPay", "neg"], ["New-home mortgage instalments", "mgPay", "neg"], ["  of which profit (all debt)", "interest", "sub"],
-                        ["Maintenance & insurance", "ownerCost", "neg"],
-                        ["Cash balance (year-end)", "cash", "head"], ["Debt outstanding (year-end)", "debt", "plain"], ["  new-home mortgage", "debtMortgage", "sub"], ["  existing-property mortgage", "debtEq", "sub"], ["  personal loan", "debtPL", "sub"], ["  existing loans", "debtExisting", "sub"],
-                        ["Home value", "value", "plain"], ["Net worth", "netWorth", "head"], [renting ? "Renter's net worth" : "Net worth if you don't build", "renterNW", "plain"], [`Advantage vs ${baseLbl}`, "advantage", "head"],
-                      ] : [
-                        ["Project spend", "spend", "neg"], ["  of which from own cash / personal loan", "eq", "sub"],
-                        ["Rent collected (net of vacancy & mgmt)", "rentIn", "head"], ["Maintenance & insurance", "opex", "neg"], ["Net operating income", "noi", "head"],
-                        ["Mortgage instalments", "mortgagePayment", "neg"], ["Personal-loan instalments", "plPayment", "neg"], ["  of which profit", "interest", "sub"],
-                        ["Cash flow after debt", "cf", "head"], ["Equity cash flow (incl. exit)", "lev", "head"], ["Debt outstanding (year-end)", "bal", "plain"], ["Property value", "value", "plain"], ["DSCR", "dscr", "ratio"],
-                      ]).map(([label, key, kind]) => (
-                        <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
-                          <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "sub" ? C.sub : C.text, paddingLeft: label.startsWith("  ") ? 26 : 14 }}>{label.trim()}</td>
-                          {focusRes.years.map((y) => { const v = y[key]; const neg = v < 0; return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: kind === "ratio" ? (v != null && v < 1.2 ? C.neg : C.text) : neg && (kind === "head" || kind === "plain") ? C.neg : kind === "neg" || kind === "sub" ? C.sub : C.text }}>{kind === "ratio" ? (v == null ? "—" : v.toFixed(2)) : kind === "neg" || (kind === "sub" && !["debtMortgage", "debtEq", "debtPL", "debtExisting"].includes(key)) ? (Math.abs(v) < 0.5 ? "–" : `(${fS(Math.abs(v))})`) : (Math.abs(v) < 0.5 && kind === "sub" ? "–" : fS(v))}</td>; })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* when to start (home) */}
-            {home && sweep && focusRes && (<>
-              <SectionHeader id="timing" eyebrow="06 · When to start" title={`Best time to build — ${nameOf(focusRes)}`}
-                sub={`The same strategy run with construction starting every 3 months from now to 5 years out. Waiting lets loans run down (freeing debt-burden room and cash), but land grows ${inp.appreciation}%/yr and construction ${inp.costInflation}%/yr. The earliest start that is executable and keeps your ${fS(inp.cashBuffer)} buffer is marked ★; the last column shows what each start costs you in wealth at year ${inp.horizon}.`}
-                meta={<div className="flex items-center no-print" style={{ gap: 10 }}><span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>Land</span><Toggle value={landWithBuild ? "with" : "now"} onChange={(v) => setLandWithBuild(v === "with")} options={[["now", `Buy in month ${inp.landMonth}`], ["with", "Buy when building"]]} /></div>} />
-              <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 34 }}>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12 }}>
-                    <thead><tr>{["Start", "Move in", "Project cost", "Executable", "Cash low point", "Peak instalments", "Peak DBR", "New-home mortgage", "Existing-property mortgage", "Old loans settled", "Profit + fees on new debt", `Wealth vs ${baseLbl} @ Y${inp.horizon}`].map((h, i) => <th key={h} style={{ ...th, textAlign: i < 2 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
-                    <tbody>{sweep.rows.map((r) => { const best = sweep.best && sweep.best.delay === r.delay; return (
-                      <tr key={r.delay} style={{ background: best ? "#F3EFE6" : "transparent", fontWeight: best ? 700 : 400 }}>
-                        <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{best && <span style={{ color: C.brass }}>★ </span>}{fCal(r.delay)} <span style={{ color: C.sub, fontFamily: MONO }}>M{r.delay}</span></td>
-                        <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{fCal(r.occupy)}</td>
-                        <td style={td}>{fS(r.total)}</td>
-                        <td style={{ ...td, color: r.feasible ? C.pos : C.neg }}>{r.feasible ? "yes" : "NO"}</td>
-                        <td style={{ ...td, color: r.minCash < 0 ? C.neg : r.bufferOk ? C.text : C.brass }}>{fS(r.minCash)} <span style={{ color: C.sub }}>M{r.minCashT}</span></td>
-                        <td style={td}>{fSAR(r.peakInst)}</td>
-                        <td style={{ ...td, color: r.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text }}>{pct1(r.peakDbr)}</td>
-                        <td style={td}>{fS(r.mortgage)}</td><td style={td}>{fS(r.eq)}</td><td style={td}>{fS(r.settled)}</td>
-                        <td style={{ ...td, color: C.neg }}>{fS(r.newDebtInterest)}</td>
-                        <td style={{ ...td, color: r.advantage >= 0 ? C.pos : C.neg }}>{fS(r.advantage)}</td>
-                      </tr>); })}</tbody>
-                  </table>
-                </div>
-                <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub, padding: "10px 14px", lineHeight: 1.5 }}>
-                  {sweep.best ? <>Earliest workable start for this strategy: <b style={{ color: C.text }}>{fCal(sweep.best.delay)}</b> (move in {fCal(sweep.best.occupy)}), cash never below {fS(sweep.best.minCash)}, peak instalments {fSAR(sweep.best.peakInst)}/mo. Apply it with the "Start construction in month" slider in section 01.</> : "No start date makes this strategy executable — change the strategy, the project, or the land timing."}
-                </div>
-              </div>
-            </>)}
-
-            {/* sensitivity */}
-            <SectionHeader id="sensitivity" eyebrow={home ? "07 · What moves the answer" : "05 · What moves the answer"} title={focusRes ? `Sensitivity — ${nameOf(focusRes)}` : "Sensitivity"} sub={`Each driver flexed ±20% on its own. Bars show the change in ${home ? `wealth advantage vs ${baseLbl} (SAR)` : "levered IRR (percentage points)"}; the longest bar is the assumption to firm up first.`} />
-            <Panel style={{ marginBottom: 34 }}>
-              <ResponsiveContainer width="100%" height={46 * Math.max(1, tornado.length) + 30}>
-                <BarChart data={tornado} layout="vertical" margin={{ top: 0, right: 40, left: 10, bottom: 0 }} stackOffset="sign">
-                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} horizontal={false} />
-                  <XAxis type="number" tick={axisT} tickFormatter={(v) => home ? fS(v) : v.toFixed(1)} />
-                  <YAxis type="category" dataKey="label" width={210} tick={{ fontFamily: SANS, fontSize: 11.5, fill: C.text }} />
-                  <Tooltip formatter={(v) => home ? fSAR(v) : v.toFixed(2) + " pp"} contentStyle={tipStyle} />
+            </Adv>
+            <Adv title={`What moves the answer — sensitivity of ${nameOf(focusRes)}`}>
+              <Note>Each driver flexed ±20% on its own. Bars show the change in {home ? `wealth advantage vs ${baseLbl} (SAR)` : "levered IRR (percentage points)"}; the longest bar is the assumption to firm up first.</Note>
+              <ResponsiveContainer width="100%" height={40 * Math.max(1, tornado.length) + 30}>
+                <BarChart data={tornado} layout="vertical" margin={{ top: 8, right: 24, left: 0, bottom: 0 }} stackOffset="sign">
+                  <CartesianGrid stroke={C.line} horizontal={false} />
+                  <XAxis type="number" tick={axisT} tickFormatter={(v) => home ? fS(v) : v.toFixed(1)} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="label" width={170} tick={{ fontFamily: SANS, fontSize: 11.5, fill: C.text }} tickLine={false} axisLine={false} />
+                  <Tooltip formatter={(v, n) => [home ? fSAR(v) : v.toFixed(2) + " pp", n === "lo" ? "−20% / +20% (worse)" : "−20% / +20% (better)"]} contentStyle={tipStyle} cursor={{ fill: SOFT }} />
                   <ReferenceLine x={0} stroke={C.text} />
-                  <Bar dataKey="lo" stackId="t" fill={C.neg} /><Bar dataKey="hi" stackId="t" fill={C.pos} />
+                  <Bar dataKey="lo" stackId="t" fill={C.neg} maxBarSize={18} /><Bar dataKey="hi" stackId="t" fill={C.pos} maxBarSize={18} radius={[0, 3, 3, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </Panel>
+            </Adv>
+          </div>}
+        </div>
+      );
 
-            {/* scenarios */}
-            <SectionHeader id="scenarios" eyebrow={home ? "08 · Scenarios" : "06 · Scenarios"} title="Save, reload & compare whole scenarios" sub="A scenario stores every slider, your loans and all four strategies in this browser. Compare, say, a 400 m² plot in one district against a ready villa elsewhere, or today's rates against a stressed case." />
-            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 16px", marginBottom: 60 }}>
-              <div className="flex items-center flex-wrap no-print" style={{ gap: 8, marginBottom: 12 }}>
-                <input type="text" placeholder="Scenario name…" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 220 }} />
-                <button onClick={doSave} style={btn(C.brass, C.ink)}><Save size={14} /> Save current</button>
-                <button onClick={() => setInp(mergeRE({}))} style={btn("transparent", C.sub, C.line)}><RotateCcw size={14} /> Reset to defaults</button>
-                <span style={{ flex: 1 }} />
-                <button onClick={doExport} style={btn("transparent", C.sub, C.line)}>Export JSON</button>
-                <label style={{ ...btn("transparent", C.sub, C.line) }}><FolderOpen size={14} /> Import <input type="file" accept="application/json" onChange={doImport} style={{ display: "none" }} /></label>
+      const StepWhen = () => {
+        if (!sweep || !focusRes) return <div style={{ fontFamily: SANS, color: C.sub }}>Enable a strategy first.</div>;
+        const sb = sweep.best;
+        const curStart = Math.max(inp.buildStart, inp.landMonth);
+        return (
+          <div>
+            <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "when") + 1} · When to start`} title={`Best time to build — ${nameOf(focusRes)}`}
+              sub={`The same strategy run with construction starting every 3 months from now to 5 years out. Waiting lets loans run down (freeing debt-burden room and cash), but land grows ${inp.appreciation}%/yr and construction ${inp.costInflation}%/yr. ★ marks the earliest start that is executable and keeps your ${fS(inp.cashBuffer)} buffer.`}
+              meta={<div className="flex items-center flex-wrap no-print" style={{ gap: 10 }}><FocusPicker /><span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>Land</span><Toggle value={landWithBuild ? "with" : "now"} onChange={(v) => setLandWithBuild(v === "with")} options={[["now", `Buy in ${fCal(inp.landMonth)}`], ["with", "Buy when building"]]} /></div>} />
+            <div className="print-section" style={{ background: sb ? SOFT_POS : SOFT_NEG, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 18px", marginBottom: 14, fontFamily: SANS, fontSize: 14, color: C.text, lineHeight: 1.5 }}>
+              {sb ? <>
+                <b>{sb.delay <= curStart ? `Start as planned in ${fCal(sb.delay)}` : `Earliest workable start: ${fCal(sb.delay)}`}</b> — move in {fCal(sb.occupy)}, cash never below {fS(sb.minCash)}, peak instalments {fSAR(sb.peakInst)}/mo ({sb.peakDbr.toFixed(0)}% of income), project cost {fS(sb.total)}.
+                {sb.delay !== curStart && <button className="no-print" onClick={() => { set("buildStart", sb.delay); if (landWithBuild) set("landMonth", sb.delay); }} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "4px 10px", marginLeft: 10 }}>Use this start</button>}
+              </> : <>No start date within 5 years makes this strategy executable — change the strategy (step 3), the project (step 2) or the land timing.</>}
+            </div>
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden" }}>
+              <div className="scroll-x">
+                <table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
+                  <thead><tr>{["Start", "Move in", "Project cost", "Executable", "Cash low point", "Peak instalments", "Peak DBR", "New-home mortgage", "Existing-property mortgage", "Old loans settled", "Profit + fees on new debt", `Wealth vs ${baseLbl} @ Y${inp.horizon}`].map((h, i) => <th key={h} style={{ ...th, textAlign: i < 2 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
+                  <tbody>{sweep.rows.map((r) => { const isB = sb && sb.delay === r.delay; const isCur = r.delay === curStart; return (
+                    <tr key={r.delay} style={{ background: isB ? "#F6EFE1" : "transparent", fontWeight: isB ? 700 : 400, borderLeft: isB ? `4px solid ${C.brass}` : "4px solid transparent" }}>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{isB && <span style={{ color: C.brass }}>★ </span>}{fCal(r.delay)} <span style={{ color: C.sub, fontFamily: MONO, fontSize: 11 }}>M{r.delay}</span>{isCur && <span className="tag" style={{ background: SOFT, color: C.sub, marginLeft: 6 }}>current</span>}</td>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{fCal(r.occupy)}</td>
+                      <td style={td}>{fS(r.total)}</td>
+                      <td style={{ ...td, color: r.feasible ? C.pos : C.neg }}>{r.feasible ? "yes" : "NO"}</td>
+                      <td style={{ ...td, color: r.minCash < 0 ? C.neg : r.bufferOk ? C.text : C.brass }}>{fS(r.minCash)} <span style={{ color: C.sub }}>M{r.minCashT}</span></td>
+                      <td style={td}>{fSAR(r.peakInst)}</td>
+                      <td style={{ ...td, color: r.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text }}>{pct1(r.peakDbr)}</td>
+                      <td style={td}>{fS(r.mortgage)}</td><td style={td}>{fS(r.eq)}</td><td style={td}>{fS(r.settled)}</td>
+                      <td style={{ ...td, color: C.neg }}>{fS(r.newDebtInterest)}</td>
+                      <td style={{ ...td, color: r.advantage >= 0 ? C.pos : C.neg }}>{fS(r.advantage)}</td>
+                    </tr>); })}</tbody>
+                </table>
               </div>
-              {savedRows.length === 0 ? <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub }}>No saved scenarios yet.</div> : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+            </div>
+          </div>
+        );
+      };
+
+      const StepScen = () => (
+        <div>
+          <SectionHeader eyebrow={`Step ${steps.length} · Scenarios`} title="Save, reload & compare whole scenarios" sub="A scenario stores every input, your loans and all four strategies in this browser. Compare, say, a 400 m² plot in one district against a ready villa elsewhere, or today's rates against a stressed case." />
+          <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 16px" }}>
+            <div className="flex items-center flex-wrap no-print" style={{ gap: 8, marginBottom: 12 }}>
+              <input type="text" placeholder="Scenario name…" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 220 }} />
+              <button onClick={doSave} style={btn(C.brass, C.ink)}><Save size={14} /> Save current</button>
+              <button onClick={() => setInp(mergeRE({}))} style={btn("transparent", C.sub, C.line)}><RotateCcw size={14} /> Reset to defaults</button>
+              <span style={{ flex: 1 }} />
+              <button onClick={doExport} style={btn("transparent", C.sub, C.line)}>Export JSON</button>
+              <label style={{ ...btn("transparent", C.sub, C.line) }}><FolderOpen size={14} /> Import <input type="file" accept="application/json" onChange={doImport} style={{ display: "none" }} /></label>
+            </div>
+            {savedRows.length === 0 ? <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub }}>No saved scenarios yet.</div> : (
+              <div className="scroll-x">
+                <table className="tbl" style={{ fontFamily: MONO, fontSize: 12.5 }}>
                   <thead><tr><th style={{ ...th, textAlign: "left" }}>Scenario</th><th style={th}>Mode</th><th style={th}>Project cost</th><th style={{ ...th, textAlign: "left" }}>Best executable</th><th style={th}>Advantage / IRR</th><th style={th}>Peak instalments</th><th style={th}>Verdict</th><th style={th} className="no-print"></th></tr></thead>
                   <tbody>{savedRows.map((s) => (
                     <tr key={s.n}>
                       <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 600 }}>{s.n}</td>
                       <td style={{ ...td, fontFamily: SANS, color: C.sub }}>{s.mode}</td>
                       <td style={td}>{fS(s.total)}</td>
-                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, whiteSpace: "normal" }}>{s.best}</td>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, whiteSpace: "normal", minWidth: 200 }}>{s.best}</td>
                       <td style={td}>{s.metric}</td>
                       <td style={td}>{fSAR(s.pmt)}</td>
                       <td style={{ ...td, color: s.vColor, fontWeight: 700 }}>{s.verdict}</td>
                       <td style={{ ...td }} className="no-print"><div className="flex" style={{ gap: 4, justifyContent: "flex-end" }}><button title="Load" onClick={() => doLoad(s.n)} style={iconBtn}><FolderOpen size={15} color={C.brass} /></button><button title="Delete" onClick={() => doDelete(s.n)} style={iconBtn}><Trash2 size={15} color={C.neg} /></button></div></td>
                     </tr>))}</tbody>
                 </table>
-              )}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+
+      const panels = { you: StepYou, home: StepHome, fin: StepFin, res: StepRes, when: StepWhen, scen: StepScen };
+
+      return (
+        <div style={{ minHeight: "100vh", background: C.bone }}>
+          {/* header */}
+          <div style={{ background: C.ink, padding: "22px 0 16px" }}>
+            <div className="wrap">
+              <div className="flex items-start justify-between flex-wrap" style={{ gap: 14 }}>
+                <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt, marginBottom: 5 }}>Scenario tool · Riyadh, KSA · SAR · <a href="index.html" style={{ color: C.brassLt }}>all models</a></div>
+                  <h1 style={{ fontFamily: SANS, fontSize: 22, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em", margin: 0, lineHeight: 1.25 }}>{home ? "How should I finance building my home — and when should I start?" : "Residential rental investment — which capital stack earns the most?"}</h1>
+                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.invSub, marginTop: 6, maxWidth: 760, lineHeight: 1.5 }}>
+                    {home ? "Tell it about you and the home, pick up to four financing strategies, and it simulates each one month by month through the bank's debt-burden and LTV tests — then measures it against simply renting."
+                          : "Compare up to four capital stacks for a buy-to-let: levered and unlevered IRR, NPV, yields, debt-service cover and the cash each option ties up."}
+                  </div>
+                </div>
+                <div className="no-print flex flex-wrap items-center" style={{ gap: 10 }}>
+                  <Toggle dark value={inp.mode} onChange={(v) => { set("mode", v); setStep(0); setFocus(-1); }} options={[["home", "My own home"], ["rental", "Rental investment"]]} />
+                  <button onClick={() => setPrintAll(true)} style={{ ...btn("transparent", C.invSub, C.lineDk), fontSize: 11.5, padding: "6px 10px" }}>Print / PDF</button>
+                </div>
+              </div>
             </div>
+          </div>
+
+          <div className="wrap" style={{ paddingTop: 18 }}>
+            {Answer()}
+          </div>
+
+          {/* sticky step nav */}
+          <div className="stepnav" id="steps">
+            <div className="wrap">
+              <div className="row">
+                {steps.map(([id, label], i) => <button key={id} className={"stepbtn" + (stepI === i ? " on" : "")} onClick={() => go(i)}><span className="num">{i + 1}</span>{label}</button>)}
+              </div>
+            </div>
+          </div>
+
+          <div className="wrap" style={{ paddingTop: 22, paddingBottom: 60 }}>
+            {printAll ? steps.map(([id]) => <div key={id} style={{ marginBottom: 36 }}>{panels[id]()}</div>) : <>
+              {panels[cur]()}
+              {StepFooter()}
+            </>}
           </div>
         </div>
       );
