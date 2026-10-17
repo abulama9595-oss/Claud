@@ -130,7 +130,7 @@
       const bal = loans.reduce((a, l) => a + (+l.balance || 0), 0);
       const dbr = income > 0 ? inst / income * 100 : 0;
       const room = Math.max(0, income * dbrCap / 100 - inst);
-      const cols = [["name", "Loan", "text"], ["balance", "Balance SAR", "number"], ["installment", "Instalment / mo", "number"], ["monthsLeft", "Months left", "number"], ["rate", "Rate %", "number"]];
+      const cols = [["name", "Loan", "text"], ["balance", "Balance SAR", "number"], ["installment", "Instalment / mo", "number"], ["monthsLeft", "Months left", "number"], ["rate", "Rate %", "number"], ["canSettle", "May settle?", "check"]];
       return (
         <div>
           <div style={{ overflowX: "auto" }}>
@@ -141,13 +141,14 @@
                   <tr key={l.id || i}>
                     {cols.map(([k, , type]) => <td key={k} style={{ ...td, padding: "4px 6px", textAlign: k === "name" ? "left" : "right" }}>
                       {type === "text" ? <input type="text" value={l[k]} onChange={(e) => upd(i, k, e.target.value)} style={{ width: "100%", minWidth: 150 }} />
+                                       : type === "check" ? <input type="checkbox" checked={l.canSettle !== false} onChange={(e) => upd(i, k, e.target.checked)} title="untick to keep this loan whatever the strategy (e.g. cheap debt)" />
                                        : <input type="number" value={l[k]} step={k === "rate" ? 0.25 : k === "monthsLeft" ? 1 : 1000} min={0} onChange={(e) => upd(i, k, parseFloat(e.target.value) || 0)} style={{ minWidth: 90 }} />}
                     </td>)}
                     <td style={{ ...td, padding: "4px 6px" }} className="no-print"><button title="Remove" onClick={() => onChange(loans.filter((_, j) => j !== i))} style={iconBtn}><Trash2 size={15} color={C.neg} /></button></td>
                   </tr>
                 ))}
                 <tr style={{ background: "#F3EFE6", fontWeight: 700 }}>
-                  <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>Total ({loans.length})</td><td style={td}>{fSAR(bal)}</td><td style={td}>{fSAR(inst)}</td><td style={td}></td><td style={td}></td><td style={td} className="no-print"></td>
+                  <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>Total ({loans.length})</td><td style={td}>{fSAR(bal)}</td><td style={td}>{fSAR(inst)}</td><td style={td}></td><td style={td}></td><td style={td}></td><td style={td} className="no-print"></td>
                 </tr>
               </tbody>
             </table>
@@ -217,6 +218,8 @@
       const savedRows = Object.entries(saved).map(([n, s]) => { const r = computeRE(s.inp); const b = r.bestFeasible || r.best; return { n, mode: r.p.mode, total: r.prj.total, best: b ? (r.p.mode === "home" ? b.plan.name : b.opt.name) : "—", metric: b ? (r.p.mode === "home" ? fS(b.advantage) : pct1(b.irr == null ? null : b.irr * 100)) : "—", pmt: b ? (r.p.mode === "home" ? b.peakInst : b.monthlyPayment) : 0, verdict: r.verdict, vColor: r.vColor }; });
 
       const bestF = m.bestFeasible, best = m.best, lead = bestF || best;
+      const renting = inp.rentNow > 0; // baseline: keep renting the same home, or (no rent) stay put and keep the cash invested
+      const baseLbl = renting ? "renting" : "not building";
       const navItems = [["project", "Project"], ["you", home ? "You & your loans" : "Letting"], ["financing", home ? "Strategies" : "Financing"], ["compare", "Compare"], ["detail", home ? "Timeline" : "Detail"], ["sensitivity", "Sensitivity"], ["scenarios", "Scenarios"]];
 
       /* ---------- plan card ---------- */
@@ -247,7 +250,7 @@
                 <Mini k="Cash low point" v={`${fS(r.minCash)} ${fMon(r.minCashT)}`} color={r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text} />
                 {r.recovered != null && <Mini k={`Cash recovered ${fMon(r.recoveredT)}`} v={`${fS(r.recovered)} net`} color={C.pos} />}
                 <Mini k="Profit on new debt + fees" v={fS(r.newDebtInterest)} color={C.neg} />
-                <Mini k={`Wealth vs renting @ Y${inp.horizon}`} v={fS(r.advantage)} color={r.advantage >= 0 ? C.pos : C.neg} />
+                <Mini k={`Wealth vs ${baseLbl} @ Y${inp.horizon}`} v={fS(r.advantage)} color={r.advantage >= 0 ? C.pos : C.neg} />
                 {r.flags.map((f, k) => <div key={k} style={{ color: f.startsWith("Cash goes NEGATIVE") || f.startsWith("Mortgage impossible") ? C.neg : C.brass, fontFamily: SANS, fontSize: 11, lineHeight: 1.4, marginTop: 4 }}>▲ {f}</div>)}
               </div>
             )}
@@ -353,9 +356,9 @@
         [`Debt still owed at Y${inp.horizon}`, (r) => fS(r.endDebt)],
         [`Cash at Y${inp.horizon}`, (r) => fS(r.cashEnd)],
         [`Net worth at Y${inp.horizon} (cash + home after selling costs − debt)`, (r) => fS(r.netWorthEnd), () => C.text, true],
-        ["Renter's net worth (same income, kept renting)", (r) => fS(r.renterEnd)],
-        ["Wealth advantage vs renting", (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, true],
-        ["Break-even vs renting", (r) => r.breakEvenMonth != null ? fYr(r.breakEvenMonth) : `> ${inp.horizon} yrs`],
+        [renting ? "Renter's net worth (same income, kept renting)" : "Net worth if you don't build (same income, cash invested)", (r) => fS(r.renterEnd)],
+        [`Wealth advantage vs ${baseLbl}`, (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, true],
+        [`Break-even vs ${baseLbl}`, (r) => r.breakEvenMonth != null ? fYr(r.breakEvenMonth) : `> ${inp.horizon} yrs`],
         ["Debt-free", (r) => r.debtFreeT != null ? fMon(r.debtFreeT) : `> Y${inp.horizon}`],
       ];
       const rentalRows = [
@@ -434,7 +437,7 @@
                 <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: m.vColor, letterSpacing: "0.1em" }}>{m.verdict}</span>
                 <span style={{ fontFamily: SANS, fontSize: 14, color: C.text, lineHeight: 1.5 }}>
                   {!lead ? "Enable at least one strategy." : home ? (
-                    bestF ? <>Best executable strategy: <b>{bestF.plan.name}</b>. Over {inp.horizon} years it leaves you <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "better" : "worse"} off than renting</b> the same home. Cash never drops below {fS(bestF.minCash)}{bestF.recovered != null ? `, and you get ${fS(bestF.recovered)} back ${fMon(bestF.recoveredT)}` : ""}.{best !== bestF && <> <i>{best.plan.name}</i> would score higher but cannot be executed: {best.flags[0]}</>}</>
+                    bestF ? <>Best executable strategy: <b>{bestF.plan.name}</b>. Over {inp.horizon} years it leaves you <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "better" : "worse"} off than {renting ? "renting" : "not building"}</b>{renting ? " the same home" : " (staying where you live now, cash kept invested)"}. Cash never drops below {fS(bestF.minCash)}{bestF.recovered != null ? `, and you get ${fS(bestF.recovered)} back ${fMon(bestF.recoveredT)}` : ""}.{best !== bestF && <> <i>{best.plan.name}</i> would score higher but cannot be executed: {best.flags[0]}</>}</>
                           : <>None of the enabled strategies can be executed with {fS(inp.cashAvailable)} of cash and {fSAR(household.dbrRoom)}/mo of debt-burden room. {best.flags[0]}</>
                   ) : <>Best capital stack: <b>{lead.opt.name}</b> at <b>{pct1(lead.irr == null ? null : lead.irr * 100)} levered IRR</b> vs {pct1(lead.irrUnlev == null ? null : lead.irrUnlev * 100)} unlevered{bestF && bestF !== best && <> (<i>{best.opt.name}</i> ranks higher but fails your cash, LTV or debt-burden limits)</>}.</>}
                 </span>
@@ -463,7 +466,8 @@
                 {build ? <>
                   <Slider label="Land area" value={inp.landArea} min={200} max={2000} step={25} unit="m²" onChange={(v) => set("landArea", v)} />
                   <Slider label="Land price" value={inp.landPrice} min={500} max={12000} step={100} unit="SAR/m²" onChange={(v) => set("landPrice", v)} hint={`land ${fS(prj.land)}`} />
-                  <Slider label="Built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />
+                  <Slider label="Built-up area as % of land" value={inp.builtPct} min={0} max={300} step={5} unit="%" onChange={(v) => set("builtPct", v)} hint={inp.builtPct > 0 ? `= ${Math.round(prj.builtArea)} m² total building area · set 0 to enter m² directly` : "0 = enter the area directly below"} />
+                  {inp.builtPct === 0 && <Slider label="Built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
                   <Slider label="Construction cost (turnkey)" value={inp.buildCost} min={1200} max={6000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`structure + finishing ${fS(prj.hard)} before VAT`} />
                   <Slider label="Design, permits & supervision" value={inp.softPct} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("softPct", v)} />
                   <Slider label="Contingency" value={inp.contPct} min={0} max={25} step={1} unit="%" onChange={(v) => set("contPct", v)} hint="overruns are the norm — keep ≥ 5%" />
@@ -522,7 +526,7 @@
                 <Card n="D" title="Household">
                   <Slider label="Monthly income (bank-recognised)" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} />
                   <Slider label="Living expenses (excl. rent & loans)" value={inp.livingExpenses} min={3000} max={80000} step={500} unit="SAR/mo" onChange={(v) => set("livingExpenses", v)} />
-                  <Slider label="Rent of an equivalent home today" value={inp.rentNow} min={0} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint="paid while building; the renter path pays it forever" />
+                  <Slider label="Rent of an equivalent home today" value={inp.rentNow} min={0} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint="paid while building; the baseline keeps paying it. Set 0 if you live in your own home — the baseline then becomes 'don't build'" />
                   <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
                   <Slider label="Cash you have today" value={inp.cashAvailable} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
                   <Slider label="Cash buffer you want to keep" value={inp.cashBuffer} min={0} max={1000000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="dipping below is flagged; going negative makes a strategy non-executable" />
@@ -532,7 +536,7 @@
                   <Slider label="Market value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint="0 if none. Its value is the same in every strategy and in the renter path, so only the debt raised against it is counted" />
                   <Slider label="LTV banks lend against it" value={inp.ownedLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("ownedLtv", v)} hint={`up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} of equity release`} />
                 </Card>
-                <Card n="E" title="Existing loans (as the bank sees them)">
+                <Card n="E" title="Existing loans (as the bank sees them) — untick 'May settle?' to protect cheap debt">
                   <LoanTable loans={inp.existingLoans} onChange={(l) => set("existingLoans", l)} income={inp.income} dbrCap={inp.dbrCap} />
                 </Card>
               </div>
@@ -553,7 +557,7 @@
 
             {/* compare */}
             <SectionHeader id="compare" eyebrow={home ? "04 · Side by side" : "03 · Side by side"} title={home ? "Which sequence works, and which leaves you wealthiest?" : "Which capital stack earns the most?"}
-              sub={home ? `Strategies are ranked by net worth at year ${inp.horizon} (cash + home after selling costs − all debt) against a renter with the same income who keeps the cash invested at ${inp.altReturn}%. A strategy whose cash goes negative is not executable, however good its end result looks.`
+              sub={home ? `Strategies are ranked by net worth at year ${inp.horizon} (cash + home after selling costs − all debt) against ${renting ? "a renter with the same income who keeps the cash invested" : "not building at all: same income, same old loans, cash kept invested"} at ${inp.altReturn}%. A strategy whose cash goes negative is not executable, however good its end result looks.`
                         : "Ranked by levered IRR on the cash you actually put in. Unlevered IRR is the property's own return and is the same for every stack; the difference is what the debt adds or destroys."} />
             <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 18 }}>
               <div style={{ overflowX: "auto" }}>
@@ -576,7 +580,7 @@
                 {LineChartBox({ title: "Your cash balance · year-end · SAR", keyPrefix: "cash", height: 280, extra: <ReferenceLine y={inp.cashBuffer} stroke={C.brass} strokeDasharray="4 4" label={{ value: "buffer", fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideTopRight" }} />, note: "The decisive chart: a line that crosses zero is a plan you cannot execute. Year-end values; the low point within the construction year can be lower — see the table." })}
                 {LineChartBox({ title: "Total debt outstanding (old loans + property mortgages + personal loan) · SAR", keyPrefix: "debt", height: 280 })}
                 {LineChartBox({ title: "Monthly instalments, all debt · SAR/mo (annual average)", keyPrefix: "inst", height: 260, extra: <ReferenceLine y={inp.income * inp.dbrCap / 100} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% of income`, fontFamily: SANS, fontSize: 11, fill: C.neg, position: "insideTopRight" }} /> })}
-                {LineChartBox({ title: "Net worth · cash + home (after selling costs) − debt · vs renting", keyPrefix: "nw", height: 260, extra: <Line dataKey="renter" name="Keep renting" stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
+                {LineChartBox({ title: `Net worth · cash + home (after selling costs) − debt · vs ${baseLbl}`, keyPrefix: "nw", height: 260, extra: <Line dataKey="renter" name={renting ? "Keep renting" : "Don't build"} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
               </div>
             ) : (
               <>
@@ -624,7 +628,7 @@
                 {focusRes.events.map((e, k) => <div key={k} className="ev"><span className="m">{fMon(e.t)}</span><span style={{ color: e.kind === "settle" ? C.neg : e.kind === "milestone" ? C.sub : C.text }}>{e.text}</span></div>)}
                 <div className="ev"><span className="m">{fMon(focusRes.minCashT)}</span><span>Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</span></div>
                 {focusRes.debtFreeT != null && <div className="ev"><span className="m">{fMon(focusRes.debtFreeT)}</span><span>Debt-free.</span></div>}
-                <div className="ev" style={{ borderBottom: "none" }}><span className="m">Y{inp.horizon}</span><span>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.endValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you kept renting → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>.</span></div>
+                <div className="ev" style={{ borderBottom: "none" }}><span className="m">Y{inp.horizon}</span><span>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.endValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>.</span></div>
               </div>
             )}
             {focusRes && (
@@ -638,7 +642,7 @@
                         ["Existing-loan instalments", "existInst", "neg"], ["Existing-property mortgage instalments", "eqPay", "neg"], ["Personal-loan instalments", "plPay", "neg"], ["New-home mortgage instalments", "mgPay", "neg"], ["  of which profit (all debt)", "interest", "sub"],
                         ["Maintenance & insurance", "ownerCost", "neg"],
                         ["Cash balance (year-end)", "cash", "head"], ["Debt outstanding (year-end)", "debt", "plain"], ["  new-home mortgage", "debtMortgage", "sub"], ["  existing-property mortgage", "debtEq", "sub"], ["  personal loan", "debtPL", "sub"], ["  existing loans", "debtExisting", "sub"],
-                        ["Home value", "value", "plain"], ["Net worth", "netWorth", "head"], ["Renter's net worth", "renterNW", "plain"], ["Advantage vs renting", "advantage", "head"],
+                        ["Home value", "value", "plain"], ["Net worth", "netWorth", "head"], [renting ? "Renter's net worth" : "Net worth if you don't build", "renterNW", "plain"], [`Advantage vs ${baseLbl}`, "advantage", "head"],
                       ] : [
                         ["Project spend", "spend", "neg"], ["  of which from own cash / personal loan", "eq", "sub"],
                         ["Rent collected (net of vacancy & mgmt)", "rentIn", "head"], ["Maintenance & insurance", "opex", "neg"], ["Net operating income", "noi", "head"],
@@ -657,7 +661,7 @@
             )}
 
             {/* sensitivity */}
-            <SectionHeader id="sensitivity" eyebrow={home ? "06 · What moves the answer" : "05 · What moves the answer"} title={focusRes ? `Sensitivity — ${nameOf(focusRes)}` : "Sensitivity"} sub={`Each driver flexed ±20% on its own. Bars show the change in ${home ? "wealth advantage vs renting (SAR)" : "levered IRR (percentage points)"}; the longest bar is the assumption to firm up first.`} />
+            <SectionHeader id="sensitivity" eyebrow={home ? "06 · What moves the answer" : "05 · What moves the answer"} title={focusRes ? `Sensitivity — ${nameOf(focusRes)}` : "Sensitivity"} sub={`Each driver flexed ±20% on its own. Bars show the change in ${home ? `wealth advantage vs ${baseLbl} (SAR)` : "levered IRR (percentage points)"}; the longest bar is the assumption to firm up first.`} />
             <Panel style={{ marginBottom: 34 }}>
               <ResponsiveContainer width="100%" height={46 * Math.max(1, tornado.length) + 30}>
                 <BarChart data={tornado} layout="vertical" margin={{ top: 0, right: 40, left: 10, bottom: 0 }} stackOffset="sign">
