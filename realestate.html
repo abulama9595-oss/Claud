@@ -81,6 +81,7 @@
     /* strategy identity colours — fixed per slot (colour follows the strategy, never its rank); validated for CVD on the paper surface */
     const OPT_COLORS = ["#2F6DB5", "#B0823A", "#1F9A80", "#A24FB8"];
     const STORE_KEY = "re_scenarios";
+    const CUR_KEY = "re_current"; // autosaved working state — restored when you come back
     const SOFT = "#F3EFE6", SOFT_NEG = "#F6E7E3", SOFT_POS = "#E6F0EC";
 
     /* ---------- presentation primitives ---------- */
@@ -282,7 +283,10 @@
 
     /* ---------- the app ---------- */
     function App() {
-      const [inp, setInp] = useState(() => mergeRE({}));
+      const [restored] = useState(() => { try { const j = JSON.parse(localStorage.getItem(CUR_KEY) || "null"); return j && typeof j === "object" ? j : null; } catch (e) { return null; } });
+      const [inp, setInp] = useState(() => mergeRE(restored || {}));
+      const [showRestored, setShowRestored] = useState(!!restored);
+      useEffect(() => { const id = setTimeout(() => { try { localStorage.setItem(CUR_KEY, JSON.stringify(inp)); } catch (e) {} }, 400); return () => clearTimeout(id); }, [inp]);
       const [step, setStep] = useState(0);
       const [focus, setFocus] = useState(-1);          // -1 = follow the recommendation
       const [editing, setEditing] = useState({});      // strategy/option cards in edit mode
@@ -342,6 +346,8 @@
       /* scenario ops */
       const persist = (o) => { setSaved(o); saveStore(o); };
       const doSave = () => { const n = name.trim() || `Scenario ${Object.keys(saved).length + 1}`; persist({ ...saved, [n]: { inp, savedAt: new Date().toISOString() } }); setName(""); };
+      const quickSave = () => { const n = window.prompt("Name this scenario", Object.keys(saved).find((k) => JSON.stringify(saved[k].inp) === JSON.stringify(inp)) || "My scenario"); if (!n) return; persist({ ...saved, [n.trim()]: { inp, savedAt: new Date().toISOString() } }); };
+      const resetAll = () => { try { localStorage.removeItem(CUR_KEY); } catch (e) {} setInp(mergeRE({})); setShowRestored(false); };
       const doLoad = (n) => setInp(mergeRE(saved[n].inp));
       const doDelete = (n) => { const o = { ...saved }; delete o[n]; persist(o); };
       const doExport = () => { const blob = new Blob([JSON.stringify({ scenarios: saved, current: inp }, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "realestate-scenarios.json"; a.click(); };
@@ -673,8 +679,9 @@
               {build ? <>
                 <Slider label="Land area" value={inp.landArea} min={200} max={2000} step={25} unit="m²" onChange={(v) => set("landArea", v)} />
                 <Slider label="Land price" value={inp.landPrice} min={500} max={12000} step={100} unit="SAR/m²" onChange={(v) => set("landPrice", v)} hint={`land ${fS(prj.land)}`} />
-                <Slider label="Built-up area as % of land" value={inp.builtPct} min={0} max={300} step={5} unit="%" onChange={(v) => set("builtPct", v)} hint={inp.builtPct > 0 ? `= ${Math.round(prj.builtArea)} m² total building area · set 0 to enter m² directly` : "0 = enter the area directly below"} />
-                {inp.builtPct === 0 && <Slider label="Built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
+                <Slider label="Footprint — ground floor as % of land" value={inp.builtPct} min={0} max={100} step={5} unit="%" onChange={(v) => set("builtPct", v)} hint={inp.builtPct > 0 ? `${Math.round(inp.landArea * inp.builtPct / 100)} m² per floor · set 0 to enter the total area directly` : "0 = enter the total built-up area directly below"} />
+                {inp.builtPct > 0 && <Slider label="Floors" value={inp.floors} min={1} max={4} step={0.5} unit="floors" onChange={(v) => set("floors", v)} hint={`total built-up ${Math.round(prj.builtArea)} m² × ${fSAR(inp.buildCost)} = ${fS(prj.hard)} construction${prj.inflate > 1 ? ` (incl. ${((prj.inflate - 1) * 100).toFixed(0)}% inflation to start)` : ""}`} />}
+                {inp.builtPct === 0 && <Slider label="Total built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
                 <Slider label="Construction cost (turnkey)" value={inp.buildCost} min={1200} max={6000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`structure + finishing ${fS(prj.hard)} before VAT`} />
                 <Slider label="Construction duration" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} hint={home ? "you keep paying rent until you move in" : "no rental income until complete"} />
                 <Adv title="Advanced: design & permits, contingency, extras, inflation, value uplift, VAT & RETT">
@@ -920,7 +927,7 @@
             <div className="flex items-center flex-wrap no-print" style={{ gap: 8, marginBottom: 12 }}>
               <input type="text" placeholder="Scenario name…" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 220 }} />
               <button onClick={doSave} style={btn(C.brass, C.ink)}><Save size={14} /> Save current</button>
-              <button onClick={() => setInp(mergeRE({}))} style={btn("transparent", C.sub, C.line)}><RotateCcw size={14} /> Reset to defaults</button>
+              <button onClick={resetAll} style={btn("transparent", C.sub, C.line)}><RotateCcw size={14} /> Reset to defaults</button>
               <span style={{ flex: 1 }} />
               <button onClick={doExport} style={btn("transparent", C.sub, C.line)}>Export JSON</button>
               <label style={{ ...btn("transparent", C.sub, C.line) }}><FolderOpen size={14} /> Import <input type="file" accept="application/json" onChange={doImport} style={{ display: "none" }} /></label>
@@ -965,6 +972,8 @@
                 </div>
                 <div className="no-print flex flex-wrap items-center" style={{ gap: 10 }}>
                   <Toggle dark value={inp.mode} onChange={(v) => { set("mode", v); setStep(0); setFocus(-1); }} options={[["home", "My own home"], ["rental", "Rental investment"]]} />
+                  <button onClick={quickSave} title="Save everything on this page under a name you can reload later" style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "6px 10px" }}><Save size={13} /> Save scenario</button>
+                  {Object.keys(saved).length > 0 && <select value="" onChange={(e) => { if (e.target.value) { setInp(mergeRE(saved[e.target.value].inp)); setShowRestored(false); } }} style={{ fontSize: 11.5, padding: "5px 8px", maxWidth: 180 }} title="Load a saved scenario"><option value="">Load scenario…</option>{Object.keys(saved).map((k) => <option key={k} value={k}>{k}</option>)}</select>}
                   <button onClick={() => setPrintAll(true)} style={{ ...btn("transparent", C.invSub, C.lineDk), fontSize: 11.5, padding: "6px 10px" }}>Print / PDF</button>
                 </div>
               </div>
@@ -972,6 +981,12 @@
           </div>
 
           <div className="wrap" style={{ paddingTop: 18 }}>
+            {showRestored && <div className="no-print flex items-center flex-wrap" style={{ gap: 10, background: "#F3EFE6", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontFamily: SANS, fontSize: 12.5, color: C.text }}>
+              <span>Restored where you left off — your inputs are kept in this browser automatically. Use <b>Save scenario</b> to keep a named copy, or <b>Export</b> in the Scenarios step to keep a file.</span>
+              <span style={{ flex: 1 }} />
+              <button onClick={resetAll} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Start from defaults</button>
+              <button onClick={() => setShowRestored(false)} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Dismiss</button>
+            </div>}
             {Answer()}
           </div>
 
