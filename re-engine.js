@@ -55,6 +55,7 @@ const RE_BASE = {
     { id: 2, name: "Car finance (example)",   balance: 95000,  installment: 2950, monthsLeft: 36, rate: 5.0 },
   ],
   settleFeeMonths: 3,      // SAMA: early-settlement cost capped at the next 3 months' term cost
+  rateQuote: "apr",        // how NEW-facility rates are entered: "apr" (reducing balance) or "flat" (KSA "hamish" per year on the original principal)
   plCap: 1500000,          // bank ceiling on a single personal loan
   cashoutLtv: 70,          // max LTV for a mortgage raised against an owned, completed home ("cash-out")
   // a property you ALREADY own and could mortgage (equity release) to fund the build or refinance loans
@@ -175,6 +176,17 @@ function reProject(p) {
     builtArea, costPerSqm: build && builtArea > 0 ? (total - land - rett) / builtArea : 0 };
 }
 
+/* ---------- rate quoting ---------- */
+// flat ("hamish") rate per year on the original principal over n months → equivalent reducing-balance APR
+function reFlatToApr(flat, n) {
+  if (flat <= 0 || n <= 0) return 0;
+  const pmt = (1 + flat / 100 * n / 12) / n;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2; if (rePmt(1, mid * 100, n) > pmt) hi = mid; else lo = mid; }
+  return lo * 100;
+}
+const reEffRate = (p, rate, n) => p.rateQuote === "flat" ? reFlatToApr(rate, n) : rate;
+
 /* ---------- annuity ---------- */
 function rePmt(B, rAnnual, n) {
   if (n <= 0) return B;
@@ -195,10 +207,12 @@ function reSimulate(p, prj, opt) {
   const fundingGap = Math.max(0, loanCommit - maxLoan);                    // mortgage needed beyond the bank's LTV ceiling
   const fees = loanCommit * opt.feesPct / 100;
   const gm = prj.build ? Math.max(opt.graceMonths, prj.bm) : Math.max(0, opt.graceMonths);
-  const rateS = opt.rate * (1 - Math.min(100, opt.subsidyPct) / 100), rateU = opt.rate;
   const n = Math.max(1, Math.round(opt.tenure * 12));
+  const mRate = reEffRate(p, opt.rate, n);
+  const rateS = mRate * (1 - Math.min(100, opt.subsidyPct) / 100), rateU = mRate;
   const plN = Math.max(1, Math.round(opt.plTenure * 12));
-  const plPmt = pl > 0 ? rePmt(pl, opt.plRate, plN) : 0;
+  const plRate = reEffRate(p, opt.plRate, plN);
+  const plPmt = pl > 0 ? rePmt(pl, plRate, plN) : 0;
   let balS = 0, balU = 0, balPL = pl, cumEquity = 0, pmtS = 0, pmtU = 0, amortStarted = false;
   const equityPool = cash + pl;                                            // funds spend before the mortgage is drawn
   let portfolio = 0, cumOut = 0, cumLev = 0, peakEquityNeed = 0, fvOut = 0;
@@ -235,7 +249,7 @@ function reSimulate(p, prj, opt) {
     }
     // personal loan: straight annuity from month 1, no grace
     if (t >= 1 && balPL > 0.5) {
-      plInterest = balPL * opt.plRate / 100 / 12;
+      plInterest = balPL * plRate / 100 / 12;
       plPayment = Math.min(plPmt, balPL + plInterest);
       balPL -= plPayment - plInterest;
     }
@@ -334,13 +348,16 @@ function rePlanSimulate(p, prj, plan) {
   // instalment is floored at the annuity that clears the balance within the stated months (guards inconsistent inputs)
   const loans = p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).map((l) => { const left = Math.max(1, Math.round(l.monthsLeft)); return { ...l, bal: l.balance, left, installment: Math.max(l.installment, rePmt(l.balance, l.rate, left)), settledAt: null, interestPaid: 0, kind: "existing" }; });
   // new personal loan
-  const pl = { bal: 0, pmt: 0, rate: plan.plRate, n: Math.max(1, Math.round(plan.plTenure * 12)), startedAt: null, settledAt: null, amount: 0, requested: 0, interestPaid: 0, kind: "pl", name: "New personal loan" };
+  const plN0 = Math.max(1, Math.round(plan.plTenure * 12));
+  const pl = { bal: 0, pmt: 0, rate: reEffRate(p, plan.plRate, plN0), n: plN0, startedAt: null, settledAt: null, amount: 0, requested: 0, interestPaid: 0, kind: "pl", name: "New personal loan" };
   // mortgage (two buckets: subsidised / unsubsidised)
   const n = Math.max(1, Math.round(plan.tenure * 12));
-  const rateS = plan.rate * (1 - Math.min(100, plan.subsidyPct) / 100), rateU = plan.rate;
+  const mRate = reEffRate(p, plan.rate, n);
+  const rateS = mRate * (1 - Math.min(100, plan.subsidyPct) / 100), rateU = mRate;
   const mg = { type: null, commit: 0, drawn: 0, balS: 0, balU: 0, pmtS: 0, pmtU: 0, amortFrom: null, startedAt: null, gm: 0, interestPaid: 0, graceInterest: 0, fees: 0, requested: 0, capped: null, dbrAt: null, ltv: 0 };
   // equity release against the property you already own: one bucket, no subsidy, amortises from the month after drawdown
   const eqN = Math.max(1, Math.round(plan.eqTenure * 12));
+  const eqRate = reEffRate(p, plan.eqRate, eqN);
   const eqm = { bal: 0, pmt: 0, amount: 0, requested: 0, startedAt: null, interestPaid: 0, fees: 0, capped: null, dbrAt: null, ltv: 0 };
   const instOf = (B, rS, rU, nn) => rePmt(Math.min(B, plan.subsidyCap), rS, nn) + rePmt(Math.max(0, B - plan.subsidyCap), rU, nn);
   const mgInstFor = (B) => instOf(B, rateS, rateU, n);
@@ -411,11 +428,11 @@ function rePlanSimulate(p, prj, plan) {
     if (type === "construction") {
       equityRequired = prj.total - amount;
       mg.gm = Math.max(0, prj.bm); mg.amortFrom = mg.gm + 1;
-      events.push({ t, kind: "mortgage", text: `Construction mortgage approved: ${fS(amount)} at ${plan.rate}% over ${plan.tenure} yrs (${mg.ltv.toFixed(0)}% LTV, instalment ${fSAR(mgInstFor(amount))}/mo from month ${mg.amortFrom}; bank DBR ${mg.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ltvCapped ? ` — capped by ${plan.maxLtvPct}% LTV` : ""}. Your cash funds the first ${fS(equityRequired)}.` });
+      events.push({ t, kind: "mortgage", text: `Construction mortgage approved: ${fS(amount)} at ${plan.rate}%${p.rateQuote === "flat" ? ` flat (≈${mRate.toFixed(2)}% APR)` : ""} over ${plan.tenure} yrs (${mg.ltv.toFixed(0)}% LTV, instalment ${fSAR(mgInstFor(amount))}/mo from month ${mg.amortFrom}; bank DBR ${mg.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ltvCapped ? ` — capped by ${plan.maxLtvPct}% LTV` : ""}. Your cash funds the first ${fS(equityRequired)}.` });
     } else {
       mg.balS = Math.min(amount, plan.subsidyCap); mg.balU = amount - mg.balS; mg.drawn = amount;
       mg.pmtS = rePmt(mg.balS, rateS, n); mg.pmtU = rePmt(mg.balU, rateU, n); mg.amortFrom = t + 1; mg.gm = t;
-      events.push({ t, kind: "mortgage", text: `Cash-out mortgage on the finished home: ${fS(amount)} at ${plan.rate}% over ${plan.tenure} yrs (${mg.ltv.toFixed(0)}% of its ${fS(value)} value; instalment ${fSAR(mg.pmtS + mg.pmtU)}/mo; bank DBR ${mg.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ""}.` });
+      events.push({ t, kind: "mortgage", text: `Cash-out mortgage on the finished home: ${fS(amount)} at ${plan.rate}%${p.rateQuote === "flat" ? ` flat (≈${mRate.toFixed(2)}% APR)` : ""} over ${plan.tenure} yrs (${mg.ltv.toFixed(0)}% of its ${fS(value)} value; instalment ${fSAR(mg.pmtS + mg.pmtU)}/mo; bank DBR ${mg.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ""}.` });
       if (recovered === null) { recovered = cash - cashBefore; recoveredGross = amount; recoveredT = t; }
     }
     if (amount <= 0) flags.push(`Mortgage impossible at month ${t}: no debt-burden room even after settlements.`);
@@ -428,15 +445,15 @@ function rePlanSimulate(p, prj, plan) {
     const ltvCapped = amount < req - 1;
     const cashBefore = cash;
     cash += amount; // proceeds land first so settlements can be paid from them
-    settleToFit(t, dbrTarget - mgInstNow() - rePmt(amount, plan.eqRate, eqN), "to pass the bank's debt-burden test for the mortgage on your existing property");
+    settleToFit(t, dbrTarget - mgInstNow() - rePmt(amount, eqRate, eqN), "to pass the bank's debt-burden test for the mortgage on your existing property");
     const room = dbrTarget - otherInst(t) - mgInstNow();
     let dbrCapped = false;
-    if (rePmt(amount, plan.eqRate, eqN) > room + 0.01) { const ok = Math.max(0, rePrincipalFor(room, plan.eqRate, eqN)); cash -= amount - ok; amount = ok; dbrCapped = true; }
+    if (rePmt(amount, eqRate, eqN) > room + 0.01) { const ok = Math.max(0, rePrincipalFor(room, eqRate, eqN)); cash -= amount - ok; amount = ok; dbrCapped = true; }
     const fees = amount * plan.eqFeesPct / 100; cash -= fees;
-    eqm.bal = amount; eqm.amount = amount; eqm.requested = req; eqm.pmt = rePmt(amount, plan.eqRate, eqN); eqm.startedAt = t; eqm.fees = fees; eqm.ltv = p.ownedValue > 0 ? amount / p.ownedValue * 100 : 0;
+    eqm.bal = amount; eqm.amount = amount; eqm.requested = req; eqm.pmt = rePmt(amount, eqRate, eqN); eqm.startedAt = t; eqm.fees = fees; eqm.ltv = p.ownedValue > 0 ? amount / p.ownedValue * 100 : 0;
     eqm.capped = dbrCapped ? "dbr" : ltvCapped ? "ltv" : null; eqm.dbrAt = (otherInst(t) + mgInstNow()) / p.income * 100;
     if (amount < 1) { events.push({ t, kind: "eq", text: `Mortgage on your existing property NOT possible: no debt-burden room even after settlements.` }); flags.push(`Equity release at month ${t} not possible under the debt-burden cap.`); return; }
-    events.push({ t, kind: "eq", text: `Mortgage on your existing property: ${fS(amount)} at ${plan.eqRate}% over ${plan.eqTenure} yrs (${eqm.ltv.toFixed(0)}% of its ${fS(p.ownedValue)} value; instalment ${fSAR(eqm.pmt)}/mo; bank DBR ${eqm.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ltvCapped ? ` — capped by ${p.ownedLtv}% LTV` : ""}. Proceeds ${fS(cash - cashBefore)} net of settlements & fees.` });
+    events.push({ t, kind: "eq", text: `Mortgage on your existing property: ${fS(amount)} at ${plan.eqRate}%${p.rateQuote === "flat" ? ` flat (≈${eqRate.toFixed(2)}% APR)` : ""} over ${plan.eqTenure} yrs (${eqm.ltv.toFixed(0)}% of its ${fS(p.ownedValue)} value; instalment ${fSAR(eqm.pmt)}/mo; bank DBR ${eqm.dbrAt.toFixed(0)}%)${dbrCapped ? ` — REDUCED from ${fS(req)} by the ${p.dbrCap}% debt-burden cap` : ltvCapped ? ` — capped by ${p.ownedLtv}% LTV` : ""}. Proceeds ${fS(cash - cashBefore)} net of settlements & fees.` });
     if (dbrCapped) flags.push(`Equity release cut to ${fS(amount)} (asked ${fS(req)}) by the debt-burden cap.`);
     if (t > 0 && recovered === null) { recovered = cash - cashBefore; recoveredGross = amount; recoveredT = t; }
   }
@@ -444,15 +461,15 @@ function rePlanSimulate(p, prj, plan) {
     const req = Math.max(0, plan.plAmount);
     if (req <= 0) return;
     const cashBefore = cash;
-    settleToFit(t, dbrTarget - mgInstNow() - rePmt(req, plan.plRate, pl.n), "to pass the bank's debt-burden test for the personal loan");
+    settleToFit(t, dbrTarget - mgInstNow() - rePmt(req, pl.rate, pl.n), "to pass the bank's debt-burden test for the personal loan");
     const room = dbrTarget - otherInst(t) - mgInstNow();
-    const byDbr = rePrincipalFor(room, plan.plRate, pl.n);
+    const byDbr = rePrincipalFor(room, pl.rate, pl.n);
     const amount = Math.max(0, Math.min(req, p.plCap, byDbr));
     if (amount < 1) { events.push({ t, kind: "pl", text: `Personal loan of ${fS(req)} NOT possible: instalments already use ${((otherInst(t) + mgInstNow()) / p.income * 100).toFixed(0)}% of income (cap ${p.dbrCap}%).` }); flags.push(`Personal loan at month ${t} not possible under the debt-burden cap.`); pl.requested = req; return; }
-    pl.bal = amount; pl.amount = amount; pl.requested = req; pl.pmt = rePmt(amount, plan.plRate, pl.n); pl.startedAt = t; pl.monthsPaid = 0; pl.settledAt = null;
+    pl.bal = amount; pl.amount = amount; pl.requested = req; pl.pmt = rePmt(amount, pl.rate, pl.n); pl.startedAt = t; pl.monthsPaid = 0; pl.settledAt = null;
     cash += amount;
     const dbr = (otherInst(t) + mgInstNow()) / p.income * 100;
-    events.push({ t, kind: "pl", text: `Personal loan ${fS(amount)} at ${plan.plRate}% over ${plan.plTenure} yrs (instalment ${fSAR(pl.pmt)}/mo; bank DBR ${dbr.toFixed(0)}%)${amount < req - 1 ? ` — REDUCED from ${fS(req)}: that is all the ${p.dbrCap}% debt-burden cap allows` : ""}.` });
+    events.push({ t, kind: "pl", text: `Personal loan ${fS(amount)} at ${plan.plRate}%${p.rateQuote === "flat" ? ` flat (≈${pl.rate.toFixed(2)}% APR)` : ""} over ${plan.plTenure} yrs (instalment ${fSAR(pl.pmt)}/mo; bank DBR ${dbr.toFixed(0)}%)${amount < req - 1 ? ` — REDUCED from ${fS(req)}: that is all the ${p.dbrCap}% debt-burden cap allows` : ""}.` });
     if (amount < req - 1) flags.push(`Personal loan cut to ${fS(amount)} (asked ${fS(req)}) by the debt-burden cap.`);
     if (t > 0 && recovered === null) { recovered = cash - cashBefore; recoveredGross = amount; recoveredT = t; }
   }
@@ -495,7 +512,7 @@ function rePlanSimulate(p, prj, plan) {
     }
     // ---- mortgage on the existing property ----
     let eqPay = 0, eqInt = 0;
-    if (t >= 1 && eqm.bal > 0.5 && eqm.startedAt !== null && t > eqm.startedAt) { eqInt = eqm.bal * plan.eqRate / 100 / 12; eqPay = Math.min(eqm.pmt, eqm.bal + eqInt); eqm.bal -= eqPay - eqInt; eqm.interestPaid += eqInt; }
+    if (t >= 1 && eqm.bal > 0.5 && eqm.startedAt !== null && t > eqm.startedAt) { eqInt = eqm.bal * eqRate / 100 / 12; eqPay = Math.min(eqm.pmt, eqm.bal + eqInt); eqm.bal -= eqPay - eqInt; eqm.interestPaid += eqInt; }
     // ---- mortgage ----
     let mgPay = 0, mgInt = 0;
     if (mg.type && t >= 1 && t > mg.startedAt) {
@@ -551,6 +568,7 @@ function rePlanSimulate(p, prj, plan) {
   else if (minCash < p.cashBuffer) flags.push(`Cash dips below your ${fS(p.cashBuffer)} buffer for ${belowBufferMonths} month(s) (low point ${fS(minCash)} at month ${minCashT}).`);
   events.sort((a, b) => a.t - b.t);
   return { plan, months, years, events, flags, feasible, end,
+    effRates: { mortgage: mRate, pl: pl.rate, eq: eqRate },
     mortgage: { ...mg, instalment: mg.pmtS + mg.pmtU || (mg.type ? mgInstFor(mg.commit) : 0) }, pl: { ...pl }, eq: { ...eqm }, loansEnd: loans.map((l) => ({ name: l.name, settledAt: l.settledAt, bal: l.bal, interestPaid: l.interestPaid })),
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     recovered, recoveredGross, recoveredT, settledTotal, settleFees, totalInterest, newDebtInterest, peakDbr, peakInst, debtFreeT, breakEvenMonth,

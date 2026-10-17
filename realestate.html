@@ -135,7 +135,7 @@
         <div>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12 }}>
-              <thead><tr>{cols.map(([k, l]) => <th key={k} style={{ ...th, textAlign: k === "name" ? "left" : "right", padding: "7px 8px" }}>{l}</th>)}<th style={{ ...th, padding: "7px 8px" }} className="no-print"></th></tr></thead>
+              <thead><tr>{cols.map(([k, l]) => <th key={k} style={{ ...th, textAlign: k === "name" ? "left" : "right", padding: "7px 8px" }}>{k === "rate" ? "APR %" : l}</th>)}<th style={{ ...th, padding: "7px 8px" }} className="no-print"></th></tr></thead>
               <tbody>
                 {loans.map((l, i) => (
                   <tr key={l.id || i}>
@@ -264,7 +264,7 @@
               <Slider label="Cash-out amount wanted" value={o.cashOutTarget} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "cashOutTarget", v)} hint={o.cashOutTarget === 0 ? `0 = maximum (${inp.cashoutLtv}% of value ≈ ${fS(prj.value0 * Math.pow(1 + inp.appreciation / 100, prj.occupy / 12) * inp.cashoutLtv / 100)})` : `capped at ${inp.cashoutLtv}% of the home's value`} />
             </>}
             {mgW !== "none" && <>
-              <Slider label="Mortgage profit rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "rate", v)} hint={mgW === "completion" ? "cash-out / owned-property finance usually prices higher" : "fixed, reducing-balance equivalent"} />
+              <Slider label="Mortgage profit rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "rate", v)} hint={(inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.rate, o.tenure * 12).toFixed(2)}% APR · ` : "") + (mgW === "completion" ? "cash-out / owned-property finance usually prices higher" : "fixed for the term")} />
               <Slider label="Mortgage tenure" value={o.tenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "tenure", v)} />
               {mgW === "start" && build && <Select label="Profit during construction grace" value={o.graceMode} onChange={(v) => setPlan(i, "graceMode", v)} options={[["capitalize", "added to the loan"], ["interestOnly", "paid monthly"]]} />}
               <Slider label="REDF-subsidised portion" value={o.subsidyCap} min={0} max={1000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "subsidyCap", v)} hint={mgW === "completion" ? "Sakani support does not apply to cash-out finance — keep 0 unless confirmed" : "Sakani bears the profit on the first 500K for eligible citizens"} />
@@ -277,7 +277,7 @@
             {o.eqWhen === "month" && <Slider label="Month" value={o.eqMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "eqMonth", v)} hint={`construction completes month ${prj.occupy}`} />}
             {o.eqWhen !== "none" && <>
               <Slider label="Amount wanted" value={o.eqAmount} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, "eqAmount", v)} hint={o.eqAmount === 0 ? `0 = maximum (${inp.ownedLtv}% of ${fS(inp.ownedValue)} = ${fS(inp.ownedValue * inp.ownedLtv / 100)})` : `capped at ${inp.ownedLtv}% of value and by the debt-burden test`} />
-              <Slider label="Rate" value={o.eqRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "eqRate", v)} hint="finance against an owned property; no REDF support" />
+              <Slider label="Rate" value={o.eqRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "eqRate", v)} hint={(inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.eqRate, o.eqTenure * 12).toFixed(2)}% APR · ` : "") + "finance against an owned property; no REDF support"} />
               <Slider label="Tenure" value={o.eqTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "eqTenure", v)} />
               <Slider label="Bank fees (upfront)" value={o.eqFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "eqFeesPct", v)} />
             </>}
@@ -286,7 +286,7 @@
             {plW === "month" && <Slider label="Month" value={o.plMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "plMonth", v)} hint={`construction completes month ${prj.occupy}`} />}
             {plW !== "none" && <>
               <Slider label="Amount wanted" value={o.plAmount} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => setPlan(i, "plAmount", v)} hint="sized down to what the debt-burden cap allows" />
-              <Slider label="Rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setPlan(i, "plRate", v)} />
+              <Slider label="Rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setPlan(i, "plRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.plRate, o.plTenure * 12).toFixed(2)}% APR` : ""} />
               <Slider label="Tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setPlan(i, "plTenure", v)} />
             </>}
             <div className="subhead">Existing loans</div>
@@ -502,6 +502,7 @@
                   <Slider label="Vacancy & collection loss" value={inp.vacancyPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("vacancyPct", v)} />
                   <Slider label="Property management" value={inp.mgmtPct} min={0} max={15} step={0.5} unit="% of rent" onChange={(v) => set("mgmtPct", v)} />
                   <Slider label="Zakat on net rent" value={inp.zakatPct} min={0} max={2.5} step={0.5} unit="%" onChange={(v) => set("zakatPct", v)} hint="individuals: usually 0 unless held for trade" />
+                  <Select label="Rates of new facilities are entered as" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "APR — reducing balance"], ["flat", "Flat 'hamish' % per year"]]} />
                   <Slider label="Your monthly income" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} hint="for the bank's debt-burden test" />
                   <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} />
                   <Slider label="Cash you can commit" value={inp.cashAvailable} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
@@ -524,6 +525,7 @@
               <SectionHeader id="you" eyebrow="02 · You" title="Income, spending, cash — and the loans you already carry" sub="The bank's test on every new facility: all monthly instalments (old loans + new) ÷ income must stay under the debt-burden cap. Existing loans therefore decide how much you can borrow, and settling them early (at a fee) is sometimes the price of a mortgage. The two loans below are EXAMPLES — replace them with yours or import from Qist." />
               <div className="grid" style={{ gridTemplateColumns: "minmax(290px, 1fr) minmax(420px, 2fr)", gap: 16, marginBottom: 34 }}>
                 <Card n="D" title="Household">
+                  <Select label="Rates of NEW facilities are entered as" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "APR — reducing balance"], ["flat", "Flat 'hamish' % per year (KSA bank quotes)"]]} />
                   <Slider label="Monthly income (bank-recognised)" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} />
                   <Slider label="Living expenses (excl. rent & loans)" value={inp.livingExpenses} min={3000} max={80000} step={500} unit="SAR/mo" onChange={(v) => set("livingExpenses", v)} />
                   <Slider label="Rent of an equivalent home today" value={inp.rentNow} min={0} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint="paid while building; the baseline keeps paying it. Set 0 if you live in your own home — the baseline then becomes 'don't build'" />
