@@ -10,6 +10,8 @@ React apps (no build step) sharing one engine. Hosted on GitHub Pages.
 | `redesign.html` | **Primary** clinic model — investor-study layout, live KPIs, print/PDF, "Ask the study" assistant. This is where clinic features are built. |
 | `original.html` | Original clinic layout, **frozen** for comparison. Runs the same engine; do not add features here (only touch if a shared-engine change would break it). |
 | `pods.html` | Separate concept model: mall dental-hygiene-pod network (own engine `computePods`, not the clinic engine). |
+| `realestate.html` | Real-estate scenario tool (own engine `re-engine.js`, not the clinic engine). Two modes: `home` (fund your own home; four capital stacks of cash + personal loan + mortgage, ranked by wealth advantage vs renting via the "rent and invest the difference" portfolio method) and `rental` (buy-to-let; levered/unlevered IRR, NPV, DSCR, yields). All money in full SAR, monthly simulation. Scenarios in `localStorage` key `re_scenarios`. |
+| `re-engine.js` | `RE_BASE`, `RE_OPTION_PRESETS`, `computeRE(inp)`, `tornadoRE(inp, optIdx)`, formatters `fS`/`fSAR`. Reuses `C` and `computeIRR` from `engine.js` (load engine.js first). |
 | `engine.js` | Shared clinic engine — palette `C`, formatters `f0`/`pctf`, `BASE_INPUTS`, `compute(inp)`, `computeIRR`, sensitivity. Loaded as a classic `<script>` before each page's Babel app. |
 | `components.jsx` | Shared UI primitives (Slider, Card, Chip, icons, `th`/`td`/`btn`). |
 | `vendor/` | Self-hosted React, ReactDOM, Babel, PropTypes, Recharts (CDN is blocked in some networks — do NOT switch back to CDN). |
