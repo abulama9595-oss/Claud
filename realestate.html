@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home & Real-Estate Financing · Scenario Tool</title>
+  <script src="vendor/react.js"></script>
+  <script src="vendor/react-dom.js"></script>
+  <script src="vendor/babel.js"></script>
+  <script src="vendor/prop-types.js"></script>
+  <script src="vendor/recharts.js"></script>
+  <!-- shared palette / formatters / IRR from the flagship engine, then the real-estate engine -->
+  <script src="engine.js"></script>
+  <script src="re-engine.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #F1EDE4; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .items-baseline { align-items: baseline; }
+    .items-start { align-items: flex-start; }
+    .justify-between { justify-content: space-between; }
+    .flex-wrap { flex-wrap: wrap; }
+    .grid { display: grid; }
+    input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; }
+    input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #DBD4C5; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; margin-top: -5px; background: var(--accent, #B0823A); cursor: pointer; }
+    input[type=text], select { font-family: Inter, system-ui, sans-serif; font-size: 12.5px; padding: 6px 8px; border: 1px solid #DBD4C5; border-radius: 6px; background: #fff; color: #1B2733; }
+    html { scroll-behavior: smooth; }
+    .navlink { cursor: pointer; transition: color .15s; }
+    .navlink:hover { color: #D9B36A !important; }
+    @media print {
+      @page { margin: 12mm; }
+      body { background: #fff !important; }
+      .no-print { display: none !important; }
+      input[type=range] { display: none !important; }
+      .print-section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="components.jsx" data-presets="react"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo, useEffect } = React;
+    const { ComposedChart, BarChart, LineChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, LabelList } = window.Recharts;
+
+    const OPT_COLORS = [C.ink2, C.brass, C.pos, "#7B4F9E"];
+    const STORE_KEY = "re_scenarios";
+
+    /* ---------- presentation ---------- */
+    function SectionHeader({ id, eyebrow, title, sub, meta }) {
+      return (
+        <div id={id} className="flex items-baseline justify-between" style={{ flexWrap: "wrap", gap: 10, marginBottom: 16, scrollMarginTop: 70 }}>
+          <div>
+            {eyebrow && <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: C.brass, marginBottom: 4 }}>{eyebrow}</div>}
+            <h2 style={{ fontFamily: SANS, fontSize: 19, fontWeight: 700, color: C.text, letterSpacing: "-0.01em", margin: 0 }}>{title}</h2>
+            {sub && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, maxWidth: 820, lineHeight: 1.5 }}>{sub}</div>}
+          </div>
+          {meta && <div style={{ textAlign: "right" }}>{meta}</div>}
+        </div>
+      );
+    }
+    function Kpi({ label, value, sub, accent }) {
+      return (
+        <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderTop: `3px solid ${accent || C.brass}`, borderRadius: 9, padding: "13px 15px" }}>
+          <div style={{ fontFamily: SANS, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: C.sub, marginBottom: 5 }}>{label}</div>
+          <div style={{ fontFamily: MONO, fontSize: 23, fontWeight: 700, color: accent || C.text, letterSpacing: "-0.03em", lineHeight: 1 }}>{value}</div>
+          {sub && <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 5, lineHeight: 1.4 }}>{sub}</div>}
+        </div>
+      );
+    }
+    const Panel = ({ title, children, style }) => (
+      <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "18px 14px 8px", ...style }}>
+        {title && <h3 style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: C.text, margin: "0 0 10px 6px" }}>{title}</h3>}
+        {children}
+      </div>
+    );
+    const Toggle = ({ value, options, onChange, dark }) => (
+      <div className="flex" style={{ gap: 6 }}>
+        {options.map(([id, label]) => (
+          <button key={id} onClick={() => onChange(id)} style={{ ...btn(value === id ? C.brass : "transparent", value === id ? C.ink : (dark ? C.invSub : C.sub), value === id ? C.brass : (dark ? C.lineDk : C.line)), fontSize: 12, padding: "6px 11px" }}>{label}</button>
+        ))}
+      </div>
+    );
+    const Check = ({ checked, onChange, label }) => (
+      <label className="flex items-center" style={{ gap: 8, fontFamily: SANS, fontSize: 12.5, color: C.text, cursor: "pointer", marginTop: 4, marginBottom: 10 }}>
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /> {label}
+      </label>
+    );
+    const tipStyle = { fontFamily: SANS, fontSize: 12, border: `1px solid ${C.line}` };
+    const axisT = { fontFamily: MONO, fontSize: 11, fill: C.sub };
+    const fYr = (m) => m == null ? "—" : m < 12 ? `${m} mo` : `${(m / 12).toFixed(1)} yrs`;
+    const pct1 = (v) => v == null ? "—" : `${v.toFixed(1)}%`;
+
+    /* ---------- scenarios (localStorage) ---------- */
+    const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } };
+    const saveStore = (o) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} };
+
+    function App() {
+      const [inp, setInp] = useState(() => JSON.parse(JSON.stringify(RE_BASE)));
+      const [focus, setFocus] = useState(1);
+      const [saved, setSaved] = useState(loadStore);
+      const [name, setName] = useState("");
+      const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
+      const setOpt = (i, k, v) => setInp((s) => ({ ...s, options: s.options.map((o, j) => j === i ? { ...o, [k]: v } : o) }));
+      const applyPreset = (i, key) => setInp((s) => ({ ...s, options: s.options.map((o, j) => j === i ? { enabled: true, ...RE_OPTION_PRESETS[key] } : o) }));
+
+      const m = useMemo(() => computeRE(inp), [inp]);
+      const home = inp.mode === "home", build = inp.acquire === "build";
+      const { prj } = m;
+      const focusRes = m.results[focus] || m.live[0] || null;
+      const focusIdx = m.results[focus] ? focus : m.results.findIndex(Boolean);
+      const tornado = useMemo(() => focusIdx >= 0 ? tornadoRE(inp, focusIdx) : [], [inp, focusIdx]);
+
+      /* chart data */
+      const liveIdx = m.results.map((r, i) => r ? i : -1).filter((i) => i >= 0);
+      const nY = focusRes ? focusRes.years.length : 0;
+      const yearSeries = Array.from({ length: nY }, (_, y) => {
+        const row = { year: y === 0 ? "Y0" : `Y${y}` };
+        liveIdx.forEach((i) => { const yr = m.results[i].years[y]; row[`nw${i}`] = Math.round(yr.ownerEquity); row[`bal${i}`] = Math.round(yr.bal); row[`out${i}`] = Math.round((yr.payment + yr.rentPaid + yr.ownerCost) / (y === 0 ? 1 : 12)); row[`cf${i}`] = Math.round(yr.cf); });
+        if (focusRes) { const yr = focusRes.years[y]; row.renter = Math.round(yr.portfolio); row.rent = Math.round(yr.rentEq / (y === 0 ? 1 : 12)); }
+        return row;
+      });
+      const stackData = liveIdx.map((i) => { const r = m.results[i]; return { name: `Option ${i + 1}`, full: r.opt.name, "Own cash": Math.round(r.cash), "Personal loan": Math.round(r.pl), "Mortgage": Math.round(r.loanCommit), fees: r.fees }; });
+      const costRows = build
+        ? [["Land", prj.land], ["RETT on land" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], ["Construction (hard)", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Finishing / kitchen / AC / landscape", prj.finish], ["VAT 15% on construction & finishing", prj.vat]]
+        : [["Purchase price", prj.price], ["RETT" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], ["Broker", prj.broker], ["Finishing / furnishing", prj.finish], ["VAT on finishing", prj.vat]];
+
+      /* scenario ops */
+      const persist = (o) => { setSaved(o); saveStore(o); };
+      const doSave = () => { const n = name.trim() || `Scenario ${Object.keys(saved).length + 1}`; persist({ ...saved, [n]: { inp, savedAt: new Date().toISOString() } }); setName(""); };
+      const doLoad = (n) => setInp(mergeRE(saved[n].inp));
+      const doDelete = (n) => { const o = { ...saved }; delete o[n]; persist(o); };
+      const doExport = () => { const blob = new Blob([JSON.stringify({ scenarios: saved, current: inp }, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "realestate-scenarios.json"; a.click(); };
+      const doImport = (e) => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { const j = JSON.parse(rd.result); const inc = j.scenarios || (j.inp ? { [f.name]: j } : { [f.name]: { inp: j } }); persist({ ...saved, ...inc }); } catch (err) { alert("Could not read file"); } }; rd.readAsText(f); e.target.value = ""; };
+      const savedRows = Object.entries(saved).map(([n, s]) => { const r = computeRE(s.inp); const b = r.bestFeasible || r.best; return { n, mode: r.p.mode, total: r.prj.total, best: b ? b.opt.name : "—", metric: b ? (r.p.mode === "home" ? fS(b.advantage) : pct1(b.irr == null ? null : b.irr * 100)) : "—", pmt: b ? b.monthlyPayment : 0, verdict: r.verdict, vColor: r.vColor }; });
+
+      const bestF = m.bestFeasible, best = m.best;
+      const navItems = [["project", "Project"], ["financing", "Financing"], ["compare", "Compare"], ["detail", "Detail"], ["sensitivity", "Sensitivity"], ["scenarios", "Scenarios"]];
+
+      return (
+        <div style={{ minHeight: "100vh", background: C.bone }}>
+          {/* header */}
+          <div style={{ background: C.ink, padding: "26px 4vw 18px" }}>
+            <div style={{ maxWidth: 1240, margin: "0 auto" }}>
+              <div className="flex items-start justify-between flex-wrap" style={{ gap: 14 }}>
+                <div>
+                  <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt, marginBottom: 5 }}>Scenario tool · Riyadh, KSA · SAR</div>
+                  <h1 style={{ fontFamily: SANS, fontSize: 24, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em", margin: 0 }}>{home ? "Financing My Own Home" : "Residential Rental Investment"} — Scenario Evaluator</h1>
+                  <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.invSub, marginTop: 6, maxWidth: 760, lineHeight: 1.5 }}>
+                    {home ? "Compare up to four ways of funding the project — own cash, personal loans and a mortgage in any mix — against each other and against simply renting. Every slider recomputes a 20-year month-by-month cash model."
+                          : "Compare up to four capital stacks for a buy-to-let: levered and unlevered IRR, NPV, yields, debt-service cover and the cash each option ties up."} <a href="index.html" style={{ color: C.brassLt }}>← all models</a>
+                  </div>
+                </div>
+                <div className="no-print" style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+                  <div className="flex items-center" style={{ gap: 10 }}>
+                    <span style={{ fontFamily: SANS, fontSize: 11, color: C.invSub, letterSpacing: "0.06em", textTransform: "uppercase" }}>Purpose</span>
+                    <Toggle dark value={inp.mode} onChange={(v) => set("mode", v)} options={[["home", "My own home"], ["rental", "Rental investment"]]} />
+                  </div>
+                  <div className="flex items-center" style={{ gap: 10 }}>
+                    <span style={{ fontFamily: SANS, fontSize: 11, color: C.invSub, letterSpacing: "0.06em", textTransform: "uppercase" }}>Acquire</span>
+                    <Toggle dark value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land & build"], ["buy", "Buy ready"]]} />
+                  </div>
+                </div>
+              </div>
+              <div className="flex no-print" style={{ gap: 18, marginTop: 16, borderTop: `1px solid ${C.lineDk}`, paddingTop: 10, flexWrap: "wrap" }}>
+                {navItems.map(([id, l]) => <a key={id} href={`#${id}`} className="navlink" style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 600, color: C.invSub, textDecoration: "none", letterSpacing: "0.04em" }}>{l}</a>)}
+                <span style={{ flex: 1 }} />
+                <button onClick={() => window.print()} style={{ ...btn("transparent", C.invSub, C.lineDk), fontSize: 11.5, padding: "4px 10px" }}>Print / PDF</button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ maxWidth: 1240, margin: "0 auto", padding: "26px 4vw 60px" }}>
+            {/* verdict + KPIs */}
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderLeft: `6px solid ${m.vColor}`, borderRadius: 10, padding: "16px 20px", marginBottom: 16 }}>
+              <div className="flex items-baseline flex-wrap" style={{ gap: 14 }}>
+                <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: m.vColor, letterSpacing: "0.1em" }}>{m.verdict}</span>
+                <span style={{ fontFamily: SANS, fontSize: 14, color: C.text, lineHeight: 1.5 }}>
+                  {best ? (home
+                    ? <>Best way to fund it: <b>{(bestF || best).opt.name}</b>{bestF && bestF !== best && <> (the mathematically best, <i>{best.opt.name}</i>, fails your cash or debt-burden limits)</>}. Over {inp.horizon} years it leaves you <b style={{ color: (bestF || best).advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs((bestF || best).advantage))} {(bestF || best).advantage >= 0 ? "better" : "worse"} off than renting</b> the same home and investing the difference at {inp.altReturn}%.</>
+                    : <>Best capital stack: <b>{(bestF || best).opt.name}</b> at <b>{pct1((bestF || best).irr == null ? null : (bestF || best).irr * 100)} levered IRR</b> vs {pct1((bestF || best).irrUnlev == null ? null : (bestF || best).irrUnlev * 100)} unlevered{bestF && bestF !== best && <> (<i>{best.opt.name}</i> ranks higher but fails your cash, LTV or debt-burden limits)</>}.</>)
+                    : "Enable at least one financing option."}
+                </span>
+              </div>
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 30 }}>
+              <Kpi label="All-in project cost" value={fS(prj.total)} sub={build ? `${fSAR(prj.costPerSqm)} SAR/m² built, excl. land` : "price + RETT + broker + finishing"} />
+              <Kpi label="Market value at completion" value={fS(prj.value0)} sub={build ? `${inp.devMarginPct}% uplift over cost (ex VAT/fees)` : "price + finishing"} accent={prj.value0 >= prj.total ? C.pos : C.neg} />
+              {bestF ? <Kpi label="Cash you must bring" value={fS(bestF.cashNeeded)} sub={`${bestF.opt.name} · you have ${fS(inp.cashAvailable)}`} accent={bestF.cashOk ? C.pos : C.neg} /> : <Kpi label="Cash you must bring" value="—" />}
+              {bestF ? <Kpi label="Monthly instalment" value={fSAR(bestF.monthlyPayment)} sub={`${bestF.dbr.toFixed(0)}% of income · cap ${inp.dbrCap}%`} accent={bestF.affordable ? C.text : C.neg} /> : <Kpi label="Monthly instalment" value="—" />}
+              {bestF ? <Kpi label="Total profit paid to banks" value={fS(bestF.totalInterest)} sub={`${fS(bestF.mortgageInterest)} mortgage + ${fS(bestF.plInterestTotal)} personal loan`} /> : <Kpi label="Total profit paid" value="—" />}
+              {home
+                ? (bestF ? <Kpi label={`Break-even vs renting`} value={bestF.breakEvenMonth != null ? fYr(bestF.breakEvenMonth) : `> ${inp.horizon} yrs`} sub="owner equity (after selling costs) overtakes renter's portfolio" accent={bestF.breakEvenMonth != null ? C.pos : C.neg} /> : null)
+                : (bestF ? <Kpi label="NPV @ discount rate" value={fS(bestF.npv)} sub={`${inp.discountRate}% · equity multiple ${bestF.moic ? bestF.moic.toFixed(2) + "×" : "—"}`} accent={bestF.npv >= 0 ? C.pos : C.neg} /> : null)}
+            </div>
+
+            {/* 01 project */}
+            <SectionHeader id="project" eyebrow="01 · The project" title={build ? "Land, construction & market" : "Property purchase & market"} sub="Defaults describe a mid-size Riyadh villa. All amounts in SAR. Taxes follow KSA rules: 15% VAT on construction & finishing (land is VAT-exempt), 5% Real Estate Transaction Tax with the first-home relief on the first 1M SAR." />
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 16, marginBottom: 34 }}>
+              <Card n="A" title={build ? "Land & construction" : "Purchase"}>
+                {build ? <>
+                  <Slider label="Land area" value={inp.landArea} min={200} max={2000} step={25} unit="m²" onChange={(v) => set("landArea", v)} />
+                  <Slider label="Land price" value={inp.landPrice} min={500} max={12000} step={100} unit="SAR/m²" onChange={(v) => set("landPrice", v)} hint={`land ${fS(prj.land)}`} />
+                  <Slider label="Built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />
+                  <Slider label="Construction cost (turnkey)" value={inp.buildCost} min={1200} max={6000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`structure + finishing ${fS(prj.hard)} before VAT`} />
+                  <Slider label="Design, permits & supervision" value={inp.softPct} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("softPct", v)} />
+                  <Slider label="Contingency" value={inp.contPct} min={0} max={25} step={1} unit="%" onChange={(v) => set("contPct", v)} hint="overruns are the norm — keep ≥ 5%" />
+                  <Slider label="Extras: kitchen, AC, landscape" value={inp.finishExtra} min={0} max={600000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
+                  <Slider label="Construction duration" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} hint={home ? "you keep paying rent until you move in" : "no rental income until complete"} />
+                  <Slider label="Value uplift of self-build" value={inp.devMarginPct} min={-10} max={30} step={1} unit="%" onChange={(v) => set("devMarginPct", v)} hint="finished home's market value vs. land + construction cost" />
+                </> : <>
+                  <Slider label="Purchase price" value={inp.propertyPrice} min={500000} max={10000000} step={50000} unit="SAR" onChange={(v) => set("propertyPrice", v)} />
+                  <Slider label="Broker fee" value={inp.brokerPct} min={0} max={5} step={0.5} unit="%" onChange={(v) => set("brokerPct", v)} />
+                  <Slider label="Finishing / furnishing" value={inp.finishExtra} min={0} max={600000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
+                </>}
+                <Slider label="RETT" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
+                {home && <Check checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home RETT relief (state bears RETT on the first ${fS(inp.rettExemptCap)})`} />}
+                <Slider label="VAT" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} />
+              </Card>
+              <Card n="B" title="Market, horizon & holding costs">
+                <Slider label="Property appreciation" value={inp.appreciation} min={-5} max={12} step={0.5} unit="%/yr" onChange={(v) => set("appreciation", v)} />
+                {home ? <Slider label="Analysis horizon" value={inp.horizon} min={5} max={30} step={1} unit="yrs" onChange={(v) => set("horizon", v)} />
+                      : <Slider label="Exit (sale) year" value={inp.exitYear} min={3} max={30} step={1} unit="yrs" onChange={(v) => set("exitYear", v)} />}
+                <Slider label={home ? "Return your cash earns elsewhere" : "Return cash earns elsewhere (renter path)"} value={inp.altReturn} min={0} max={15} step={0.5} unit="%/yr" onChange={(v) => set("altReturn", v)} hint="opportunity cost of every riyal you put into the house (sukuk / funds / business)" />
+                <Slider label="Discount rate (NPV)" value={inp.discountRate} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} />
+                <Slider label="Selling costs at exit" value={inp.sellCostPct} min={0} max={12} step={0.5} unit="%" onChange={(v) => set("sellCostPct", v)} hint="5% RETT (seller) + ~2.5% broker" />
+                <Slider label="Maintenance" value={inp.maintPct} min={0} max={3} step={0.1} unit="% value/yr" onChange={(v) => set("maintPct", v)} />
+                <Slider label="Insurance & fees" value={inp.insurance} min={0} max={20000} step={500} unit="SAR/yr" onChange={(v) => set("insurance", v)} />
+              </Card>
+              {home ? (
+                <Card n="C" title="You — income, cash & the rent alternative">
+                  <Slider label="Rent of an equivalent home today" value={inp.rentNow} min={2000} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint="what you pay (or would pay) to live in the same kind of home" />
+                  <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
+                  <Slider label="Your monthly income" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} />
+                  <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} hint="SAMA responsible-lending norm: 55% (65% for higher incomes)" />
+                  <Slider label="Cash you can commit" value={inp.cashAvailable} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} hint="options needing more than this are flagged" />
+                </Card>
+              ) : (
+                <Card n="C" title="Letting assumptions">
+                  <Slider label="Rent achievable" value={inp.rentMo} min={2000} max={60000} step={500} unit="SAR/mo" onChange={(v) => set("rentMo", v)} hint={`gross yield ${pct1(inp.rentMo * 12 / prj.total * 100)} on all-in cost`} />
+                  <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
+                  <Slider label="Vacancy & collection loss" value={inp.vacancyPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("vacancyPct", v)} />
+                  <Slider label="Property management" value={inp.mgmtPct} min={0} max={15} step={0.5} unit="% of rent" onChange={(v) => set("mgmtPct", v)} />
+                  <Slider label="Zakat on net rent" value={inp.zakatPct} min={0} max={2.5} step={0.5} unit="%" onChange={(v) => set("zakatPct", v)} hint="individuals: usually 0 unless held for trade" />
+                  <Slider label="Your monthly income" value={inp.income} min={10000} max={200000} step={1000} unit="SAR" onChange={(v) => set("income", v)} hint="for the bank's debt-burden test" />
+                  <Slider label="Debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} />
+                  <Slider label="Cash you can commit" value={inp.cashAvailable} min={0} max={5000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
+                </Card>
+              )}
+              <Card n="D" title="Cost build-up">
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                  <tbody>
+                    {costRows.map(([l, v]) => <tr key={l}><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub, whiteSpace: "normal" }}>{l}</td><td style={td}>{fSAR(v)}</td></tr>)}
+                    <tr style={{ background: "#F3EFE6" }}><td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 700 }}>All-in project cost</td><td style={{ ...td, fontWeight: 700 }}>{fSAR(prj.total)}</td></tr>
+                    <tr><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub }}>Market value at completion</td><td style={{ ...td, color: prj.value0 >= prj.total ? C.pos : C.neg }}>{fSAR(prj.value0)}</td></tr>
+                  </tbody>
+                </table>
+                <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 10, lineHeight: 1.5 }}>Spend timing: {build ? `land + RETT at month 0, construction evenly over ${prj.bm} months, extras at completion.` : "everything at month 0."} The mortgage is drawn only after your cash and any personal loan are spent.</div>
+              </Card>
+            </div>
+
+            {/* 02 financing */}
+            <SectionHeader id="financing" eyebrow="02 · Financing options" title="Four ways to fund it — mix cash, personal loans and a mortgage"
+              sub="Each column is a capital stack. Own cash goes in first, then the personal loan (unsecured, short, repaid from month 1), and the mortgage covers the remainder — drawn in stages during construction with profit accruing in the grace period. A subsidy cap models REDF / Sakani support that bears the profit on the first 500K SAR."
+              meta={<div className="no-print" style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>Presets: <b>Cash</b> · <b>Bank</b> · <b>REDF</b> · <b>Stack</b> · <b>Hybrid</b> — apply then tune</div>} />
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", gap: 14, marginBottom: 20 }}>
+              {inp.options.map((o, i) => {
+                const r = m.results[i];
+                const col = OPT_COLORS[i];
+                return (
+                  <div key={i} className="print-section" style={{ background: C.paper, border: `1px solid ${o.enabled ? col : C.line}`, borderTop: `4px solid ${col}`, borderRadius: 10, padding: "14px 16px", opacity: o.enabled ? 1 : 0.55 }}>
+                    <div className="flex items-center justify-between" style={{ gap: 8, marginBottom: 8 }}>
+                      <label className="flex items-center" style={{ gap: 6, cursor: "pointer" }}>
+                        <input type="checkbox" checked={o.enabled} onChange={(e) => setOpt(i, "enabled", e.target.checked)} />
+                        <span style={{ fontFamily: MONO, fontSize: 11, color: col, fontWeight: 700 }}>OPTION {i + 1}</span>
+                      </label>
+                      <select className="no-print" value="" onChange={(e) => e.target.value && applyPreset(i, e.target.value)} style={{ fontSize: 11, padding: "3px 6px" }}>
+                        <option value="">preset…</option>
+                        {Object.entries(RE_OPTION_PRESETS).map(([k, pr]) => <option key={k} value={k}>{pr.name}</option>)}
+                      </select>
+                    </div>
+                    <input type="text" value={o.name} onChange={(e) => setOpt(i, "name", e.target.value)} style={{ width: "100%", fontWeight: 700, marginBottom: 12 }} />
+                    {r && (
+                      <div style={{ fontFamily: MONO, fontSize: 11.5, background: "#F3EFE6", borderRadius: 7, padding: "8px 10px", marginBottom: 12, lineHeight: 1.7 }}>
+                        <div className="flex justify-between"><span style={{ fontFamily: SANS, color: C.sub }}>Own cash</span><span>{fS(r.cash)}</span></div>
+                        <div className="flex justify-between"><span style={{ fontFamily: SANS, color: C.sub }}>Personal loan</span><span>{fS(r.pl)}</span></div>
+                        <div className="flex justify-between"><span style={{ fontFamily: SANS, color: C.sub }}>Mortgage</span><span>{fS(r.loanCommit)} <span style={{ color: C.sub }}>({prj.total > 0 ? Math.round(r.loanCommit / prj.total * 100) : 0}% LTV)</span></span></div>
+                        <div className="flex justify-between" style={{ borderTop: `1px solid ${C.line}`, fontWeight: 700 }}><span style={{ fontFamily: SANS }}>Instalment</span><span>{fSAR(r.monthlyPayment)}/mo</span></div>
+                        {!r.ltvOk && <div style={{ color: C.neg, fontFamily: SANS }}>▲ {fS(r.fundingGap)} above the bank's {o.maxLtvPct}% LTV ceiling</div>}
+                        {!r.cashOk && <div style={{ color: C.neg, fontFamily: SANS }}>▲ needs {fS(r.cashNeeded)} cash, you have {fS(inp.cashAvailable)}</div>}
+                        {!r.affordable && <div style={{ color: C.neg, fontFamily: SANS }}>▲ instalment is {r.dbr.toFixed(0)}% of income (cap {inp.dbrCap}%)</div>}
+                      </div>
+                    )}
+                    <Slider label="Own cash" value={o.cashPct} min={0} max={100} step={1} unit="% of cost" onChange={(v) => setOpt(i, "cashPct", v)} hint={`= ${fS(prj.total * o.cashPct / 100)}`} />
+                    <Slider label="Personal loan" value={o.plAmount} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => setOpt(i, "plAmount", v)} hint="unsecured; banks may not count it as down payment" />
+                    {o.plAmount > 0 && <>
+                      <Slider label="Personal-loan rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setOpt(i, "plRate", v)} />
+                      <Slider label="Personal-loan tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setOpt(i, "plTenure", v)} />
+                    </>}
+                    <div style={{ borderTop: `1px dashed ${C.line}`, margin: "4px 0 12px" }} />
+                    <Slider label="Mortgage profit rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setOpt(i, "rate", v)} hint="fixed, reducing-balance equivalent" />
+                    <Slider label="Mortgage tenure" value={o.tenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setOpt(i, "tenure", v)} />
+                    <Slider label="Grace period" value={o.graceMonths} min={0} max={36} step={1} unit="months" onChange={(v) => setOpt(i, "graceMonths", v)} hint={build ? `at least the ${prj.bm}-month build` : "0 for a ready property"} />
+                    <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+                      <span style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, fontWeight: 500 }}>Profit during grace</span>
+                      <select value={o.graceMode} onChange={(e) => setOpt(i, "graceMode", e.target.value)} style={{ fontSize: 11.5 }}>
+                        <option value="capitalize">added to the loan</option>
+                        <option value="interestOnly">paid monthly</option>
+                      </select>
+                    </div>
+                    <Slider label="Subsidised portion (REDF)" value={o.subsidyCap} min={0} max={1000000} step={50000} unit="SAR" onChange={(v) => setOpt(i, "subsidyCap", v)} hint="Sakani bears the profit on the first 500K for eligible citizens" />
+                    {o.subsidyCap > 0 && <Slider label="Subsidy on that portion" value={o.subsidyPct} min={0} max={100} step={5} unit="%" onChange={(v) => setOpt(i, "subsidyPct", v)} />}
+                    <Slider label="Bank fees (upfront)" value={o.feesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setOpt(i, "feesPct", v)} />
+                    <Slider label="Extra prepayment" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setOpt(i, "extraMo", v)} hint={r && r.loanCommit > 0 && r.payoffMonth ? `mortgage cleared in ${fYr(r.payoffMonth)}` : ""} />
+                    <Slider label="Bank's max LTV" value={o.maxLtvPct} min={50} max={100} step={5} unit="%" onChange={(v) => setOpt(i, "maxLtvPct", v)} hint="90% first home (SAMA), lower for investors" />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 03 compare */}
+            <SectionHeader id="compare" eyebrow="03 · Side by side" title={home ? "Which option leaves you wealthiest?" : "Which capital stack earns the most?"}
+              sub={home ? `Ranked by wealth advantage over renting at year ${inp.horizon}: your home equity after selling costs, minus what the same cash would have grown to had you rented and invested the difference at ${inp.altReturn}%. Because the rent path is identical for every option, the gap between two options is exactly the gap in their advantage.`
+                        : "Ranked by levered IRR on the cash you actually put in. Unlevered IRR is the property's own return and is the same for every stack; the difference is what the debt adds or destroys."} />
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 18 }}>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                  <thead><tr><th style={{ ...th, textAlign: "left" }}>Metric</th>{liveIdx.map((i) => <th key={i} style={{ ...th, borderTop: `4px solid ${OPT_COLORS[i]}` }}>{m.results[i].opt.name}{m.ranked[0] === m.results[i] && <span style={{ color: C.brassLt }}> ★</span>}</th>)}</tr></thead>
+                  <tbody>
+                    {(home ? [
+                      ["Own cash in", (r) => fS(r.cash)], ["Personal loan", (r) => fS(r.pl)], ["Mortgage", (r) => fS(r.loanCommit)],
+                      ["Cash needed day 1 (incl. fees)", (r) => fS(r.cashNeeded), (r) => r.cashOk ? C.text : C.neg],
+                      ["Profit accrued during grace", (r) => fS(r.graceInterest)],
+                      ["Monthly instalment (post-grace)", (r) => fSAR(r.monthlyPayment)],
+                      ["Peak monthly outgo (instalments + rent while building + upkeep)", (r) => fSAR(r.maxBurden)],
+                      ["Instalment ÷ income (bank DBR)", (r) => pct1(r.dbr), (r) => r.affordable ? C.text : C.neg],
+                      ["Total profit paid to banks", (r) => fS(r.totalInterest), () => C.neg],
+                      ["Total cash out over horizon", (r) => fS(r.totalOutflow)],
+                      ["Loan still owed at horizon", (r) => fS(r.endBalance)],
+                      ["Home value at horizon", (r) => fS(r.endValue)],
+                      ["Your equity after selling costs", (r) => fS(r.ownerEquityEnd), () => C.text, true],
+                      ["Renter's portfolio (same cash, invested)", (r) => fS(r.portfolioEnd)],
+                      ["Wealth advantage vs renting", (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, true],
+                      ["Break-even vs renting", (r) => r.breakEvenMonth != null ? fYr(r.breakEvenMonth) : `> ${inp.horizon} yrs`],
+                      ["Mortgage paid off", (r) => r.loanCommit <= 0 ? "no mortgage" : r.payoffMonth != null ? fYr(r.payoffMonth) : `> ${inp.horizon} yrs`],
+                    ] : [
+                      ["Own cash in", (r) => fS(r.cash)], ["Personal loan", (r) => fS(r.pl)], ["Mortgage", (r) => fS(r.loanCommit)],
+                      ["Peak equity committed", (r) => fS(r.invested), (r) => r.cashOk ? C.text : C.neg],
+                      ["Levered IRR", (r) => pct1(r.irr == null ? null : r.irr * 100), (r) => r.irr != null && r.irr * 100 >= inp.discountRate ? C.pos : C.neg, true],
+                      ["Unlevered (property) IRR", (r) => pct1(r.irrUnlev == null ? null : r.irrUnlev * 100)],
+                      [`NPV @ ${inp.discountRate}%`, (r) => fS(r.npv), (r) => r.npv >= 0 ? C.pos : C.neg, true],
+                      ["Equity multiple", (r) => r.moic == null ? "—" : r.moic.toFixed(2) + "×"],
+                      ["Cash-on-cash (first full year)", (r) => pct1(r.cashOnCash), (r) => r.cashOnCash != null && r.cashOnCash >= 0 ? C.text : C.neg],
+                      ["Gross yield on cost", (r) => pct1(r.grossYield)], ["Net yield (NOI) on cost", (r) => pct1(r.netYield)],
+                      ["Min. debt-service cover (DSCR)", (r) => r.dscrMin == null ? "no debt" : r.dscrMin.toFixed(2) + "×", (r) => r.dscrMin == null || r.dscrMin >= 1.2 ? C.text : C.neg],
+                      ["Monthly instalment (post-grace)", (r) => fSAR(r.monthlyPayment)],
+                      ["Instalment ÷ income (bank DBR)", (r) => pct1(r.dbr), (r) => r.affordable ? C.text : C.neg],
+                      ["Total profit paid to banks", (r) => fS(r.totalInterest), () => C.neg],
+                      ["Cumulative cash flow after debt", (r) => fS(r.totalCf)],
+                      ["Net sale proceeds at exit", (r) => fS(r.exitProceeds)],
+                      ["Payback (equity recovered)", (r) => r.payback ? `Y${r.payback}` : `> Y${inp.exitYear}`],
+                    ]).map(([label, fn, colorFn, head]) => (
+                      <tr key={label} style={{ background: head ? "#F3EFE6" : "transparent" }}>
+                        <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: head ? 700 : 400, whiteSpace: "normal", maxWidth: 300 }}>{label}</td>
+                        {liveIdx.map((i) => { const r = m.results[i]; return <td key={i} style={{ ...td, fontWeight: head ? 700 : 400, color: colorFn ? colorFn(r) : C.text }}>{fn(r)}</td>; })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 16 }}>
+              <Panel title="Capital stack per option · SAR">
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={stackData} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                    <XAxis dataKey="name" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} interval={0} />
+                    <YAxis tick={axisT} tickFormatter={fS} />
+                    <Tooltip formatter={(v) => fSAR(v)} labelFormatter={(l, pl) => pl && pl[0] ? pl[0].payload.full : l} contentStyle={tipStyle} />
+                    <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+                    <Bar dataKey="Own cash" stackId="s" fill={C.pos} />
+                    <Bar dataKey="Personal loan" stackId="s" fill={C.neg} />
+                    <Bar dataKey="Mortgage" stackId="s" fill={C.ink2} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Panel>
+              <Panel title={home ? "Monthly outgo per option vs. rent · SAR/mo (annual average)" : "Monthly instalments + upkeep per option · SAR/mo (annual average)"}>
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={yearSeries.slice(1)} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                    <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} />
+                    <YAxis tick={axisT} tickFormatter={fS} />
+                    <Tooltip formatter={(v) => fSAR(v)} contentStyle={tipStyle} />
+                    <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+                    {liveIdx.map((i) => <Line key={i} dataKey={`out${i}`} name={m.results[i].opt.name} stroke={OPT_COLORS[i]} strokeWidth={2} dot={false} />)}
+                    {home && <Line dataKey="rent" name="Renting instead" stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} />}
+                  </LineChart>
+                </ResponsiveContainer>
+              </Panel>
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16, marginBottom: 34 }}>
+              {home ? (
+                <Panel title="Your wealth: home equity (after selling costs) per option vs. renter's portfolio">
+                  <ResponsiveContainer width="100%" height={280}>
+                    <LineChart data={yearSeries} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                      <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} />
+                      <YAxis tick={axisT} tickFormatter={fS} />
+                      <Tooltip formatter={(v) => fSAR(v)} contentStyle={tipStyle} />
+                      <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+                      <ReferenceLine y={0} stroke={C.sub} />
+                      {liveIdx.map((i) => <Line key={i} dataKey={`nw${i}`} name={m.results[i].opt.name} stroke={OPT_COLORS[i]} strokeWidth={2.2} dot={false} />)}
+                      <Line dataKey="renter" name={`Rent & invest the difference (vs ${focusRes ? focusRes.opt.name : ""})`} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, margin: "6px 6px 4px", lineHeight: 1.5 }}>The renter line mirrors the cash profile of the option selected in section 04 (a renter facing an all-cash buyer has far more to invest than one facing a 10%-down buyer). Each option's advantage figure uses its own renter path.</div>
+                </Panel>
+              ) : (
+                <Panel title="Annual cash flow after debt service per option · SAR">
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={yearSeries} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                      <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} />
+                      <YAxis tick={axisT} tickFormatter={fS} />
+                      <Tooltip formatter={(v) => fSAR(v)} contentStyle={tipStyle} />
+                      <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+                      <ReferenceLine y={0} stroke={C.sub} />
+                      {liveIdx.map((i) => <Bar key={i} dataKey={`cf${i}`} name={m.results[i].opt.name} fill={OPT_COLORS[i]} />)}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Panel>
+              )}
+              <Panel title="Debt outstanding per option · SAR">
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={yearSeries} margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.line} />
+                    <XAxis dataKey="year" tick={{ fontFamily: SANS, fontSize: 11, fill: C.sub }} />
+                    <YAxis tick={axisT} tickFormatter={fS} />
+                    <Tooltip formatter={(v) => fSAR(v)} contentStyle={tipStyle} />
+                    <Legend wrapperStyle={{ fontFamily: SANS, fontSize: 12 }} />
+                    {liveIdx.map((i) => <Line key={i} dataKey={`bal${i}`} name={m.results[i].opt.name} stroke={OPT_COLORS[i]} strokeWidth={2.2} dot={false} />)}
+                  </LineChart>
+                </ResponsiveContainer>
+              </Panel>
+            </div>
+
+            {/* 04 detail */}
+            <SectionHeader id="detail" eyebrow="04 · Year by year" title={focusRes ? `${focusRes.opt.name} — annual schedule` : "Annual schedule"} sub="Y0 is the signing month. Instalments include the personal loan. Values are cash actually moving in the year."
+              meta={<div className="flex no-print" style={{ gap: 6 }}>{liveIdx.map((i) => <button key={i} onClick={() => setFocus(i)} style={{ ...btn(focusIdx === i ? OPT_COLORS[i] : "transparent", focusIdx === i ? "#fff" : C.sub, focusIdx === i ? OPT_COLORS[i] : C.line), fontSize: 11.5, padding: "5px 10px" }}>Option {i + 1}</button>)}</div>} />
+            {focusRes && (
+              <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 34 }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12 }}>
+                    <thead><tr><th style={{ ...th, textAlign: "left" }}>Line</th>{focusRes.years.map((y) => <th key={y.year} style={th}>{y.label}</th>)}</tr></thead>
+                    <tbody>
+                      {(home ? [
+                        ["Project spend", "spend", "neg"], ["  of which from own cash / personal loan", "eq", "sub"],
+                        ["Rent paid while building", "rentPaid", "neg"], ["Mortgage instalments", "mortgagePayment", "neg"], ["Personal-loan instalments", "plPayment", "neg"],
+                        ["  of which profit", "interest", "sub"], ["Maintenance & insurance", "ownerCost", "neg"], ["Total cash out", "outflow", "head"],
+                        ["Rent you would have paid", "rentEq", "sub"], ["Debt outstanding (year-end)", "bal", "plain"], ["Home value", "value", "plain"],
+                        ["Equity after selling costs", "ownerEquity", "head"], ["Renter's portfolio", "portfolio", "plain"], ["Advantage vs renting", "advantage", "head"],
+                      ] : [
+                        ["Project spend", "spend", "neg"], ["  of which from own cash / personal loan", "eq", "sub"],
+                        ["Rent collected (net of vacancy & mgmt)", "rentIn", "head"], ["Maintenance & insurance", "opex", "neg"], ["Net operating income", "noi", "head"],
+                        ["Mortgage instalments", "mortgagePayment", "neg"], ["Personal-loan instalments", "plPayment", "neg"], ["  of which profit", "interest", "sub"],
+                        ["Cash flow after debt", "cf", "head"], ["Equity cash flow (incl. exit)", "lev", "head"], ["Debt outstanding (year-end)", "bal", "plain"], ["Property value", "value", "plain"], ["DSCR", "dscr", "ratio"],
+                      ]).map(([label, key, kind]) => (
+                        <tr key={key} style={{ background: kind === "head" ? "#F3EFE6" : "transparent" }}>
+                          <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "sub" ? C.sub : C.text, paddingLeft: label.startsWith("  ") ? 26 : 14 }}>{label.trim()}</td>
+                          {focusRes.years.map((y) => { const v = y[key]; const neg = v < 0; return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: kind === "ratio" ? (v != null && v < 1.2 ? C.neg : C.text) : neg && (kind === "head" || kind === "plain") ? C.neg : kind === "neg" || kind === "sub" ? C.sub : C.text }}>{kind === "ratio" ? (v == null ? "—" : v.toFixed(2)) : kind === "neg" || kind === "sub" ? (Math.abs(v) < 0.5 ? "–" : `(${fS(Math.abs(v))})`) : fS(v)}</td>; })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 05 sensitivity */}
+            <SectionHeader id="sensitivity" eyebrow="05 · What moves the answer" title={focusRes ? `Sensitivity — ${focusRes.opt.name}` : "Sensitivity"} sub={`Each driver flexed ±20% on its own. Bars show the change in ${home ? "wealth advantage vs renting (SAR)" : "levered IRR (percentage points)"}; the longest bar is the assumption to firm up first.`} />
+            <Panel style={{ marginBottom: 34 }}>
+              <ResponsiveContainer width="100%" height={46 * Math.max(1, tornado.length) + 30}>
+                <BarChart data={tornado} layout="vertical" margin={{ top: 0, right: 40, left: 10, bottom: 0 }} stackOffset="sign">
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.line} horizontal={false} />
+                  <XAxis type="number" tick={axisT} tickFormatter={(v) => home ? fS(v) : v.toFixed(1)} />
+                  <YAxis type="category" dataKey="label" width={210} tick={{ fontFamily: SANS, fontSize: 11.5, fill: C.text }} />
+                  <Tooltip formatter={(v) => home ? fSAR(v) : v.toFixed(2) + " pp"} contentStyle={tipStyle} />
+                  <ReferenceLine x={0} stroke={C.text} />
+                  <Bar dataKey="lo" stackId="t" fill={C.neg} />
+                  <Bar dataKey="hi" stackId="t" fill={C.pos} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Panel>
+
+            {/* 06 scenarios */}
+            <SectionHeader id="scenarios" eyebrow="06 · Scenarios" title="Save, reload & compare whole scenarios" sub="A scenario stores every slider and all four financing options in this browser. Compare, say, a 400 m² plot in one district against a ready villa elsewhere, or today's rates against a stressed case." />
+            <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 16px", marginBottom: 60 }}>
+              <div className="flex items-center flex-wrap no-print" style={{ gap: 8, marginBottom: 12 }}>
+                <input type="text" placeholder="Scenario name…" value={name} onChange={(e) => setName(e.target.value)} style={{ width: 220 }} />
+                <button onClick={doSave} style={btn(C.brass, C.ink)}><Save size={14} /> Save current</button>
+                <button onClick={() => setInp(JSON.parse(JSON.stringify(RE_BASE)))} style={btn("transparent", C.sub, C.line)}><RotateCcw size={14} /> Reset to defaults</button>
+                <span style={{ flex: 1 }} />
+                <button onClick={doExport} style={btn("transparent", C.sub, C.line)}>Export JSON</button>
+                <label style={{ ...btn("transparent", C.sub, C.line) }}><FolderOpen size={14} /> Import <input type="file" accept="application/json" onChange={doImport} style={{ display: "none" }} /></label>
+              </div>
+              {savedRows.length === 0 ? <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub }}>No saved scenarios yet.</div> : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: MONO, fontSize: 12.5 }}>
+                  <thead><tr><th style={{ ...th, textAlign: "left" }}>Scenario</th><th style={th}>Mode</th><th style={th}>Project cost</th><th style={{ ...th, textAlign: "left" }}>Best feasible option</th><th style={th}>Advantage / IRR</th><th style={th}>Instalment</th><th style={th}>Verdict</th><th style={th} className="no-print"></th></tr></thead>
+                  <tbody>{savedRows.map((s) => (
+                    <tr key={s.n}>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 600 }}>{s.n}</td>
+                      <td style={{ ...td, fontFamily: SANS, color: C.sub }}>{s.mode}</td>
+                      <td style={td}>{fS(s.total)}</td>
+                      <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{s.best}</td>
+                      <td style={td}>{s.metric}</td>
+                      <td style={td}>{fSAR(s.pmt)}</td>
+                      <td style={{ ...td, color: s.vColor, fontWeight: 700 }}>{s.verdict}</td>
+                      <td style={{ ...td }} className="no-print"><div className="flex" style={{ gap: 4, justifyContent: "flex-end" }}><button title="Load" onClick={() => doLoad(s.n)} style={iconBtn}><FolderOpen size={15} color={C.brass} /></button><button title="Delete" onClick={() => doDelete(s.n)} style={iconBtn}><Trash2 size={15} color={C.neg} /></button></div></td>
+                    </tr>))}</tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

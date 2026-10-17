@@ -9,6 +9,8 @@ landing page.
 | `index.html` | Landing page — choose a version |
 | `redesign.html` | Redesigned, investor-document layout (executive study + live KPIs + print/PDF) |
 | `original.html` | Original single-scroll workspace, preserved for comparison |
+| `pods.html` | Concept model: mall dental-hygiene-pod network |
+| `realestate.html` + `re-engine.js` | Real-estate scenario tool: fund a home (cash / personal loan / mortgage mixes vs renting) or evaluate a buy-to-let |
 | `serve.ps1` | Static file server for Windows (PowerShell) |
 
 Both layouts run the **identical** model: a live financial engine (revenue
