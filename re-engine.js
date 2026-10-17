@@ -35,6 +35,7 @@ const RE_BASE = {
   // land & construction
   landArea: 400, landPrice: 3200,          // sqm, SAR/sqm
   builtArea: 520, buildCost: 2300,         // sqm built-up, SAR/sqm turnkey
+  builtPct: 0,                             // if > 0, built-up area = landArea × builtPct % (e.g. 70) and builtArea is ignored
   softPct: 8, contPct: 7, finishExtra: 150000, // design/permits/supervision %, contingency %, kitchen/AC/landscape SAR
   buildMonths: 18, devMarginPct: 10,       // construction duration; market value uplift of a self-built home over its cost
   // ready property
@@ -129,7 +130,7 @@ function mergeRE(inp) {
   const p = { ...RE_BASE, ...inp };
   p.options = (inp && inp.options ? inp.options : RE_BASE.options).map((o, i) => ({ ...RE_BASE.options[i] || RE_OPTION_PRESETS.bank, ...o }));
   p.plans = (inp && inp.plans ? inp.plans : RE_BASE.plans).map((o, i) => ({ ...RE_EQ_DEFAULTS, ...RE_BASE.plans[i] || RE_PLAN_PRESETS.mortgageOnly, ...o }));
-  p.existingLoans = (inp && inp.existingLoans ? inp.existingLoans : RE_BASE.existingLoans).map((l, i) => ({ id: i + 1, name: `Loan ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, ...l }));
+  p.existingLoans = (inp && inp.existingLoans ? inp.existingLoans : RE_BASE.existingLoans).map((l, i) => ({ id: i + 1, name: `Loan ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, canSettle: true, ...l }));
   return p;
 }
 // principal an annuity of `pmt` per month supports at rAnnual over n months
@@ -144,7 +145,8 @@ function reProject(p) {
   const build = p.acquire === "build";
   const land = build ? p.landArea * p.landPrice : 0;
   const price = build ? 0 : p.propertyPrice;
-  const hard = build ? p.builtArea * p.buildCost : 0;
+  const builtArea = p.builtPct > 0 ? p.landArea * p.builtPct / 100 : p.builtArea;
+  const hard = build ? builtArea * p.buildCost : 0;
   const soft = hard * p.softPct / 100;
   const cont = (hard + soft) * p.contPct / 100;
   const finish = p.finishExtra;
@@ -170,7 +172,7 @@ function reProject(p) {
     schedule[0] = price + rett + broker + finish + vatFinish;
   }
   return { build, land, price, hard, soft, cont, finish, vat: vatConstr + vatFinish, broker, rett, rettExempt: exempt, total, value0, bm, occupy, schedule,
-    costPerSqm: build && p.builtArea > 0 ? (total - land - rett) / p.builtArea : 0 };
+    builtArea, costPerSqm: build && builtArea > 0 ? (total - land - rett) / builtArea : 0 };
 }
 
 /* ---------- annuity ---------- */
@@ -362,7 +364,7 @@ function rePlanSimulate(p, prj, plan) {
 
   // settle existing loans (and an earlier personal loan) until instalments fit under `room`; pays from cash
   function settleToFit(t, room, reason) {
-    const pool = () => activeExisting().concat(pl.bal > 0.5 && pl.settledAt === null ? [pl] : []);
+    const pool = () => activeExisting().filter((l) => l.canSettle !== false).concat(pl.bal > 0.5 && pl.settledAt === null ? [pl] : []); // loans marked 'keep' are never settled
     if (plan.settlePolicy === "all") {
       pool().forEach((l) => doSettle(l, t, "clear all debt before the new facility"));
       return;
