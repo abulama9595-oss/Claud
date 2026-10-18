@@ -420,16 +420,22 @@ function rePlanSimulate(p, prj, plan) {
   // Mortgages (land, existing property, cash-out, refinance into a mortgage) run to their end.
   const isPersonalFac = (f) => f.key === "pl" || f.key === "rf";
   const pool = () => activeExisting().filter((l) => l.canSettle !== false).concat(facs.filter((f) => isPersonalFac(f) && f.bal > 0.5 && f.settledAt === null && f.startedAt !== null));
-  // settle just enough that the bank's capacity covers the funding gap
-  // your rule: a personal loan is paid off with your own cash ONLY to clear room for a MORTGAGE (never for a personal loan),
-  // and only as much as that mortgage needs. Legacy "all" behaves like "asNeeded".
-  function settleFor(t, f, ltvCap, productCap, gapFn) {
+  // your rule: a personal loan is paid off with your own cash ONLY to clear room for a MORTGAGE (never for a personal loan).
+  //   "asNeeded" — just enough personal loans that the mortgage covers the funding gap
+  //   "forMax"   — as many personal loans as it takes for the mortgage to reach the most the property allows (LTV / product cap),
+  //                when the mortgage is sized "max" (otherwise it behaves like asNeeded)
+  //   "none"     — never. Legacy "all" behaves like "asNeeded".
+  function settleFor(t, f, ltvCap, productCap, gapFn, mode) {
     if (f.key === "pl" || f.key === "rf") return;
     if (plan.settlePolicy === "none") return;
+    const forMax = plan.settlePolicy === "forMax" && mode === "max";
+    const dbrBound = () => { const c = capacityOf(f, ltvCap, productCap); return c.byDbr < Math.min(ltvCap, productCap) - 1; };
+    // paying off a loan only helps while the instalment test (not LTV or the product cap) limits the mortgage
+    const more = () => dbrBound() && (forMax || gapFn() > capacityOf(f, ltvCap, productCap).cap + 1);
     let guard = 0;
-    while (gapFn() > capacityOf(f, ltvCap, productCap).cap + 1 && pool().length && guard++ < 20) {
+    while (more() && pool().length && guard++ < 20) {
       const pick = pool().slice().sort((a, b) => instOfAny(b) / settleCost(b) - instOfAny(a) / settleCost(a))[0];
-      roomSettled += pick.bal; doSettle(pick, t, `to make room in the bank's debt-burden test for the ${f.label.toLowerCase()}, paid out of its proceeds the same month`);
+      roomSettled += pick.bal; doSettle(pick, t, `to make room in the bank's debt-burden test for ${forMax ? "the largest " : "the "}${f.label.toLowerCase()}, paid out of its proceeds the same month`);
     }
   }
   function originate(t, f, mode, fixedAmt, ltvCap, productCap, proceedsFirst) {
@@ -438,7 +444,7 @@ function rePlanSimulate(p, prj, plan) {
     // proceeds of a secured facility can pay settlements the same day: let the sizing see the gap, then settle
     // settling from cash lowers cash, so the gap is re-measured after each settlement
     const gapNow = () => Math.max(0, remainingSpend(t) - (cash - p.cashBuffer));
-    settleFor(t, f, ltvCap, productCap, () => mode === "fixed" ? Math.min(fixedAmt, gapNow()) : gapNow());
+    settleFor(t, f, ltvCap, productCap, () => mode === "fixed" ? Math.min(fixedAmt, gapNow()) : gapNow(), mode);
     const gapAfter = gapNow();
     const c = capacityOf(f, ltvCap, productCap);
     const want = mode === "max" ? c.cap : mode === "need" ? gapAfter : fixedAmt;
@@ -687,7 +693,7 @@ function reAutoName(o) {
   if (o.eqWhen !== "none") s.push(o.eqMode === "need" ? "existing-property mortgage for the shortfall at build start" : `existing-property mortgage (max) ${o.eqWhen === "start" ? "now" : "when the land is bought"}`);
   if (o.plWhen !== "none") s.push(o.plSplit ? "personal loan(s) for the shortfall" : "personal loan for the shortfall");
   if (o.coUse) s.push("cash-out at completion");
-  s.push(o.settlePolicy === "none" ? "old loans kept" : "old loans paid off only to make room for a mortgage");
+  s.push(o.settlePolicy === "none" ? "old loans kept" : o.settlePolicy === "forMax" ? "old loans paid off to unlock the full mortgage" : "old loans paid off only to make room for a mortgage");
   return s.join(" · ");
 }
 function optimizeRE(inp, opts) {
@@ -699,7 +705,7 @@ function optimizeRE(inp, opts) {
   const eqOpts = p0.ownedValue > 0 ? [["none", "max"], ["build", "need"], ["start", "max"], ["land", "max"]] : [["none", "max"]];
   // stage 1: every mix of land mortgage · personal loan(s) · existing-property mortgage · cash-out · settle policy
   const combos = [];
-  for (const [lmUse, lmMode] of [[true, "max"], [true, "need"], [false, "max"]]) for (const plWhen of ["build", "none"]) for (const [eqWhen, eqMode] of eqOpts) for (const coUse of [false, true]) for (const settlePolicy of ["asNeeded", "none"]) {
+  for (const [lmUse, lmMode] of [[true, "max"], [true, "need"], [false, "max"]]) for (const plWhen of ["build", "none"]) for (const [eqWhen, eqMode] of eqOpts) for (const coUse of [false, true]) for (const settlePolicy of (lmMode === "max" || eqMode === "max" ? ["asNeeded", "forMax", "none"] : ["asNeeded", "none"])) {
     const o = { ...base, enabled: true, lmUse, lmMode, plWhen, plMode: "need", plSplit: true, eqWhen, eqMode, coUse, coMode: "need", rfWhen: "none", settlePolicy };
     o.name = reAutoName(o); combos.push(o);
   }
@@ -731,7 +737,7 @@ function optimizeRE(inp, opts) {
       if (x.pl > 0) parts.push(x.plSplit ? "two personal loans for the shortfall" : "personal loan for the shortfall");
       if (x.co > 0) parts.push("cash-out at completion");
       if (x.rf > 0) parts.push("personal loans refinanced at completion (bank max)");
-      if (x.roomSettled > 0) parts.push("old loans paid off to make room for the mortgage");
+      if (x.roomSettled > 0) parts.push(o.settlePolicy === "forMax" ? "old personal loans paid off to unlock the full mortgage" : "old loans paid off to make room for the mortgage");
       x.name = parts.join(" · ");
       x.cleanPlan = { ...o, name: x.name, lmUse: x.lm > 0, eqWhen: x.eq > 0 ? o.eqWhen : "none", plWhen: x.pl > 0 ? o.plWhen : "none", coUse: x.co > 0, rfWhen: x.rf > 0 ? o.rfWhen : "none" };
     });
