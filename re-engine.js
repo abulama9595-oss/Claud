@@ -90,7 +90,7 @@ const RE_BASE = {
    bucket (mortgageCap for any mortgage; perLoanCap per personal loan, ×2 when plSplit allows a second personal loan). Timing words: start = month 0,
    land = month the land is bought, build = month construction starts, completion = move-in, month = a month you choose.
    settlePolicy: "none" | "asNeeded" (settle existing loans, best relief per riyal, only when the funding gap exceeds
-   what the bank allows) | "all" (clear every settleable loan at the first facility). */
+   what the bank allows — ONLY for a mortgage; a personal loan never triggers a cash payoff). Legacy "all" = "asNeeded". */
 const RE_PLAN_DEFAULTS = {
   lmUse: false, lmMode: "max", lmAmount: 0, lmRate: 4.5, lmTenure: 18, lmFeesPct: 1,
   eqWhen: "none", eqMonth: 0, eqMode: "max", eqAmount: 0, eqRate: 4.5, eqTenure: 18, eqFeesPct: 1,
@@ -115,8 +115,6 @@ const RE_PLAN_PRESETS = {
     plWhen: "land", plMode: "need" },
   landThenCashOut: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) → cash-out on the finished home to refill cash",
     lmUse: true, lmMode: "max", coUse: true, coMode: "need" },
-  clearAllFirst: { ...RE_PLAN_DEFAULTS, name: "Clear every old loan from the existing-property mortgage, then mortgage the land (max)",
-    eqWhen: "start", eqMode: "need", lmUse: true, lmMode: "max", settlePolicy: "all" },
   allCash: { ...RE_PLAN_DEFAULTS, name: "All cash · no new borrowing", settlePolicy: "none" },
 };
 RE_BASE.plans = [
@@ -397,7 +395,7 @@ function rePlanSimulate(p, prj, plan) {
 
   let cash = p.cashAvailable, rCash = p.cashAvailable;
   let minCash = Infinity, minCashT = 0, belowBufferMonths = 0, shortfall = 0, fundingGap = 0;
-  let settledTotal = 0, settleFees = 0, refiTotal = 0, debtFreeT = null, breakEvenMonth = null, cashRestoredT = null;
+  let settledTotal = 0, settleFees = 0, refiTotal = 0, roomSettled = 0, debtFreeT = null, breakEvenMonth = null, cashRestoredT = null;
   const months = [];
   const yearOf = (t) => Math.max(0, Math.ceil(t / 12));
   const remainingSpend = (t) => { let s = 0; for (let k = t; k < prj.schedule.length; k++) s += prj.schedule[k] || 0; return s; };
@@ -422,14 +420,22 @@ function rePlanSimulate(p, prj, plan) {
   // Mortgages (land, existing property, cash-out, refinance into a mortgage) run to their end.
   const isPersonalFac = (f) => f.key === "pl" || f.key === "rf";
   const pool = () => activeExisting().filter((l) => l.canSettle !== false).concat(facs.filter((f) => isPersonalFac(f) && f.bal > 0.5 && f.settledAt === null && f.startedAt !== null));
-  // settle just enough that the bank's capacity covers the funding gap (or everything, under "all")
-  function settleFor(t, f, ltvCap, productCap, gapFn) {
-    if (plan.settlePolicy === "all") { pool().forEach((l) => doSettle(l, t, `cleared when the ${f.label.toLowerCase()} is drawn`)); return; }
-    if (plan.settlePolicy !== "asNeeded") return;
+  // your rule: a personal loan is paid off with your own cash ONLY to clear room for a MORTGAGE (never for a personal loan).
+  //   "asNeeded" — just enough personal loans that the mortgage covers the funding gap
+  //   "forMax"   — as many personal loans as it takes for the mortgage to reach the most the property allows (LTV / product cap),
+  //                when the mortgage is sized "max" (otherwise it behaves like asNeeded)
+  //   "none"     — never. Legacy "all" behaves like "asNeeded".
+  function settleFor(t, f, ltvCap, productCap, gapFn, mode) {
+    if (f.key === "pl" || f.key === "rf") return;
+    if (plan.settlePolicy === "none") return;
+    const forMax = plan.settlePolicy === "forMax" && mode === "max";
+    const dbrBound = () => { const c = capacityOf(f, ltvCap, productCap); return c.byDbr < Math.min(ltvCap, productCap) - 1; };
+    // paying off a loan only helps while the instalment test (not LTV or the product cap) limits the mortgage
+    const more = () => dbrBound() && (forMax || gapFn() > capacityOf(f, ltvCap, productCap).cap + 1);
     let guard = 0;
-    while (gapFn() > capacityOf(f, ltvCap, productCap).cap + 1 && pool().length && guard++ < 20) {
+    while (more() && pool().length && guard++ < 20) {
       const pick = pool().slice().sort((a, b) => instOfAny(b) / settleCost(b) - instOfAny(a) / settleCost(a))[0];
-      doSettle(pick, t, `to make room in the bank's debt-burden test for the ${f.label.toLowerCase()}, paid out of its proceeds the same month`);
+      roomSettled += pick.bal; doSettle(pick, t, `to make room in the bank's debt-burden test for ${forMax ? "the largest " : "the "}${f.label.toLowerCase()}, paid out of its proceeds the same month`);
     }
   }
   function originate(t, f, mode, fixedAmt, ltvCap, productCap, proceedsFirst) {
@@ -438,7 +444,7 @@ function rePlanSimulate(p, prj, plan) {
     // proceeds of a secured facility can pay settlements the same day: let the sizing see the gap, then settle
     // settling from cash lowers cash, so the gap is re-measured after each settlement
     const gapNow = () => Math.max(0, remainingSpend(t) - (cash - p.cashBuffer));
-    settleFor(t, f, ltvCap, productCap, () => mode === "fixed" ? Math.min(fixedAmt, gapNow()) : gapNow());
+    settleFor(t, f, ltvCap, productCap, () => mode === "fixed" ? Math.min(fixedAmt, gapNow()) : gapNow(), mode);
     const gapAfter = gapNow();
     const c = capacityOf(f, ltvCap, productCap);
     const want = mode === "max" ? c.cap : mode === "need" ? gapAfter : fixedAmt;
@@ -579,7 +585,7 @@ function rePlanSimulate(p, prj, plan) {
   events.sort((a, b) => a.t - b.t);
   const facOut = (f) => ({ ...f });
   return { plan, months, years, events, flags, feasible, recoveryOk, end,
-    lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), co: facOut(co), rf: facOut(rf), refiTotal, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
+    lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), co: facOut(co), rf: facOut(rf), refiTotal, roomSettled, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     cashRestoredT, recoveryMonths, cashAfterWindow: months[after].cash, newDebtTotal: facs.reduce((a, f) => a + f.amount, 0),
     settledTotal, settleFees, totalInterest, newDebtInterest, peakDbr, peakInst, debtFreeT, breakEvenMonth,
@@ -687,7 +693,7 @@ function reAutoName(o) {
   if (o.eqWhen !== "none") s.push(o.eqMode === "need" ? "existing-property mortgage for the shortfall at build start" : `existing-property mortgage (max) ${o.eqWhen === "start" ? "now" : "when the land is bought"}`);
   if (o.plWhen !== "none") s.push(o.plSplit ? "personal loan(s) for the shortfall" : "personal loan for the shortfall");
   if (o.coUse) s.push("cash-out at completion");
-  s.push(o.settlePolicy === "all" ? "clear old loans first" : "settle old loans only if needed");
+  s.push(o.settlePolicy === "none" ? "old loans kept" : o.settlePolicy === "forMax" ? "old loans paid off to unlock the full mortgage" : "old loans paid off only to make room for a mortgage");
   return s.join(" · ");
 }
 function optimizeRE(inp, opts) {
@@ -699,7 +705,7 @@ function optimizeRE(inp, opts) {
   const eqOpts = p0.ownedValue > 0 ? [["none", "max"], ["build", "need"], ["start", "max"], ["land", "max"]] : [["none", "max"]];
   // stage 1: every mix of land mortgage · personal loan(s) · existing-property mortgage · cash-out · settle policy
   const combos = [];
-  for (const [lmUse, lmMode] of [[true, "max"], [true, "need"], [false, "max"]]) for (const plWhen of ["build", "none"]) for (const [eqWhen, eqMode] of eqOpts) for (const coUse of [false, true]) for (const settlePolicy of ["asNeeded", "all"]) {
+  for (const [lmUse, lmMode] of [[true, "max"], [true, "need"], [false, "max"]]) for (const plWhen of ["build", "none"]) for (const [eqWhen, eqMode] of eqOpts) for (const coUse of [false, true]) for (const settlePolicy of (lmMode === "max" || eqMode === "max" ? ["asNeeded", "forMax", "none"] : ["asNeeded", "none"])) {
     const o = { ...base, enabled: true, lmUse, lmMode, plWhen, plMode: "need", plSplit: true, eqWhen, eqMode, coUse, coMode: "need", rfWhen: "none", settlePolicy };
     o.name = reAutoName(o); combos.push(o);
   }
@@ -709,7 +715,7 @@ function optimizeRE(inp, opts) {
   const summarize = (r, prj) => ({ name: r.plan.name, plan: r.plan, feasible: r.feasible, recoveryOk: r.recoveryOk, ok: r.feasible && r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakInst: r.peakInst, peakDbr: r.peakDbr,
     lm: r.lm.amount, lmCap: r.lm.capacity ? r.lm.capacity.cap : 0, eq: r.eq.amount, eqCap: r.eq.capacity ? r.eq.capacity.cap : 0, pl: r.pl.amount, plCap: r.pl.capacity ? r.pl.capacity.cap : 0, plSplit: r.pl.split, co: r.co.amount, coCap: r.co.capacity ? r.co.capacity.cap : 0,
     rf: r.rf.amount, rfCap: r.rf.capacity ? r.rf.capacity.cap : 0, rfNet: r.rf.refi ? r.rf.refi.net : 0, rfNames: r.rf.refi ? r.rf.refi.names : [], refiTotal: r.refiTotal,
-    newDebt: r.newDebtTotal, newDebtInterest: r.newDebtInterest, settled: r.settledTotal, settleFees: r.settleFees, cashAfterWindow: r.cashAfterWindow, cashAtCompletion: r.cashAtCompletion,
+    newDebt: r.newDebtTotal, newDebtInterest: r.newDebtInterest, settled: r.settledTotal, roomSettled: r.roomSettled, settleFees: r.settleFees, cashAfterWindow: r.cashAfterWindow, cashAtCompletion: r.cashAtCompletion,
     netWorth: r.netWorthEnd, advantage: r.advantage, total: prj.total, occupy: prj.occupy, start: prj.start, landMonth: prj.landMonth, flags: r.flags, _r: r });
   const rank = (a, b) => (b.ok - a.ok) || (b.feasible - a.feasible) || (b.netWorth - a.netWorth) || (a.peakInst - b.peakInst);
   let tried = 0;
@@ -731,7 +737,7 @@ function optimizeRE(inp, opts) {
       if (x.pl > 0) parts.push(x.plSplit ? "two personal loans for the shortfall" : "personal loan for the shortfall");
       if (x.co > 0) parts.push("cash-out at completion");
       if (x.rf > 0) parts.push("personal loans refinanced at completion (bank max)");
-      parts.push(x.settled > 0 ? (o.settlePolicy === "all" ? "old loans cleared first" : "old loans settled as needed") : "old loans kept");
+      if (x.roomSettled > 0) parts.push(o.settlePolicy === "forMax" ? "old personal loans paid off to unlock the full mortgage" : "old loans paid off to make room for the mortgage");
       x.name = parts.join(" · ");
       x.cleanPlan = { ...o, name: x.name, lmUse: x.lm > 0, eqWhen: x.eq > 0 ? o.eqWhen : "none", plWhen: x.pl > 0 ? o.plWhen : "none", coUse: x.co > 0, rfWhen: x.rf > 0 ? o.rfWhen : "none" };
     });
