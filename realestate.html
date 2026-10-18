@@ -1021,7 +1021,7 @@
                 {focusRes.events.map((e, k) => <EvRow key={k} t={fMon(e.t)} kind={e.kind}>{e.text}</EvRow>)}
                 <EvRow t={fMon(focusRes.minCashT)} kind="cash">Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</EvRow>
                 {focusRes.debtFreeT != null && <EvRow t={fMon(focusRes.debtFreeT)} kind="end">Debt-free.</EvRow>}
-                <EvRow t={`Y${inp.horizon}`} kind="cash">Cash on hand: <b style={{ fontFamily: MONO, color: focusRes.cashEnd < 0 ? C.neg : C.text }}>{fSAR(focusRes.cashEnd)} SAR</b>.</EvRow>
+                <EvRow t={fMon(focusRes.occupy)} kind="cash">Cash on hand at completion ({fCal(focusRes.occupy)}, the month you move in): <b style={{ fontFamily: MONO, color: focusRes.cashAtCompletion < 0 ? C.neg : C.text }}>{fSAR(focusRes.cashAtCompletion)} SAR</b>.</EvRow>
                 <EvRow t={`Y${inp.horizon}`} kind="end" last>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.endValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>.</EvRow>
               </div>
             )}
