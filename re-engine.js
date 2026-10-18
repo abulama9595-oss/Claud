@@ -62,6 +62,7 @@ const RE_BASE = {
   mortgageCap: 55,         // a MORTGAGE's instalments (land purchase, existing property, cash-out) may not exceed this % of income
   landLtv: 90,             // max LTV when the bank finances the land purchase (cash-raising mortgages: 70%)
   recoveryMonths: 24,      // your rule: cash must be back at the buffer within this many months after move-in
+  refiMinMonths: 12,       // a personal loan can only be refinanced (bought out) once it has run this many months; mortgages never are
   cashoutLtv: 70,          // max LTV for a mortgage raised against an owned, completed home ("cash-out")
   // a property you ALREADY own and could mortgage (equity release) to fund the build or refinance loans
   ownedValue: 7000000, ownedLtv: 70,
@@ -147,7 +148,7 @@ function mergeRE(inp) {
     if (o && o.plWhen && o.plMode == null) q.plMode = (o.plAmount || 0) > 0 ? "fixed" : "need";
     return q;
   });
-  p.existingLoans = (inp && inp.existingLoans ? inp.existingLoans : RE_BASE.existingLoans).map((l, i) => ({ id: i + 1, name: `Loan ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, canSettle: true, canRefi: true, ...l }));
+  p.existingLoans = (inp && inp.existingLoans ? inp.existingLoans : RE_BASE.existingLoans).map((l, i) => ({ id: i + 1, name: `Loan ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, canSettle: true, canRefi: true, ageMonths: null, ...l }));
   return p;
 }
 // principal an annuity of `pmt` per month supports at rAnnual over n months
@@ -420,7 +421,10 @@ function rePlanSimulate(p, prj, plan) {
     cash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0;
     events.push({ t, kind: "settle", text: `Settle ${l.name}: ${fSAR(cost)} (incl. ${fSAR(fee)} early-settlement fee) — frees ${fSAR(inst)}/mo — ${reason}.` });
   }
-  const pool = () => activeExisting().filter((l) => l.canSettle !== false).concat(facs.filter((f) => f.key !== "lm" && f.bal > 0.5 && f.settledAt === null && f.startedAt !== null));
+  // only PERSONAL loans may be paid off early: existing loans you allow, the strategy's personal loan, a refinance taken as a personal loan.
+  // Mortgages (land, existing property, cash-out, refinance into a mortgage) run to their end.
+  const isPersonalFac = (f) => f.key === "pl" || (f.key === "rf" && rfPl);
+  const pool = () => activeExisting().filter((l) => l.canSettle !== false).concat(facs.filter((f) => isPersonalFac(f) && f.bal > 0.5 && f.settledAt === null && f.startedAt !== null));
   // settle just enough that the bank's capacity covers the funding gap (or everything, under "all")
   function settleFor(t, f, ltvCap, productCap, gapFn) {
     if (plan.settlePolicy === "all") { pool().forEach((l) => doSettle(l, t, `cleared when the ${f.label.toLowerCase()} is drawn`)); return; }
@@ -463,7 +467,12 @@ function rePlanSimulate(p, prj, plan) {
   function refinance(t) {
     const f = rf, kind = plan.rfKind;
     const onHome = kind === "mortgage" && prj.build ? t >= prj.occupy : kind === "mortgage" && !prj.build ? t >= prj.landMonth : false;
-    const personal = activeExisting().filter((l) => l.canRefi !== false).concat(pl.bal > 0.5 && pl.settledAt === null && pl.startedAt !== null ? [pl] : []);
+    // personal loans only, and only once they have run refiMinMonths (existing loans: months since they started + months elapsed in the plan)
+    const minAge = p.refiMinMonths == null ? 12 : p.refiMinMonths;
+    const allPersonal = activeExisting().filter((l) => l.canRefi !== false).concat(pl.bal > 0.5 && pl.settledAt === null && pl.startedAt !== null ? [pl] : []);
+    const ageOf = (l) => l.kind === "existing" ? (l.ageMonths == null ? Infinity : l.ageMonths + t) : t - l.startedAt;
+    const personal = allPersonal.filter((l) => ageOf(l) >= minAge);
+    const tooYoung = allPersonal.filter((l) => ageOf(l) < minAge).map((l) => l.name);
     const secured = kind !== "mortgage" ? [] : onHome ? [lm].filter((x) => x.bal > 0.5 && x.settledAt === null && x.startedAt !== null) : [eq].filter((x) => x.bal > 0.5 && x.settledAt === null && x.startedAt !== null);
     const cands = personal.slice(0, 8);                                   // only personal loans are bought out; mortgages stay in place
     const lockedSecured = secured.reduce((a, x) => a + x.bal, 0);        // ...and still use up the asset's LTV
@@ -491,7 +500,7 @@ function rePlanSimulate(p, prj, plan) {
     }
     if (plan.rfMode === "need" && needCash <= 0) { f.capacity = { t, cap: best ? best.cap : 0, limitedBy: "no cash needed", want: 0, mode: "need", taken: 0, gap: 0 }; events.push({ t, kind: "rf", text: `${f.label}: not needed — cash is at or above your buffer.` }); return; }
     if (!best || best.net < 1) {
-      f.capacity = { t, cap: best ? best.cap : 0, limitedBy: best ? "would not release any cash" : cands.length ? "the bank could not buy out the old loans in full" : "no loans to refinance", want: 0, mode: plan.rfMode, taken: 0, gap: needCash };
+      f.capacity = { t, cap: best ? best.cap : 0, limitedBy: best ? "would not release any cash" : cands.length ? "the bank could not buy out the old loans in full" : tooYoung.length ? `${tooYoung.join(" + ")} not yet ${minAge} months old` : "no personal loans to refinance", want: 0, mode: plan.rfMode, taken: 0, gap: needCash };
       events.push({ t, kind: "rf", text: `${f.label}: not possible — ${f.capacity.limitedBy}.` });
       return;
     }
