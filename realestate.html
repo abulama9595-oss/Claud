@@ -664,7 +664,7 @@
                 <Adv title="Advanced: bank rules, rent growth, rate quoting">
                   <Slider label="Total debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} hint="all instalments together (existing + new)" />
                   <Slider label="Cap per single facility" value={inp.perLoanCap} min={20} max={65} step={1} unit="% of income" onChange={(v) => set("perLoanCap", v)} hint="no one loan or mortgage instalment above this" />
-                  <Slider label="LTV banks lend on the land" value={inp.landLtv} min={30} max={90} step={5} unit="% of price" onChange={(v) => set("landLtv", v)} />
+                  <Slider label="LTV when the bank finances the land purchase (cash-raising mortgages use the 70% below)" value={inp.landLtv} min={30} max={95} step={5} unit="% of price" onChange={(v) => set("landLtv", v)} />
                   <Slider label="Cash-recovery window after move-in" value={inp.recoveryMonths} min={0} max={60} step={6} unit="months" onChange={(v) => set("recoveryMonths", v)} hint="your rule: cash must be back at the buffer within this long after moving in" />
                   <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
                   <Slider label="LTV banks lend against your existing property" value={inp.ownedLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("ownedLtv", v)} />
