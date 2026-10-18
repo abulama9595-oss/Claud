@@ -438,14 +438,20 @@ function rePlanSimulate(p, prj, plan) {
     let guard = 0;
     while (more() && pool().length && guard++ < 20) {
       const pick = pool().slice().sort((a, b) => instOfAny(b) / settleCost(b) - instOfAny(a) / settleCost(a))[0];
-      roomSettled += pick.bal; doSettle(pick, t, `to make room in the bank's debt-burden test for ${forMax ? "the largest " : "the "}${f.label.toLowerCase()}, paid out of its proceeds the same month`);
+      // the bank wants the old loan cleared BEFORE it grants the mortgage, so the payoff must come from cash you already have
+      if (cash - settleCost(pick) < 0) {
+        flags.push(`Not enough cash of your own to pay off ${pick.name} (${fS(settleCost(pick))}) before the ${f.label.toLowerCase()} — the mortgage is limited to what fits without that payoff.`);
+        events.push({ t, kind: "settle", text: `Cannot pay off ${pick.name} (${fSAR(settleCost(pick))}) before the ${f.label.toLowerCase()}: only ${fSAR(Math.max(0, cash))} of your own cash on hand.` });
+        break;
+      }
+      roomSettled += pick.bal; doSettle(pick, t, `from your own cash, before the bank grants the ${forMax ? "largest " : ""}${f.label.toLowerCase()} — it is needed to pass the bank's debt-burden test`);
     }
   }
   function originate(t, f, mode, fixedAmt, ltvCap, productCap, proceedsFirst) {
     const cashBefore = cash;
     const gap = Math.max(0, remainingSpend(t) - (cash - p.cashBuffer));
-    // proceeds of a secured facility can pay settlements the same day: let the sizing see the gap, then settle
-    // settling from cash lowers cash, so the gap is re-measured after each settlement
+    // old loans are paid off from your own cash first (the bank requires it before granting the loan);
+    // that lowers cash, so the gap is re-measured after each payoff
     const gapNow = () => Math.max(0, remainingSpend(t) - (cash - p.cashBuffer));
     settleFor(t, f, ltvCap, productCap, () => mode === "fixed" ? Math.min(fixedAmt, gapNow()) : gapNow(), mode);
     const gapAfter = gapNow();
@@ -464,7 +470,7 @@ function rePlanSimulate(p, prj, plan) {
     f.split = f.key === "pl" && plan.plSplit && amount > onePl + 1 ? [onePl, amount - onePl] : null;
     const dbr = allInst() / p.income * 100;
     const basis = mode === "max" ? "the bank's maximum" : mode === "need" ? `the shortfall${gap > amount + 1 ? ` (${fS(gap)} needed)` : ""}` : "the amount you set";
-    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. Net to cash ${fS(cash - cashBefore)}.` });
+    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. ${f.key === "lm" ? `The bank pays it directly to the seller; you pay the other ${fS(Math.max(0, prj.land - amount))} of the price plus ${fS(prj.rett)} transfer tax${f.fees > 1 ? ` and ${fS(f.fees)} bank fees` : ""} from your own cash.` : `Net to your cash ${fS(amount - f.fees)}.`}` });
     if (mode === "need" && gap > amount + 1) flags.push(`${f.label} covers ${fS(amount)} of a ${fS(gap)} shortfall (${c.limitedBy}).`);
   }
   // REFINANCE (bank buy-out of personal loans): the new bank lends its MAXIMUM as new personal loan(s) — each instalment up to
