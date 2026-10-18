@@ -56,6 +56,15 @@
     .ev .m { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 11.5px; color: #64707C; padding-top: 2px; }
     .tag { display: inline-block; font-family: Inter, system-ui, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; white-space: nowrap; }
     @media (max-width: 640px) { .ev { grid-template-columns: 1fr; gap: 3px; } .ev .m { padding-top: 0; } }
+    details.bridge > summary { cursor: pointer; list-style: none; }
+    details.bridge > summary::-webkit-details-marker { display: none; }
+    details.bridge > summary::before { content: "▸"; display: inline-block; width: 14px; color: #A8823C; }
+    details.bridge[open] > summary::before { content: "▾"; }
+    table.bridge { border-collapse: collapse; margin: 8px 0 4px 14px; font-size: 12px; min-width: min(560px, 100%); }
+    table.bridge td { padding: 3px 10px 3px 0; border-bottom: 1px dotted #E2DCCD; vertical-align: top; }
+    table.bridge td.v { text-align: right; font-family: 'SF Mono', ui-monospace, Menlo, monospace; white-space: nowrap; }
+    table.bridge tr.tot td { font-weight: 700; border-top: 1.5px solid #1B2430; border-bottom: none; }
+    table.bridge td.n { color: #64707C; font-size: 11px; }
     .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
     @media (max-width: 820px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
     .tbl { width: 100%; border-collapse: collapse; }
@@ -217,6 +226,41 @@
       const k = EV_KIND[kind] || EV_KIND.milestone;
       return <div className="ev" style={last ? { borderBottom: "none" } : null}><span className="m">{t}</span><span><span className="tag" style={{ background: k.bg, color: k.fg }}>{k.label}</span></span><span style={{ color: kind === "milestone" ? C.sub : C.text }}>{children}</span></div>;
     };
+
+    /* ---------- "how did you get this number" breakdowns (presentation only; they add up exactly to the engine's cash) ---------- */
+    function cashBridgeRows(r, upto, inp, prj) {
+      const ms = r.months.filter((x) => x.t <= upto), sum = (k) => ms.reduce((a, x) => a + (x[k] || 0), 0), n = ms.filter((x) => x.t >= 1).length;
+      const rows = [];
+      const add = (label, v, note) => { if (Math.abs(v) >= 0.5) rows.push({ label, v, note }); };
+      add("Cash you start with today", r.cashStart, fCal(0));
+      add(`Salary · ${n} months × ${fSAR(inp.income)}`, sum("inc"));
+      add(`Living expenses · ${n} months × ${fSAR(inp.livingExpenses)}`, -sum("liv"));
+      add("Rent paid while building", -sum("rentPaid"));
+      add(`Return earned on your cash at ${inp.altReturn}%/yr`, sum("ret"), "on the balance each month");
+      add("Instalments on your old loans", -sum("existInst"));
+      r.payoffs.filter((x) => x.t <= upto).forEach((x) => add(`Paid off early from your cash: ${x.name}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`));
+      const build = inp.acquire === "build";
+      const landPart = prj.landMonth <= upto ? (build ? prj.land + prj.rett : prj.total) : 0;
+      const spend = sum("spend");
+      add(build ? `Land price + ${inp.rettPct}% transfer tax` : "Purchase price, tax, broker and finishing", -landPart, fCal(prj.landMonth));
+      const lm = r.facilities.find((f) => f.key === "lm");
+      if (lm && lm.startedAt !== null && lm.startedAt <= upto && lm.amount > 0) add("  …of which the bank paid the seller (land mortgage)", lm.amount, "never passes through your hands");
+      add("Construction and finishing", -(spend - landPart), `${fCal(prj.start)} → ${fCal(Math.min(upto, prj.occupy))}`);
+      r.facilities.filter((f) => f.startedAt !== null && f.startedAt <= upto && f.amount > 0 && f.key !== "lm" && f.key !== "rf").forEach((f) => add(`Paid to you: ${f.label.toLowerCase()}`, f.amount, fCal(f.startedAt)));
+      const fees = r.facilities.filter((f) => f.startedAt !== null && f.startedAt <= upto && f.key !== "rf").reduce((a, f) => a + f.fees, 0);
+      add("Bank fees on new loans", -fees);
+      const rf = r.facilities.find((f) => f.key === "rf");
+      if (rf && rf.startedAt !== null && rf.startedAt <= upto && rf.refi) add(`Refinance: new loans ${fS(rf.amount)} − old loans cleared ${fS(rf.refi.payoff)}`, rf.amount - rf.refi.payoff, fCal(rf.startedAt));
+      add("Instalments on new loans", -(sum("lmPay") + sum("eqPay") + sum("plPay") + sum("coPay") + sum("rfPay")));
+      add("Upkeep after move-in (maintenance, insurance)", -sum("ownerCost"));
+      return { rows, total: r.months[upto].cash };
+    }
+    const BridgeTable = ({ b, totalLabel }) => (
+      <table className="bridge"><tbody>
+        {b.rows.map((x, k) => <tr key={k}><td style={{ paddingLeft: x.label.startsWith("  ") ? 16 : 0 }}>{x.label.trim()}{x.note ? <div className="n">{x.note}</div> : null}</td><td className="v" style={{ color: x.v < 0 ? C.neg : C.text }}>{x.v < 0 ? "−" : "+"}{fSAR(Math.abs(x.v))}</td></tr>)}
+        <tr className="tot"><td>{totalLabel}</td><td className="v">{fSAR(b.total)}</td></tr>
+      </tbody></table>
+    );
 
     /* ---------- plain-English description of a strategy, generated from its settings (presentation only) ---------- */
     function rateTxt(inp, rate, yrs) { return `${rate}%${inp.rateQuote === "flat" ? " flat" : ""} over ${yrs} yrs`; }
@@ -1021,8 +1065,21 @@
                 {focusRes.events.map((e, k) => <EvRow key={k} t={fMon(e.t)} kind={e.kind}>{e.text}</EvRow>)}
                 <EvRow t={fMon(focusRes.minCashT)} kind="cash">Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</EvRow>
                 {focusRes.debtFreeT != null && <EvRow t={fMon(focusRes.debtFreeT)} kind="end">Debt-free.</EvRow>}
-                <EvRow t={fMon(focusRes.occupy)} kind="cash">Cash on hand at completion ({fCal(focusRes.occupy)}, the month you move in): <b style={{ fontFamily: MONO, color: focusRes.cashAtCompletion < 0 ? C.neg : C.text }}>{fSAR(focusRes.cashAtCompletion)} SAR</b>.</EvRow>
-                <EvRow t={`Y${inp.horizon}`} kind="end" last>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.endValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>.</EvRow>
+                <EvRow t={fMon(focusRes.occupy)} kind="cash"><details className="bridge"><summary>Cash on hand at completion ({fCal(focusRes.occupy)}, the month you move in): <b style={{ fontFamily: MONO, color: focusRes.cashAtCompletion < 0 ? C.neg : C.text }}>{fSAR(focusRes.cashAtCompletion)} SAR</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
+                  <BridgeTable b={cashBridgeRows(focusRes, focusRes.occupy, inp, prj)} totalLabel={`Cash on hand, ${fCal(focusRes.occupy)}`} />
+                </details></EvRow>
+                <EvRow t={`Y${inp.horizon}`} kind="end" last><details className="bridge"><summary>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.months[focusRes.months.length - 1].liqValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>. <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
+                  {(() => { const H = focusRes.months.length - 1, end = focusRes.months[H], cb = cashBridgeRows(focusRes, H, inp, prj); return <>
+                    <table className="bridge"><tbody>
+                      <tr><td><details className="bridge"><summary>Cash on hand at Y{inp.horizon} ({fCal(H)})</summary><BridgeTable b={cb} totalLabel={`Cash on hand, ${fCal(H)}`} /></details></td><td className="v">+{fSAR(end.cash)}</td></tr>
+                      <tr><td>Home value at Y{inp.horizon}<div className="n">{fS(prj.value0)} at completion, growing {inp.appreciation}%/yr</div></td><td className="v">+{fSAR(end.value)}</td></tr>
+                      <tr><td>Selling costs if you sold ({inp.sellCostPct}%)<div className="n">counted so the home is valued at what you would actually receive</div></td><td className="v" style={{ color: C.neg }}>−{fSAR(end.value - end.liqValue)}</td></tr>
+                      <tr><td>Debt still owed (all loans)</td><td className="v" style={{ color: end.debt > 0.5 ? C.neg : C.text }}>−{fSAR(end.debt)}</td></tr>
+                      <tr className="tot"><td>Net worth, Y{inp.horizon}</td><td className="v">{fSAR(end.netWorth)}</td></tr>
+                      <tr><td>{renting ? "If you kept renting instead" : "If you don't build"}<div className="n">same salary, living costs and old loans (paid as scheduled); all cash kept invested at {inp.altReturn}%/yr{renting ? "; rent keeps being paid" : ""}</div></td><td className="v">{fSAR(end.renterNW)}</td></tr>
+                      <tr className="tot"><td>Difference</td><td className="v" style={{ color: end.advantage >= 0 ? C.pos : C.neg }}>{end.advantage < 0 ? "−" : "+"}{fSAR(Math.abs(end.advantage))}</td></tr>
+                    </tbody></table></>; })()}
+                </details></EvRow>
               </div>
             )}
             <Adv title="Year-by-year table" open={!home}>
