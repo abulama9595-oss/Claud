@@ -299,6 +299,7 @@
       else s.push(`${build ? "Buy the land" : "Buy"} in cash — no mortgage on it`);
       if (o.eqWhen !== "none") s.push(`mortgage the property you already own ${whenTxt(o.eqWhen, o.eqMonth, prj)} for ${modeTxt(o.eqMode, o.eqAmount)} at ${rateTxt(inp, o.eqRate, o.eqTenure)}`);
       if (o.plWhen !== "none") s.push(`take personal loan(s) ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows at ${rateTxt(inp, o.plRate, o.plTenure)}, refinancing old personal loans automatically if that releases more cash`);
+      if (o.pl2Use) s.push(`take personal loan(s) at completion (${fCal(prj.occupy)}) for the maximum the bank allows, refinancing older personal loans automatically if that releases more cash`);
       if (o.coUse) s.push(`take a cash-out mortgage on the finished home at completion (${fCal(prj.occupy)}) for ${modeTxt(o.coMode, o.coAmount)} at ${rateTxt(inp, o.coRate, o.coTenure)}`);
       if (build) s.push(`fund the construction (${fCal(prj.start)} → ${fCal(prj.occupy)}) from cash and those proceeds`);
       const planned = (inp.existingLoans || []).filter((l) => l.balance > 0 && l.settleAt != null && l.settleAt > 0).map((l) => `settle ${l.name} in ${fCal(l.settleAt)} from your cash`);
@@ -492,6 +493,7 @@
         ["Mortgage on existing property", (r) => facTxt(r.eq), null, false, true, EXPL.capacity],
         ["Personal loan(s) (refinance included)", (r) => facTxt(r.pl), null, false, true, EXPL.refi],
         ["Cash-out on finished home", (r) => facTxt(r.co), null, false, false, EXPL.capacity],
+        ["Personal loan(s) at completion", (r) => facTxt(r.pl2), null, false, true, EXPL.refi],
         ["New debt taken (all facilities)", (r) => fS(r.newDebtTotal), null, false, true, EXPL.newDebt],
         ["Old loans settled early", (r) => r.settledTotal > 0 ? `${fS(r.settledTotal)} (+${fS(r.settleFees)} fees)` : "none", null, false, false, EXPL.settled],
         ["Cash low point", (r) => `${fS(r.minCash)} ${fMon(r.minCashT)}`, (r) => r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text, true, true, EXPL.cashLow],
@@ -620,14 +622,16 @@
                 <Slider label="Rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setPlan(i, "plRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.plRate, o.plTenure * 12).toFixed(2)}% APR` : ""} />
                 <Slider label="Tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setPlan(i, "plTenure", v)} />
               </>}
-              <div className="subhead">Cash-out on the finished home (at completion, {fCal(prj.occupy)})</div>
-              <Select value={o.coUse ? "yes" : "no"} onChange={(v) => setPlan(i, "coUse", v === "yes")} options={[["no", "Not used"], ["yes", `Mortgage the finished home · up to ${inp.cashoutLtv}% of its value`]]} />
+              <div className="subhead">At completion ({fCal(prj.occupy)}) — recover cash: cash-out mortgage and/or personal loan(s)</div>
+              <Select label="Cash-out mortgage on the finished home" value={o.coUse ? "yes" : "no"} onChange={(v) => setPlan(i, "coUse", v === "yes")} options={[["no", "Not used"], ["yes", `Mortgage the finished home · up to ${inp.cashoutLtv}% of its value`]]} />
               {o.coUse && <>
                 <ModeSel />
                 <Slider label="Profit rate" value={o.coRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "coRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.coRate, o.coTenure * 12).toFixed(2)}% APR` : "reducing balance"} />
                 <Slider label="Tenure" value={o.coTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "coTenure", v)} />
                 <Adv title="Fees"><Slider label="Bank fees (upfront)" value={o.coFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "coFeesPct", v)} /></Adv>
               </>}
+              <Select label="Personal loan(s) at completion" value={o.pl2Use ? "yes" : "no"} onChange={(v) => setPlan(i, "pl2Use", v === "yes")} options={[["no", "Not used"], ["yes", "Yes — the bank's maximum, refinancing older personal loans if that releases more cash"]]} />
+              {o.pl2Use && <Note>Same rate and tenure as the personal loan above. Taken after the cash-out mortgage, in whatever room is left of your {inp.dbrCap}% bucket. It can refinance your old loans and the personal loan taken earlier in this strategy once that one is {inp.refiMinMonths} months old; never more than two personal loans running at once. <Hint text={EXPL.refi} /></Note>}
               <div className="subhead">Old personal loans — pay off early with cash? <Hint text={EXPL.settlePolicy} /></div>
               <Select value={o.settlePolicy === "none" || o.settlePolicy === "forMax" ? o.settlePolicy : "asNeeded"} onChange={(v) => setPlan(i, "settlePolicy", v)} options={[["asNeeded", "For a mortgage — just enough for it to cover the shortfall"], ["forMax", "For a mortgage — as many as it takes for the largest mortgage the property allows"], ["none", "Never — keep them; new loans get whatever room is left"]]} hint="which loans may be touched, and fixed settlement dates, are set per loan in step 1" />
             </div>}
@@ -940,8 +944,8 @@
               {b.settled > 0 && <Mini k="Old loans settled early" v={`${fS(b.settled)} + ${fS(b.settleFees)} fees`} />}
               {!b.facilities.some((f) => f.capacity) && <div style={{ color: C.sub, fontFamily: SANS }}>no new facility needed — the project is funded from cash</div>}
             </div>
-            {st.refiBest && !(b.plan.plWhen === "completion" && b.pl > 0) && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5, background: "#FBEFD9", borderRadius: 7, padding: "8px 12px", marginBottom: 10 }}>
-              <b>Personal loan at completion</b> <Hint text={EXPL.refi} /> — best option: {st.refiBest.name}. It would put <b>{fS(st.refiBest.plNet)}</b> in your hands at move-in{st.refiBest.plRefi.length ? ` after the bank clears ${st.refiBest.plRefi.join(" + ")}` : ""} (cash then {fS(st.refiBest.cashAtCompletion)} instead of {fS(b.cashAtCompletion)}), and cost <b style={{ color: C.neg }}>{fS(Math.max(0, b.netWorth - st.refiBest.netWorth))}</b> of net worth by Y{inp.horizon}. {b.ok ? "Not needed to meet your cash-recovery rule here." : "It is the way to meet your cash-recovery rule."}
+            {st.refiBest && !(b.pl2 > 0) && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5, background: "#FBEFD9", borderRadius: 7, padding: "8px 12px", marginBottom: 10 }}>
+              <b>Personal loan at completion</b> <Hint text={EXPL.refi} /> — best option: {st.refiBest.name}. It would put <b>{fS(st.refiBest.pl2Net)}</b> in your hands at move-in{st.refiBest.pl2Refi.length ? ` after the bank clears ${st.refiBest.pl2Refi.join(" + ")}` : ""} (cash then {fS(st.refiBest.cashAtCompletion)} instead of {fS(b.cashAtCompletion)}), and cost <b style={{ color: C.neg }}>{fS(Math.max(0, b.netWorth - st.refiBest.netWorth))}</b> of net worth by Y{inp.horizon}. {b.ok ? "Not needed to meet your cash-recovery rule here." : "It is the way to meet your cash-recovery rule."}
             </div>}
             <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
               <button className="no-print" disabled={same} onClick={() => useOptPlan(st)} style={{ ...btn(same ? "transparent" : C.brass, same ? C.sub : C.ink, same ? C.line : C.brass), fontSize: 12, padding: "6px 12px" }}>{same ? "This is Strategy 1" : "Use as Strategy 1"}</button>
@@ -974,7 +978,7 @@
                     <td style={{ ...td, color: b.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text }}>{pct1(b.peakDbr)}</td>
                     <td style={td}>{b.lm > 0 ? <>{fS(b.lm)}<span style={{ color: C.sub }}> / {fS(b.lmCap)}</span></> : "–"}</td>
                     <td style={td}>{b.eq > 0 ? <>{fS(b.eq)}<span style={{ color: C.sub }}> / {fS(b.eqCap)}</span></> : "–"}</td>
-                    <td style={td}>{b.pl > 0 ? <>{fS(b.pl)}{b.plSplit ? " ×2" : ""}{b.plRefi.length ? <span style={{ color: C.sub }}> · refi · {fS(b.plNet)} to you</span> : null}</> : "–"}</td>
+                    <td style={td}>{b.pl > 0 ? <>{fS(b.pl)}{b.plSplit ? " ×2" : ""}{b.plRefi.length ? <span style={{ color: C.sub }}> · refi</span> : null} <span style={{ color: C.sub }}>build</span></> : null}{b.pl > 0 && b.pl2 > 0 ? <br /> : null}{b.pl2 > 0 ? <>{fS(b.pl2)}{b.pl2Split ? " ×2" : ""}{b.pl2Refi.length ? <span style={{ color: C.sub }}> · refi</span> : null} <span style={{ color: C.sub }}>completion</span></> : null}{!(b.pl > 0) && !(b.pl2 > 0) ? "–" : null}</td>
                     <td style={td}>{b.co > 0 ? fS(b.co) : "–"}</td>
                     <td style={td}>{fS(b.newDebt)}</td>
                     <td style={{ ...td, color: C.neg }}>{fS(b.newDebtInterest)}</td>
