@@ -390,7 +390,7 @@ function rePlanSimulate(p, prj, plan) {
 
   // the four new facilities
   const mk = (key, label, rate, tenure, fees) => ({ key, label, bal: 0, pmt: 0, amount: 0, rate: reEffRate(p, rate, Math.max(1, Math.round(tenure * 12))), quoted: rate, tenure, n: Math.max(1, Math.round(tenure * 12)), fees: 0, feesPct: fees, startedAt: null, settledAt: null, interestPaid: 0, monthsPaid: 0, capacity: null, kind: key, name: label });
-  const lm = mk("lm", "Mortgage on the new land", plan.lmRate, plan.lmTenure, plan.lmFeesPct);
+  const lm = mk("lm", prj.build ? "Mortgage on the new land" : "Mortgage on the purchase", plan.lmRate, plan.lmTenure, plan.lmFeesPct);
   const eq = mk("eq", "Mortgage on your existing property", plan.eqRate, plan.eqTenure, plan.eqFeesPct);
   const pl = mk("pl", "Personal loan", plan.plRate, plan.plTenure, 0);
   const pl2 = mk("pl2", "Personal loan at completion", plan.plRate, plan.plTenure, 0);
@@ -431,7 +431,7 @@ function rePlanSimulate(p, prj, plan) {
     const byDbr = rePrincipalFor(room, f.rate, f.n);
     const cap = Math.max(0, Math.min(byDbr, ltvCap, productCap));
     const capName = totalRoom <= facCap ? `${p.dbrCap}% total debt-burden cap` : f.key === "pl" ? `${p.perLoanCap}% per personal loan${plan.plSplit ? " (two loans)" : ""}` : `${p.mortgageCap}% mortgage cap`;
-    return { cap, byDbr, byLtv: ltvCap, byProduct: productCap, room, totalRoom, facCap, limitedBy: cap <= 0 ? "no debt-burden room" : cap === byDbr && byDbr < Math.min(ltvCap, productCap) ? capName : cap === ltvCap ? "LTV" : "bank cap" };
+    return { cap, byDbr, byLtv: ltvCap, byProduct: productCap, room, totalRoom, facCap, limitedBy: cap <= 0 ? (ltvCap <= 0 ? "nothing to mortgage (value 0)" : "no debt-burden room") : cap === byDbr && byDbr < Math.min(ltvCap, productCap) ? capName : cap === ltvCap ? "LTV" : "bank cap" };
   }
   function doSettle(l, t, reason) {
     const cost = settleCost(l), fee = cost - l.bal, inst = instOfAny(l);
@@ -489,7 +489,7 @@ function rePlanSimulate(p, prj, plan) {
     f.split = f.key === "pl" && plan.plSplit && amount > onePl + 1 ? [onePl, amount - onePl] : null;
     const dbr = allInst() / p.income * 100;
     const basis = mode === "max" ? "the bank's maximum" : mode === "need" ? `the shortfall${gap > amount + 1 ? ` (${fS(gap)} needed)` : ""}` : "the amount you set";
-    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. ${f.key === "lm" ? `The bank pays it directly to the seller; you pay the other ${fS(Math.max(0, prj.land - amount))} of the price plus ${fS(prj.rett)} transfer tax${f.fees > 1 ? ` and ${fS(f.fees)} bank fees` : ""} from your own cash.` : `Net to your cash ${fS(amount - f.fees)}.`}` });
+    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. ${f.key === "lm" ? `The bank pays it directly to the seller; you pay the other ${fS(Math.max(0, (prj.build ? prj.land : prj.price) - amount))} of the price plus ${fS(prj.rett)} transfer tax${f.fees > 1 ? ` and ${fS(f.fees)} bank fees` : ""} from your own cash.` : `Net to your cash ${fS(amount - f.fees)}.`}` });
     if (mode === "need" && gap > amount + 1) flags.push(`${f.label} covers ${fS(amount)} of a ${fS(gap)} shortfall (${c.limitedBy}).`);
   }
   // PERSONAL LOAN (refinance included): the bank lends its MAXIMUM as one or two new personal loans (each instalment ≤ perLoanCap,
@@ -554,7 +554,7 @@ function rePlanSimulate(p, prj, plan) {
     const occupied = t >= prj.occupy;
     const rentEq = t >= 1 ? p.rentNow * Math.pow(1 + p.rentGrowth / 100, yrIdx) : 0;
     const rentPaid = t >= 1 && (!occupied || lettingOut) ? rentEq : 0;   // if the new home is let out you don't move in
-    const ret = t >= 1 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
+    const ret = t >= 1 && cash > 0 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
     // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall
     // growth starts after completion (cash on hand at completion is plain cash, no growth); the not-building cash grows over the
     // same period so both sides are compared fairly
@@ -563,15 +563,15 @@ function rePlanSimulate(p, prj, plan) {
     bcash += bRet; ccash += cRet;
     // rent from letting the new home out: from the month after completion, growing with the rent-growth setting
     const rentIn = lettingOut && t > prj.occupy ? annualRentOut / 12 * Math.pow(1 + p.rentGrowth / 100, Math.floor((t - prj.occupy - 1) / 12)) : 0;
-    if (rentIn) cash += rentIn;
-    if (t >= 1) { cash = cash * (1 + alt) + p.income - p.livingExpenses - rentPaid; rCash = rCash * (1 + alt) + p.income - p.livingExpenses - rentEq; }
+    // household cash grows only while it is positive (growth is never a charge on a shortfall); this month's salary and rent arrive after it
+    if (t >= 1) { cash = (cash > 0 ? cash * (1 + alt) : cash) + p.income - p.livingExpenses - rentPaid + rentIn; rCash = (rCash > 0 ? rCash * (1 + alt) : rCash) + p.income - p.livingExpenses - rentEq; }
     // planned settlements first (e.g. a loan you intend to clear on a known date)
     loans.forEach((l) => { if (l.settledAt === null && l.bal > 0.5 && l.settleAt != null && l.settleAt > 0 && t === Math.round(l.settleAt)) doSettle(l, t, "planned settlement from your cash"); });
     // milestones
     if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett)} incl. RETT${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
     if (t === prj.start && prj.build) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett)} over ${prj.bm} months.` });
     // facilities, in order: land mortgage → existing property → personal loan → cash-out
-    const landValue = prj.land;
+    const landValue = prj.build ? prj.land : prj.price;   // buying ready: the purchase mortgage is sized on the purchase price
     // every new loan at the bank's maximum that month (your rule)
     if (t === lmT) originate(t, lm, "max", 0, landValue * p.landLtv / 100, Infinity);
     if (t === eqT) originate(t, eq, "max", 0, p.ownedValue * p.ownedLtv / 100, Infinity);
@@ -679,7 +679,9 @@ function computeRE(inp) {
   let verdict, vColor;
   if (!best) { verdict = "NO OPTION"; vColor = C.sub; }
   else if (home) {
-    if (best.advantage > 0) { verdict = "OWNING WINS"; vColor = C.pos; } else { verdict = "RENTING WINS"; vColor = C.neg; }
+    // the baseline is renting only if you pay rent today; otherwise it is not building (or not buying) and keeping the cash invested
+    const renting = p.rentNow > 0, act = prj.build ? "BUILDING" : "BUYING";
+    if (best.advantage > 0) { verdict = renting ? "OWNING WINS" : `${act} WINS`; vColor = C.pos; } else { verdict = renting ? "RENTING WINS" : `NOT ${act} WINS`; vColor = C.neg; }
   } else {
     const i = best.irr == null ? -1 : best.irr * 100;
     if (i >= 12) { verdict = "ATTRACTIVE"; vColor = C.pos; } else if (i >= p.discountRate) { verdict = "ACCEPTABLE"; vColor = C.brass; } else { verdict = "WEAK"; vColor = C.neg; }

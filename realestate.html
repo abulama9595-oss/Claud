@@ -185,17 +185,17 @@
       executable: "Cash never goes below zero in any month: income − living − rent − all instalments − project spend + facility proceeds, with cash earning the alternative return.",
       recovery: "Months after move-in until your cash balance is back at or above your cash buffer. Your rule: within the recovery window (default 24 months).",
       cashLow: "Lowest month-end cash balance over the horizon, and when it happens.",
-      cashMoveIn: "Cash balance in the month construction completes.",
+      cashMoveIn: "Your bank balance in the month you move in: your own cash and the loans after all costs, PLUS what your salary saved after living costs and instalments, PLUS the return earned on the balance until then. 'Cash on hand at completion' in the step-by-step leaves the salary and the return out, so it is lower.",
       cashAfter: "Cash balance at move-in + your recovery window (e.g. 2 years after move-in).",
       peakInst: "Highest total monthly instalments (existing loans + all new facilities) in any month; shown as % of income against the bank's total cap.",
       newDebt: "Sum of all new facilities actually drawn (land mortgage, existing-property mortgage, personal loan, cash-out), after the bank's LTV, per-loan and total debt-burden limits.",
       capacity: "What the bank could lend that month. Your instalment capacity is ONE bucket: 65% of income. What is left of it (65% × income − every instalment running that month) is the room; inside the bucket a mortgage may use up to 55% of income and one personal loan up to 33% (a second personal loan may take what is left). The room is converted to a principal at the facility's rate and tenure, then capped by LTV × asset value and the product ceiling.",
-      bucket: "Instalments running each month as % of income, stacked: existing loans, then each new facility. The dashed lines are the bank's limits: 65% for everything together and 55% for mortgages. Free space under the top line is unused borrowing capacity.",
-      optimizer: "For the chosen start the tool tries every mix of: land mortgage yes/no, personal loan(s) at build start yes/no, existing-property mortgage (none / at build start / now / at land purchase), cash-out at completion yes/no, and how far to pay off old personal loans for a mortgage (just enough / for the largest mortgage / never) — every loan always at the bank's maximum. Then it tries refinancing personal loans at completion on the strongest mixes. Rates and tenures come from Strategy 1. It keeps the mix that is executable and gets cash back to the buffer within the window, then the highest net worth, then the lowest peak instalment.",
+      bucket: "Instalments running each month as % of income, stacked: existing loans, then each new facility. The dashed lines are the bank's limits: 65% for everything together and 55% for any one mortgage. Free space under the top line is unused borrowing capacity.",
+      optimizer: "For the chosen start the tool tries every mix of: land mortgage yes/no, personal loan(s) at build start yes/no, existing-property mortgage (none / at build start / now / at land purchase), cash-out at completion yes/no, personal loan(s) at completion yes/no, and how far to pay off old personal loans for a mortgage (just enough / for the largest mortgage / never) — up to 192 mixes, every loan always at the bank's maximum, with old personal loans refinanced automatically whenever a personal loan is taken and that releases more cash. Rates and tenures come from Strategy 1. It keeps the mix that is executable and gets cash back to the buffer within the window, then the highest net worth, then the lowest peak instalment.",
       newDebtCost: "All profit paid on the new facilities over the horizon plus bank fees and early-settlement fees.",
       totalInterest: "Profit on new facilities + profit still paid on the existing loans + settlement fees.",
       netWorth: "Your cash on hand at completion (own cash + loans − land, construction, early payoffs, fees — no growth until then) grows at the return-on-cash rate from completion to the horizon; instalments never touch it, your salary pays them. Then: − instalments on the new loans (a plain cost) + old-loan instalments you no longer pay because a loan was paid off or refinanced + rent received if you let the home out + rent you no longer pay − upkeep + the home's value (no selling costs) − any new-loan debt still owed. Salary and living costs are left out.",
-      baseline: "If you don't build: your existing own cash, invested at the return-on-cash rate from the completion month to the horizon — the same growth period as the strategies. Nothing is subtracted — your old loans exist whether you build or not, so they are left out of both sides.",
+      baseline: "If you don't build: your existing own cash, invested at the return-on-cash rate from the completion month to the horizon — the same growth period as the strategies. Nothing is subtracted — your old loans run the same whether you build or not, so they are left out here; only what a strategy changes about them (paying one off early, a refinance) is counted, on the strategy's side.",
       rentOut: "If you let the new home out instead of living in it: annual rent = the % of the all-in project cost, or the fixed annual rent if that is above zero. It starts the month after completion, grows with the rent-growth setting (step 1, Advanced), is added to your monthly cash, and is counted in net worth at face value (it does not grow at the return-on-cash rate). No vacancy or management fee.",
       advantage: "Net worth with this strategy − your own cash grown at the return-on-cash rate. Negative means building leaves you poorer than simply keeping the cash invested.",
       breakEven: "First month after move-in where net worth with the strategy ≥ baseline net worth.",
@@ -474,7 +474,7 @@
       });
       const stackData = !home ? liveIdx.map((i) => { const r = m.results[i]; return { name: `Option ${i + 1}`, full: r.opt.name, "Own cash": Math.round(r.cash), "Personal loan": Math.round(r.pl), "Mortgage": Math.round(r.loanCommit) }; }) : [];
       const costRows = build
-        ? [["Land", prj.land], ["RETT on land" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], ["Construction (hard)", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Finishing / kitchen / AC / landscape", prj.finish], ["VAT 15% on construction & finishing", prj.vat]]
+        ? [["Land", prj.land], ["RETT on land" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], ["Construction (hard)", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Finishing / kitchen / AC / landscape", prj.finish], [`VAT ${inp.vatPct}% on construction & finishing`, prj.vat]]
         : [["Purchase price", prj.price], ["RETT" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], ["Broker", prj.broker], ["Finishing / furnishing", prj.finish], ["VAT on finishing", prj.vat]];
 
       /* scenario ops */
@@ -501,7 +501,7 @@
         ["New debt taken (all facilities)", (r) => fS(r.newDebtTotal), null, false, true, EXPL.newDebt],
         ["Old loans settled early", (r) => r.settledTotal > 0 ? `${fS(r.settledTotal)} (+${fS(r.settleFees)} fees)` : "none", null, false, false, EXPL.settled],
         ["Cash low point", (r) => `${fS(r.minCash)} ${fMon(r.minCashT)}`, (r) => r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text, true, true, EXPL.cashLow],
-        ["Cash when you move in", (r) => fS(r.cashAtCompletion), null, false, true, EXPL.cashMoveIn],
+        ["Bank balance at move-in (incl. salary savings)", (r) => fS(r.cashAtCompletion), null, false, true, EXPL.cashMoveIn],
         [`Cash ${inp.recoveryMonths} months after move-in`, (r) => fS(r.cashAfterWindow), (r) => r.cashAfterWindow >= inp.cashBuffer ? C.pos : C.neg, false, true, EXPL.cashAfter],
         ["Months below your cash buffer", (r) => r.belowBufferMonths ? `${r.belowBufferMonths}` : "0", (r) => r.belowBufferMonths ? C.brass : C.text, false, false, "Count of months in which the cash balance is below your buffer."],
         ["Peak monthly instalments (all debt)", (r) => `${fSAR(r.peakInst)}/mo`, null, false, true, EXPL.peakInst],
@@ -769,7 +769,7 @@
       const StepYou = () => (
         <div>
           <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "you") + 1} · ${home ? "You" : "Letting & you"}`} title={home ? "Income, spending, cash — and the loans you already carry" : "What the property earns, and what the bank sees"}
-            sub={home ? "Every new facility passes one test: all monthly instalments (old loans + new) ÷ income must stay under the bank's cap. Existing loans therefore decide how much you can borrow. The two loans below are examples — replace them with yours." : "Rent, vacancy and management set the property's income; your income and cash set what the bank will lend."} />
+            sub={home ? "Every new facility passes one test: all monthly instalments (old loans + new) ÷ income must stay under the bank's cap. Existing loans therefore decide how much you can borrow — list yours below." : "Rent, vacancy and management set the property's income; your income and cash set what the bank will lend."} />
           <div className={home ? "two-col" : "grid"} style={home ? null : { gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 16 }}>
             {home ? <>
               <Card n="A" title="Household">
@@ -830,7 +830,7 @@
       const StepHome = () => (
         <div>
           <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "home") + 1} · ${build ? "The home" : "The property"}`} title={build ? "Land, construction & timing" : "Property purchase"}
-            sub="Defaults describe a mid-size Riyadh villa. All amounts in SAR. Taxes follow KSA rules: 15% VAT on construction & finishing (land is VAT-exempt), 5% RETT with first-home relief on the first 1M SAR — all under Advanced."
+            sub="All amounts in SAR. Taxes are under Advanced: VAT on construction & finishing (land is VAT-exempt) and RETT on the land, with optional first-home relief."
             meta={<div className="flex items-center no-print" style={{ gap: 8 }}><span style={{ fontFamily: SANS, fontSize: 11, color: C.sub, textTransform: "uppercase", letterSpacing: "0.06em" }}>Acquire</span><Toggle value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land & build"], ["buy", "Buy ready"]]} /></div>} />
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 16 }}>
             <Card n="A" title={build ? "Land & construction" : "Purchase"}>
@@ -897,7 +897,7 @@
                   {build && <tr><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub, paddingLeft: 0 }}>Cost per m² built (excl. land)</td><td style={{ ...td, paddingRight: 0 }}>{fSAR(prj.costPerSqm)}</td></tr>}
                 </tbody>
               </table>
-              <Note>Spend timing: {build ? `land + RETT in ${fCal(prj.landMonth)}, construction evenly over ${prj.bm} months from ${fCal(prj.start)}, extras at completion (${fCal(prj.occupy)}).` : `everything in ${fCal(prj.landMonth)}.`} {home ? "Your cash pays first; a construction mortgage is drawn only after your share is spent." : "The mortgage is drawn only after your cash and any personal loan are spent."}</Note>
+              <Note>Spend timing: {build ? `land + RETT in ${fCal(prj.landMonth)}, construction evenly over ${prj.bm} months from ${fCal(prj.start)}, extras at completion (${fCal(prj.occupy)}).` : `everything in ${fCal(prj.landMonth)}.`} {home ? "Your own cash and the loans' proceeds pay each bill as it falls due — there is no construction mortgage." : "The mortgage is drawn only after your cash and any personal loan are spent."}</Note>
             </Card>
           </div>
         </div>
@@ -918,7 +918,7 @@
                 <Tooltip formatter={(v, n) => [`${v.toFixed(1)}%`, n]} labelFormatter={(t) => `${fMon(t)}`} contentStyle={tipStyle} />
                 <Legend wrapperStyle={legendStyle} />
                 <ReferenceLine y={inp.dbrCap} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% — everything together`, fontFamily: SANS, fontSize: 11, fill: C.neg, position: "insideTopRight" }} />
-                <ReferenceLine y={inp.mortgageCap} stroke={C.brass} strokeDasharray="4 4" label={{ value: `${inp.mortgageCap}% — mortgages`, fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideBottomRight" }} />
+                <ReferenceLine y={inp.mortgageCap} stroke={C.brass} strokeDasharray="4 4" label={{ value: `${inp.mortgageCap}% — one mortgage`, fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideBottomRight" }} />
                 {Object.entries(BUCKET_COLORS).map(([k, col]) => <Area key={k} type="stepAfter" stackId="b" dataKey={k} stroke={col} fill={col} fillOpacity={0.8} strokeWidth={1} isAnimationActive={false} />)}
               </AreaChart>
             </ResponsiveContainer>
@@ -1096,16 +1096,21 @@
             {home && (
               <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 16px", marginBottom: 14 }}>
                 <EvRow t="M0 · today" kind="cash">Start with <b>{fS(inp.cashAvailable)}</b> cash, income {fSAR(inp.income)}/mo, existing instalments {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income).</EvRow>
-                {focusRes.events.map((e, k) => <EvRow key={k} t={fMon(e.t)} kind={e.kind}>{e.text}</EvRow>)}
-                <EvRow t={fMon(focusRes.minCashT)} kind="cash">Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</EvRow>
-                {focusRes.debtFreeT != null && <EvRow t={fMon(focusRes.debtFreeT)} kind="end">Debt-free.</EvRow>}
-                {(() => { const fb = fundingBridgeRows(focusRes, focusRes.occupy, inp, prj); return (
-                <EvRow t={fMon(focusRes.occupy)} kind="cash"><details className="bridge"><summary>Cash on hand at completion ({fCal(focusRes.occupy)}, the month you move in) — your own cash and the loans only, no salary: <b style={{ fontFamily: MONO, color: fb.total < 0 ? C.neg : C.text }}>{fSAR(fb.total)} SAR</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
+                {(() => {
+                  // one list in date order (the section promises "in order"); within a month the bank's events come first
+                  const fb = fundingBridgeRows(focusRes, focusRes.occupy, inp, prj);
+                  const rows = focusRes.events.map((e, k) => ({ t: e.t, o: k, el: <EvRow key={`e${k}`} t={fMon(e.t)} kind={e.kind}>{e.text}</EvRow> }));
+                  rows.push({ t: focusRes.minCashT, o: 1e6, el: <EvRow key="low" t={fMon(focusRes.minCashT)} kind="cash">Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</EvRow> });
+                  if (focusRes.debtFreeT != null) rows.push({ t: focusRes.debtFreeT, o: 1e6 + 1, el: <EvRow key="free" t={fMon(focusRes.debtFreeT)} kind="end">Debt-free.</EvRow> });
+                  rows.push({ t: focusRes.occupy, o: 1e6 + 2, el: (
+                <EvRow key="occ" t={fMon(focusRes.occupy)} kind="cash"><details className="bridge"><summary>Cash on hand at completion ({fCal(focusRes.occupy)}, the month you move in) — your own cash and the loans only, no salary: <b style={{ fontFamily: MONO, color: fb.total < 0 ? C.neg : C.text }}>{fSAR(fb.total)} SAR</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
                   <BridgeTable b={fb} totalLabel={`Left from your cash and the loans, ${fCal(focusRes.occupy)}`} />
                   <div className="n" style={{ marginLeft: 14, fontSize: 11.5, color: fb.short > 0 ? C.neg : C.sub, maxWidth: 760 }}>{fb.short > 0
                     ? `Your salary does NOT cover living costs and all instalments in some months — ${fSAR(fb.short)} in total up to move-in (worst month ${fCal(fb.worstT)}: ${fSAR(fb.worst)}). That gap has to come out of the cash above.`
                     : `Salary, living costs and every instalment are left out because your salary covers them each month — the tightest month (${fCal(fb.worstT)}) still leaves ${fSAR(fb.worst)}.`}</div>
-                </details></EvRow>); })()}
+                </details></EvRow>) });
+                  return rows.sort((a, b) => a.t - b.t || a.o - b.o).map((x) => x.el);
+                })()}
                 <EvRow t={`Y${inp.horizon}`} kind="end" last><details className="bridge"><summary>Net worth <b>{fS(focusRes.netWorthEnd)}</b> vs <b>{fS(focusRes.renterEnd)}</b> if you {renting ? "kept renting" : "don't build"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up (own cash and loans only, no salary)</span></summary>
                   {(() => {
                     const H = focusRes.months.length - 1, end = focusRes.months[H], occ = Math.min(H, focusRes.occupy), ms = focusRes.months;
@@ -1266,7 +1271,7 @@
                   <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: C.brassLt, marginBottom: 5 }}>Scenario tool · Riyadh, KSA · SAR · <a href="index.html" style={{ color: C.brassLt }}>all models</a></div>
                   <h1 style={{ fontFamily: SANS, fontSize: 22, fontWeight: 700, color: C.inv, letterSpacing: "-0.01em", margin: 0, lineHeight: 1.25 }}>{home ? "How should I finance building my home — and when should I start?" : "Residential rental investment — which capital stack earns the most?"}</h1>
                   <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.invSub, marginTop: 6, maxWidth: 760, lineHeight: 1.5 }}>
-                    {home ? "Tell it about you and the home, pick up to four financing strategies, and it simulates each one month by month through the bank's debt-burden and LTV tests — then measures it against simply renting."
+                    {home ? "Tell it about you and the home, pick up to four financing strategies, and it simulates each one month by month through the bank's debt-burden and LTV tests — then measures it against " + (renting ? "keeping on renting" : "not building and keeping your cash invested") + "."
                           : "Compare up to four capital stacks for a buy-to-let: levered and unlevered IRR, NPV, yields, debt-service cover and the cash each option ties up."}
                   </div>
                 </div>
