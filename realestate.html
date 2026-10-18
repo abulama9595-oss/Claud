@@ -76,7 +76,7 @@
   <script type="text/babel" src="components.jsx" data-presets="react"></script>
   <script type="text/babel" data-presets="react">
     const { useState, useMemo, useEffect } = React;
-    const { BarChart, LineChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } = window.Recharts;
+    const { BarChart, LineChart, AreaChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine } = window.Recharts;
 
     /* strategy identity colours — fixed per slot (colour follows the strategy, never its rank); validated for CVD on the paper surface */
     const OPT_COLORS = ["#2F6DB5", "#B0823A", "#1F9A80", "#A24FB8"];
@@ -180,7 +180,9 @@
       cashAfter: "Cash balance at move-in + your recovery window (e.g. 2 years after move-in).",
       peakInst: "Highest total monthly instalments (existing loans + all new facilities) in any month; shown as % of income against the bank's total cap.",
       newDebt: "Sum of all new facilities actually drawn (land mortgage, existing-property mortgage, personal loan, cash-out), after the bank's LTV, per-loan and total debt-burden limits.",
-      capacity: "What the bank could lend that month: the smallest of LTV × asset value, the per-loan cap (33% of income) and the remaining total debt-burden room (65% of income − instalments running that month), converted to a principal at the facility's rate and tenure.",
+      capacity: "What the bank could lend that month. Your instalment capacity is ONE bucket: 65% of income. What is left of it (65% × income − every instalment running that month) is the room; inside the bucket a mortgage may use up to 55% of income and one personal loan up to 33% (a second personal loan may take what is left). The room is converted to a principal at the facility's rate and tenure, then capped by LTV × asset value and the product ceiling.",
+      bucket: "Instalments running each month as % of income, stacked: existing loans, then each new facility. The dashed lines are the bank's limits: 65% for everything together and 55% for mortgages. Free space under the top line is unused borrowing capacity.",
+      optimizer: "For the chosen start the tool tries every mix of: land mortgage (bank max / shortfall only / none), personal loan(s) for the shortfall, existing-property mortgage (none / shortfall at build / max now / max at land purchase), cash-out at completion, and settling old loans only as needed or all first. Rates and tenures are taken from Strategy 1. It keeps the mix that is executable and gets cash back to the buffer within the window, then the highest net worth, then the lowest peak instalment.",
       newDebtCost: "All profit paid on the new facilities over the horizon plus bank fees and early-settlement fees.",
       totalInterest: "Profit on new facilities + profit still paid on the existing loans + settlement fees.",
       netWorth: "Cash + home value × (1 − selling costs) − all debt outstanding, at the horizon. The home value grows at the appreciation rate from purchase/completion; cash earns the alternative return.",
@@ -189,7 +191,7 @@
       breakEven: "First month after move-in where net worth with the strategy ≥ baseline net worth.",
       debtFree: "First month with no debt outstanding (existing loans and all new facilities).",
       settled: "Principal of existing loans repaid early (planned settlements and those required to pass a bank test) plus the early-settlement fees.",
-      dbrRoom: "Bank total cap (65% of income) minus the instalments running today. Any single new facility is also capped at 33% of income.",
+      dbrRoom: "Bank total cap (65% of income) minus the instalments running today — the free part of your bucket. Inside it a mortgage may use up to 55% of income and one personal loan up to 33%.",
       savings: "Income − living expenses − rent − existing instalments, per month, today.",
       earliest: "Earliest construction start (3-month steps, land timing as set) that is executable and gets cash back to the buffer within your recovery window.",
       cost: "Land (grown at the appreciation rate to the purchase month) + RETT + construction (built-up m² × SAR/m², inflated to the start month) + soft costs + contingency + extras + VAT.",
@@ -333,6 +335,21 @@
       const sweepRec = useMemo(() => home && recIdx >= 0 ? timingSweepRE(inp, recIdx, 60, 3, landWithBuild) : null, [inp, recIdx, home, landWithBuild]);
       const sweep = useMemo(() => home && focusIdx >= 0 ? (focusIdx === recIdx ? null : timingSweepRE(inp, focusIdx, 60, 3, landWithBuild)) : null, [inp, focusIdx, recIdx, home, landWithBuild]) || sweepRec;
       const nameOf = (r) => home ? r.plan.name : r.opt.name;
+      /* optimizer: debounced so slider drags stay smooth (≈1 s for 21 start dates × 96 mixes) */
+      const [optInp, setOptInp] = useState(inp);
+      useEffect(() => { const id = setTimeout(() => setOptInp(inp), 350); return () => clearTimeout(id); }, [inp]);
+      const opt = useMemo(() => optInp.mode === "home" ? optimizeRE(optInp, { maxDelay: 60, step: 3, landWithBuild }) : null, [optInp, landWithBuild]);
+      const optStale = optInp !== inp;
+      const curStart = Math.max(inp.buildStart, inp.landMonth);
+      const useOptPlan = (st) => {
+        setInp((s0) => {
+          const plans = s0.plans.map((o, j) => j === 0 ? { ...(st.best.cleanPlan || st.best.plan), enabled: true, name: st.best.name } : o);
+          const q = { ...s0, plans };
+          if (st.delay !== Math.max(s0.buildStart, s0.landMonth)) { q.buildStart = st.delay; q.landMonth = landWithBuild ? st.delay : Math.min(s0.landMonth, st.delay); }
+          return q;
+        });
+        setFocus(0);
+      };
       const renting = inp.rentNow > 0; // baseline: keep renting the same home, or (no rent) stay put and keep the cash invested
       const baseLbl = renting ? "renting" : "not building";
 
@@ -615,6 +632,9 @@
               {bestF ? <>Finance it with <span style={{ borderBottom: `3px solid ${OPT_COLORS[recIdx]}` }}>{bestF.plan.name}</span>{startBest ? <>, and {startNow ? <>start as planned in <b>{fCal(Math.max(inp.buildStart, inp.landMonth))}</b></> : <>wait until <b>{fCal(startBest.delay)}</b> to start building</>}</> : null}.</>
                    : <>None of the enabled strategies works with {fS(inp.cashAvailable)} of cash and {fSAR(household.dbrRoom)}/mo of debt-burden room.</>}
             </div>
+            {opt && opt.planned.best.ok && (!bestF || opt.planned.best.netWorth > bestF.netWorthEnd + 1000 || !bestF.recoveryOk) && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, marginTop: 8, lineHeight: 1.5, background: SOFT_POS, borderRadius: 7, padding: "8px 12px" }}>
+              <b>Better fill of your {inp.dbrCap}% bucket:</b> {opt.planned.best.name} — cash low {fS(opt.planned.best.minCash)}, net worth {fS(opt.planned.best.netWorth)} ({fS(opt.planned.best.netWorth - (bestF ? bestF.netWorthEnd : 0))} more). <button className="no-print" onClick={() => useOptPlan(opt.planned)} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "3px 10px", marginLeft: 6 }}>Use as Strategy 1</button> <Hint text={EXPL.optimizer} />
+            </div>}
             {bestF && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(bestF.plan, inp, prj, build)} Net worth at year {inp.horizon}: <b>{fS(bestF.netWorthEnd)}</b>, which is <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "more" : "less"} than {baseLbl}</b>{renting ? " the same home" : " (staying where you live now, cash kept invested)"}.{startBest && !startNow ? ` Starting ${fCal(startBest.delay)} means moving in ${fCal(startBest.occupy)}.` : ""}</div>}
             {bestF && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 14 }}>
               <Kpi label="Cash low point" value={fS(bestF.minCash)} sub={`${fCal(bestF.minCashT)} · buffer ${fS(inp.cashBuffer)}`} accent={bestF.minCash < 0 ? C.neg : bestF.minCash < inp.cashBuffer ? C.brass : C.pos} info={EXPL.cashLow} />
@@ -663,7 +683,8 @@
                 <Slider label="Property you already own — market value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint={inp.ownedValue > 0 ? `banks would lend up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} against it` : "0 if none"} />
                 <Adv title="Advanced: bank rules, rent growth, rate quoting">
                   <Slider label="Total debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} hint="all instalments together (existing + new)" />
-                  <Slider label="Cap per single facility" value={inp.perLoanCap} min={20} max={65} step={1} unit="% of income" onChange={(v) => set("perLoanCap", v)} hint="no one loan or mortgage instalment above this" />
+                  <Slider label="Cap for mortgages inside the bucket" value={inp.mortgageCap} min={20} max={70} step={1} unit="% of income" onChange={(v) => set("mortgageCap", v)} hint="land purchase, existing property or cash-out: their instalments may not exceed this" />
+                  <Slider label="Cap per personal loan" value={inp.perLoanCap} min={20} max={65} step={1} unit="% of income" onChange={(v) => set("perLoanCap", v)} hint="a second personal loan may use what is left of the bucket" />
                   <Slider label="LTV when the bank finances the land purchase (cash-raising mortgages use the 70% below)" value={inp.landLtv} min={30} max={95} step={5} unit="% of price" onChange={(v) => set("landLtv", v)} />
                   <Slider label="Cash-recovery window after move-in" value={inp.recoveryMonths} min={0} max={60} step={6} unit="months" onChange={(v) => set("recoveryMonths", v)} hint="your rule: cash must be back at the buffer within this long after moving in" />
                   <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
@@ -679,10 +700,10 @@
                 <Note>Untick "May settle?" to protect cheap debt from early settlement. "Settle in month" plans a settlement from cash on a date you choose, in every strategy.</Note>
                 <div className="subhead">How much the bank can lend you, and when <Hint text={EXPL.capacity} /></div>
                 <div className="scroll-x"><table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
-                  <thead><tr>{["From", "Instalments running", "Room under " + inp.dbrCap + "%", "One facility (≤ " + inp.perLoanCap + "%)", "All new facilities together"].map((h, k) => <th key={h} style={{ ...th, textAlign: k === 0 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
-                  <tbody>{household.capTimeline.map((c) => <tr key={c.t}><td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{c.t === 0 ? "today" : fCal(c.t)}</td><td style={td}>{fSAR(c.inst)}</td><td style={{ ...td, color: c.room > 0 ? C.text : C.neg }}>{fSAR(c.room)}/mo</td><td style={td}>{fS(c.maxOneLoan)}</td><td style={td}>{fS(c.maxAllLoans)}</td></tr>)}</tbody>
+                  <thead><tr>{["From", "Instalments running", "Free room in the " + inp.dbrCap + "% bucket", "Mortgage (≤ " + inp.mortgageCap + "%)", "One personal loan (≤ " + inp.perLoanCap + "%)", "Two personal loans"].map((h, k) => <th key={h} style={{ ...th, textAlign: k === 0 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
+                  <tbody>{household.capTimeline.map((c) => <tr key={c.t}><td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{c.t === 0 ? "today" : fCal(c.t)}</td><td style={td}>{fSAR(c.inst)} <span style={{ color: C.sub }}>({(c.inst / inp.income * 100).toFixed(0)}%)</span></td><td style={{ ...td, color: c.room > 0 ? C.text : C.neg }}>{fSAR(c.room)}/mo</td><td style={td}>{fS(c.maxMortgage)}</td><td style={td}>{fS(c.maxOnePl)}</td><td style={td}>{fS(c.maxTwoPl)}</td></tr>)}</tbody>
                 </table></div>
-                <Note>Principal amounts at the first strategy's land-mortgage rate and tenure, before any LTV limit. Rows appear each time an existing loan is settled or ends.</Note>
+                <Note>Principal the room converts to: mortgages at Strategy 1's land-mortgage rate and tenure, personal loans at its personal-loan rate and tenure — before any LTV limit. Mortgage and personal loans share the same bucket, so these are alternatives, not additive. Rows appear each time an existing loan is settled or ends.</Note>
               </Card>
             </> : <>
               <Card n="A" title="Letting">
@@ -778,11 +799,108 @@
         </div>
       );
 
+      /* ---------- optimizer: the best fill of the bucket for one start ---------- */
+      const BUCKET_COLORS = { Existing: "#9A958B", "Land mortgage": "#2F6DB5", "Own-property mortgage": "#1F9A80", "Personal loan(s)": "#A24FB8", "Cash-out": "#6FA3E0" };
+      const BucketChart = ({ b, height = 250 }) => {
+        const last = Math.min(b.bucket.length - 1, b.occupy + 36);
+        const data = b.bucket.filter((x) => x.t <= last).map((x) => ({ t: x.t, Existing: x.existing / inp.income * 100, "Land mortgage": x.lm / inp.income * 100, "Own-property mortgage": x.eq / inp.income * 100, "Personal loan(s)": x.pl / inp.income * 100, "Cash-out": x.co / inp.income * 100 }));
+        return (
+          <Panel title={<span>Your {inp.dbrCap}% bucket, month by month · instalments as % of income <Hint text={EXPL.bucket} /></span>}>
+            <ResponsiveContainer width="100%" height={height}>
+              <AreaChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={C.line} vertical={false} />
+                <XAxis dataKey="t" ticks={data.filter((d) => d.t % 12 === 0).map((d) => d.t)} tickFormatter={fCal} tick={axisS} tickLine={false} axisLine={{ stroke: C.line }} />
+                <YAxis domain={[0, Math.max(70, inp.dbrCap + 5)]} tick={axisT} tickFormatter={(v) => `${v}%`} tickLine={false} axisLine={false} width={44} />
+                <Tooltip formatter={(v, n) => [`${v.toFixed(1)}%`, n]} labelFormatter={(t) => `${fMon(t)}`} contentStyle={tipStyle} />
+                <Legend wrapperStyle={legendStyle} />
+                <ReferenceLine y={inp.dbrCap} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% — everything together`, fontFamily: SANS, fontSize: 11, fill: C.neg, position: "insideTopRight" }} />
+                <ReferenceLine y={inp.mortgageCap} stroke={C.brass} strokeDasharray="4 4" label={{ value: `${inp.mortgageCap}% — mortgages`, fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideBottomRight" }} />
+                {Object.entries(BUCKET_COLORS).map(([k, col]) => <Area key={k} type="stepAfter" stackId="b" dataKey={k} stroke={col} fill={col} fillOpacity={0.8} strokeWidth={1} isAnimationActive={false} />)}
+              </AreaChart>
+            </ResponsiveContainer>
+            <Note>Free space under the red line is borrowing capacity you are not using that month. Shown to 3 years after move-in.</Note>
+          </Panel>
+        );
+      };
+      const OptStatus = () => optStale ? <span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>updating…</span> : null;
+      const OptPlanned = () => {
+        if (!opt) return null;
+        const st = opt.planned, b = st.best;
+        const same = inp.plans[0] && JSON.stringify({ ...inp.plans[0], name: "", enabled: true }) === JSON.stringify({ ...(b.cleanPlan || b.plan), name: "", enabled: true });
+        return (
+          <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderLeft: `6px solid ${b.ok ? C.pos : b.feasible ? C.brass : C.neg}`, borderRadius: 10, padding: "16px 18px", marginBottom: 14 }}>
+            <div className="flex items-center justify-between flex-wrap" style={{ gap: 8 }}>
+              <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.brass }}>Best fill of your {inp.dbrCap}% bucket · start {fCal(st.delay)} <Hint text={EXPL.optimizer} /> <OptStatus /></div>
+              <span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>{opt.combos} mixes tried · {st.nOk} pass both tests · {st.nFeasible} executable</span>
+            </div>
+            <div style={{ fontFamily: SANS, fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.35, marginTop: 6 }}>{b.name}</div>
+            <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(b.plan, inp, prj, build)}</div>
+            <div style={{ margin: "10px 0" }}><Badge ok={b.ok} text={b.flags[0] || (b.feasible ? `cash back at buffer ${b.recoveryMonths === 0 ? "at move-in" : b.recoveryMonths + " months after move-in"}` : null)} /></div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px 14px" }}>
+              <Stat label="Cash low point" value={fS(b.minCash)} sub={fCal(b.minCashT)} color={b.minCash < 0 ? C.neg : b.minCash < inp.cashBuffer ? C.brass : C.text} info={EXPL.cashLow} />
+              <Stat label={`Cash ${inp.recoveryMonths} mo after move-in`} value={fS(b.cashAfterWindow)} sub={`buffer ${fS(inp.cashBuffer)}`} color={b.cashAfterWindow >= inp.cashBuffer ? C.pos : C.neg} info={EXPL.cashAfter} />
+              <Stat label="Peak instalments" value={`${fSAR(b.peakInst)}/mo`} sub={`${b.peakDbr.toFixed(0)}% of income · cap ${inp.dbrCap}%`} color={b.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text} info={EXPL.peakInst} />
+              <Stat label="New debt taken" value={fS(b.newDebt)} sub={`profit + fees ${fS(b.newDebtInterest)}`} info={EXPL.newDebt} />
+              <Stat label={`Net worth Y${inp.horizon}`} value={fS(b.netWorth)} sub={`${fS(b.advantage)} vs ${baseLbl}`} color={b.advantage >= 0 ? C.pos : C.neg} info={EXPL.netWorth} />
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 11.5, background: SOFT, borderRadius: 7, padding: "8px 10px", margin: "12px 0 10px", lineHeight: 1.7 }}>
+              <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, textTransform: "uppercase", letterSpacing: "0.04em" }}>Facilities · taken / bank maximum that month <Hint text={EXPL.capacity} /></div>
+              {b.facilities.filter((f) => f.capacity).map((f) => <Mini key={f.key} k={`${f.label} · ${fCal(f.capacity.t)}`} v={`${fS(f.amount)}${f.split ? ` (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} / ${fS(f.capacity.cap)}${f.amount > 0 ? ` · ${fSAR(f.pmt)}/mo` : ""}`} color={f.amount < 1 ? C.sub : C.text} />)}
+              {b.settled > 0 && <Mini k="Old loans settled early" v={`${fS(b.settled)} + ${fS(b.settleFees)} fees`} />}
+              {!b.facilities.some((f) => f.capacity) && <div style={{ color: C.sub, fontFamily: SANS }}>no new facility needed — the project is funded from cash</div>}
+            </div>
+            <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
+              <button className="no-print" disabled={same} onClick={() => useOptPlan(st)} style={{ ...btn(same ? "transparent" : C.brass, same ? C.sub : C.ink, same ? C.line : C.brass), fontSize: 12, padding: "6px 12px" }}>{same ? "This is Strategy 1" : "Use as Strategy 1"}</button>
+              {st.alts.length > 0 && <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>Next best: {st.alts.map((a, k) => <span key={k}>{k > 0 ? " · " : ""}{a.name} ({fS(a.netWorth)}{a.ok ? "" : a.feasible ? ", slow recovery" : ", not executable"})</span>)}</span>}
+            </div>
+          </div>
+        );
+      };
+      const OptStarts = () => {
+        if (!opt) return null;
+        const e = opt.earliest;
+        return (
+          <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
+            <div className="flex items-center justify-between flex-wrap" style={{ gap: 8, padding: "10px 14px", borderBottom: `1px solid ${C.line}` }}>
+              <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.brass }}>Best mix for every start date <Hint text={EXPL.optimizer} /> <OptStatus /></span>
+              <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>{e ? <>★ earliest start passing both tests: <b style={{ color: C.text }}>{fCal(e.delay)}</b></> : "no start passes both tests"}</span>
+            </div>
+            <div className="scroll-x">
+              <table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
+                <thead><tr>{["Start", "Move in", "Best mix", "Executable", `Cash back (≤ ${inp.recoveryMonths} mo)`, "Cash low", "Peak DBR", "Land mortgage", "Own-property mortgage", "Personal loan(s)", "Cash-out", "New debt", "Profit + fees", `Net worth @ Y${inp.horizon}`, ""].map((h, i) => <th key={h || "x"} style={{ ...th, textAlign: i < 3 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
+                <tbody>{opt.starts.map((st) => { const b = st.best, isE = e && e.delay === st.delay, isCur = st.delay === curStart; return (
+                  <tr key={st.delay} style={{ background: isE ? "#F6EFE1" : "transparent", fontWeight: isE ? 700 : 400, borderLeft: isE ? `4px solid ${C.brass}` : "4px solid transparent" }}>
+                    <td style={{ ...td, textAlign: "left", fontFamily: SANS, whiteSpace: "nowrap" }}>{isE && <span style={{ color: C.brass }}>★ </span>}{fCal(st.delay)} <span style={{ color: C.sub, fontFamily: MONO, fontSize: 11 }}>M{st.delay}</span>{isCur && <span className="tag" style={{ background: SOFT, color: C.sub, marginLeft: 6 }}>planned</span>}</td>
+                    <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{fCal(st.occupy)}</td>
+                    <td style={{ ...td, textAlign: "left", fontFamily: SANS, whiteSpace: "normal", minWidth: 220, fontWeight: 400 }}>{b.name}</td>
+                    <td style={{ ...td, color: b.feasible ? C.pos : C.neg }}>{b.feasible ? "yes" : "NO"}</td>
+                    <td style={{ ...td, color: b.recoveryOk ? C.pos : C.neg }}>{b.recoveryMonths == null ? "never" : b.recoveryMonths === 0 ? "at move-in" : `${b.recoveryMonths} mo`}</td>
+                    <td style={{ ...td, color: b.minCash < 0 ? C.neg : b.minCash < inp.cashBuffer ? C.brass : C.text }}>{fS(b.minCash)}</td>
+                    <td style={{ ...td, color: b.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text }}>{pct1(b.peakDbr)}</td>
+                    <td style={td}>{b.lm > 0 ? <>{fS(b.lm)}<span style={{ color: C.sub }}> / {fS(b.lmCap)}</span></> : "–"}</td>
+                    <td style={td}>{b.eq > 0 ? <>{fS(b.eq)}<span style={{ color: C.sub }}> / {fS(b.eqCap)}</span></> : "–"}</td>
+                    <td style={td}>{b.pl > 0 ? <>{fS(b.pl)}{b.plSplit ? " ×2" : ""}<span style={{ color: C.sub }}> / {fS(b.plCap)}</span></> : "–"}</td>
+                    <td style={td}>{b.co > 0 ? fS(b.co) : "–"}</td>
+                    <td style={td}>{fS(b.newDebt)}</td>
+                    <td style={{ ...td, color: C.neg }}>{fS(b.newDebtInterest)}</td>
+                    <td style={td}>{fS(b.netWorth)}</td>
+                    <td style={{ ...td, textAlign: "right" }} className="no-print"><button onClick={() => useOptPlan(st)} style={{ ...btn("transparent", C.brass, C.line), fontSize: 11, padding: "3px 8px" }}>Use</button></td>
+                  </tr>); })}</tbody>
+              </table>
+            </div>
+            <Note><span style={{ padding: "0 14px 10px", display: "block" }}>Each row is the best of {opt.combos} mixes for that start (rates and tenures from Strategy 1). "Taken / bank max" shows how much of each facility's ceiling is used. Later starts look richer mainly because cash keeps compounding while loans run down; weigh that against the years spent in your current home. "Use" copies the row's mix into Strategy 1 and moves the start.</span></Note>
+          </div>
+        );
+      };
+
       const StepFin = () => (
         <div>
-          <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "fin") + 1} · Financing`} title={home ? "Four ways to sequence the financing" : "Four ways to fund it"}
-            sub={home ? "Each strategy is a sequence: cash, a mortgage on the property you already own, a personal loan, the new home's mortgage (at the start or as a cash-out at completion) and what happens to your existing loans. Every facility is sized down to what the bank's debt-burden and LTV tests allow. Pick a preset or press Edit to change the order and terms."
+          <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "fin") + 1} · Financing`} title={home ? `Fill your ${inp.dbrCap}% bucket the best way` : "Four ways to fund it"}
+            sub={home ? `Your instalment capacity is one bucket — ${inp.dbrCap}% of income, with mortgages allowed up to ${inp.mortgageCap}% and each personal loan up to ${inp.perLoanCap}% inside it. Settling an old loan frees room; every new facility uses it. The optimizer below tries every way of filling the bucket for your planned start; the four strategy cards underneath are a sandbox to shape your own sequences (the optimizer borrows its rates and tenures from Strategy 1).`
                       : "Each option is a capital stack: own cash first, then a personal loan (unsecured, short, repaid from month 1), and a mortgage for the remainder — drawn in stages during construction with profit accruing in the grace period."} />
+          {home && <OptPlanned />}
+          {home && opt && <div style={{ marginBottom: 16 }}>{BucketChart({ b: opt.planned.best })}</div>}
+          {home && <div className="subhead" style={{ fontSize: 13, margin: "18px 0 10px" }}>Or compare your own sequences</div>}
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 14, alignItems: "start" }}>
             {home ? inp.plans.map((o, i) => <React.Fragment key={i}>{PlanCard({ o, i })}</React.Fragment>) : inp.options.map((o, i) => <React.Fragment key={i}>{OptionCard({ o, i })}</React.Fragment>)}
           </div>
@@ -925,9 +1043,11 @@
         const curStart = Math.max(inp.buildStart, inp.landMonth);
         return (
           <div>
-            <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "when") + 1} · When to start`} title={`Best time to build — ${nameOf(focusRes)}`}
-              sub={`The same strategy run with construction starting every 3 months from now to 5 years out. Waiting lets loans run down (freeing debt-burden room and cash), but land grows ${inp.appreciation}%/yr and construction ${inp.costInflation}%/yr. ★ marks the earliest start that is executable AND gets cash back to your ${fS(inp.cashBuffer)} buffer within ${inp.recoveryMonths} months of move-in.`}
-              meta={<div className="flex items-center flex-wrap no-print" style={{ gap: 10 }}><FocusPicker /><span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>Land</span><Toggle value={landWithBuild ? "with" : "now"} onChange={(v) => setLandWithBuild(v === "with")} options={[["now", `Buy in ${fCal(inp.landMonth)}`], ["with", "Buy when building"]]} /></div>} />
+            <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "when") + 1} · When to start`} title="When can you start, and how is the bucket best used at each date?"
+              sub={`Construction starting every 3 months from now to 5 years out. Waiting lets loans run down (freeing room in the bucket and cash), but land grows ${inp.appreciation}%/yr and construction ${inp.costInflation}%/yr. The first table re-optimises the financing mix for each start; the second runs one fixed strategy (${nameOf(focusRes)}). ★ marks the earliest start that is executable AND gets cash back to your ${fS(inp.cashBuffer)} buffer within ${inp.recoveryMonths} months of move-in.`}
+              meta={<div className="flex items-center flex-wrap no-print" style={{ gap: 10 }}><span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>Land</span><Toggle value={landWithBuild ? "with" : "now"} onChange={(v) => setLandWithBuild(v === "with")} options={[["now", `Buy in ${fCal(inp.landMonth)}`], ["with", "Buy when building"]]} /></div>} />
+            <OptStarts />
+            <div className="flex items-center justify-between flex-wrap" style={{ gap: 10, margin: "6px 0 10px" }}><div className="subhead" style={{ fontSize: 13, margin: 0 }}>Same test for one fixed strategy — {nameOf(focusRes)}</div><FocusPicker /></div>
             <div className="print-section" style={{ background: sb ? SOFT_POS : SOFT_NEG, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 18px", marginBottom: 14, fontFamily: SANS, fontSize: 14, color: C.text, lineHeight: 1.5 }}>
               {sb ? <>
                 <b>{sb.delay === curStart ? `Start as planned in ${fCal(sb.delay)}` : sb.delay < curStart ? `You could start earlier, in ${fCal(sb.delay)}` : `Earliest workable start: ${fCal(sb.delay)}`}</b> — move in {fCal(sb.occupy)}, cash never below {fS(sb.minCash)} and back at your buffer {sb.recoveryMonths === 0 ? "at move-in" : `${sb.recoveryMonths} months after move-in`}, peak instalments {fSAR(sb.peakInst)}/mo ({sb.peakDbr.toFixed(0)}% of income), project cost {fS(sb.total)}.
