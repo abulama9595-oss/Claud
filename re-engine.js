@@ -405,12 +405,12 @@ function rePlanSimulate(p, prj, plan) {
 
   let cash = p.cashAvailable, rCash = p.cashAvailable;
   // NET-WORTH basis (your rule):
-  //   ccash  = your own cash + every loan − land, construction, early payoffs and fees; it GROWS at the return-on-cash rate
-  //            (while positive) and is never touched by instalments — the salary pays those.
+  //   ccash  = your own cash + every loan − land, construction, early payoffs and fees (no growth up to completion); after
+  //            completion it GROWS at the return-on-cash rate (while positive) and is never touched by instalments.
   //   net worth = ccash − instalments on the new loans (a plain cost, no growth) + old-loan instalments you no longer pay
   //            (loans paid off / refinanced) + rent received from letting the new home + rent you no longer pay
   //            − upkeep + home value (no selling costs) − new-loan debt still owed.
-  //   if you don't build = your own cash growing at the same rate; nothing subtracted (old loans exist either way).
+  //   if you don't build = your own cash growing at the same rate over the same period (from completion); nothing subtracted.
   let bcash = p.cashAvailable, ccash = p.cashAvailable;
   let newInstCum = 0, oldSavedCum = 0, rentInCum = 0, rentSavedCum = 0, upkeepCum = 0;
   const annualRentOut = (p.rentOutFixed || 0) > 0 ? p.rentOutFixed : (p.rentOutPct || 0) > 0 ? prj.total * p.rentOutPct / 100 : 0;
@@ -556,7 +556,10 @@ function rePlanSimulate(p, prj, plan) {
     const rentPaid = t >= 1 && (!occupied || lettingOut) ? rentEq : 0;   // if the new home is let out you don't move in
     const ret = t >= 1 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
     // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall
-    const bRet = t >= 1 && bcash > 0 ? bcash * alt : 0, cRet = t >= 1 && ccash > 0 ? ccash * alt : 0;
+    // growth starts after completion (cash on hand at completion is plain cash, no growth); the not-building cash grows over the
+    // same period so both sides are compared fairly
+    const growNow = t >= 1 && t > prj.occupy;
+    const bRet = growNow && bcash > 0 ? bcash * alt : 0, cRet = growNow && ccash > 0 ? ccash * alt : 0;
     bcash += bRet; ccash += cRet;
     // rent from letting the new home out: from the month after completion, growing with the rent-growth setting
     const rentIn = lettingOut && t > prj.occupy ? annualRentOut / 12 * Math.pow(1 + p.rentGrowth / 100, Math.floor((t - prj.occupy - 1) / 12)) : 0;
