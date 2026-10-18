@@ -317,7 +317,8 @@ function reSimulate(p, prj, opt) {
       zakat = Math.max(0, noi) * p.zakatPct / 100;
       cf = noi - zakat - payment;
     }
-    let lev = -(eq + upfront) + cf, unlev = -spend + noi - zakat;
+    // spend paid from the personal loan is inside eq and its repayments are inside cf, so its proceeds count as an inflow at month 0
+    let lev = -(eq + upfront) + cf + (t === 0 ? pl : 0), unlev = -spend + noi - zakat;
     if (!home && t === H) { lev += liqValue - bal; unlev += liqValue; }
     cumLev += lev; peakEquityNeed = Math.min(peakEquityNeed, cumLev);
     months.push({ t, year: yearOf(t), spend, eq, draw, bal, balS, balU, balPL, balMortgage: balS + balU, interest, principal, payment, mortgagePayment, plPayment, plInterest, ownerCost, rentPaid, rentEq, outflow, cumOut, value, liqValue, ownerEquity, portfolio, advantage, rentIn, opex, noi, zakat, cf, lev, unlev, dscr: payment > 1 ? noi / payment : null });
@@ -353,7 +354,7 @@ function reSimulate(p, prj, opt) {
     const npv = (cfs) => cfs.reduce((a, c, i) => a + c / Math.pow(1 + d, i), 0);
     const dist = levCf.filter((c) => c > 0).reduce((a, c) => a + c, 0);
     const invested = Math.max(0, -peakEquityNeed);
-    const fullYears = years.filter((y) => y.year >= 1 && y.year * 12 > prj.occupy + 11 && y.year < nY); // stabilised full years, excl. exit year
+    const fullYears = years.filter((y) => y.year >= 1 && y.year * 12 >= prj.occupy + 11 && y.year < nY); // stabilised full years (a year counts once its first month is at or after move-in), excl. exit year
     const firstFull = fullYears[0];
     const dscrs = fullYears.map((y) => y.dscr).filter((x) => x != null);
     let cum = 0, payback = null;
@@ -458,12 +459,14 @@ function rePlanSimulate(p, prj, plan) {
     while (more() && pool().length && guard++ < 20) {
       const pick = pool().slice().sort((a, b) => instOfAny(b) / settleCost(b) - instOfAny(a) / settleCost(a))[0];
       // the bank wants the old loan cleared BEFORE it grants the mortgage, so the payoff must come from cash you already have
-      if (cash - settleCost(pick) < 0) {
+      // (a land mortgage drawn this month is owed to the seller — it is not your cash)
+      const own = cash - (lm.startedAt === t ? lm.amount : 0);
+      if (own - settleCost(pick) < 0) {
         flags.push(`Not enough cash of your own to pay off ${pick.name} (${fS(settleCost(pick))}) before the ${f.label.toLowerCase()} — the mortgage is limited to what fits without that payoff.`);
-        events.push({ t, kind: "settle", text: `Cannot pay off ${pick.name} (${fSAR(settleCost(pick))}) before the ${f.label.toLowerCase()}: only ${fSAR(Math.max(0, cash))} of your own cash on hand.` });
+        events.push({ t, kind: "settle", text: `Cannot pay off ${pick.name} (${fSAR(settleCost(pick))}) before the ${f.label.toLowerCase()}: only ${fSAR(Math.max(0, own))} of your own cash on hand.` });
         break;
       }
-      roomSettled += pick.bal; doSettle(pick, t, `from your own cash, before the bank grants the ${forMax ? "largest " : ""}${f.label.toLowerCase()} — it is needed to pass the bank's debt-burden test`);
+      roomSettled += pick.bal; doSettle(pick, t, `from your own cash, before the bank grants the ${forMax ? "largest " : ""}${f.label.toLowerCase()} — it frees instalment room in the bank's debt-burden test so the bank can lend more`);
     }
   }
   function originate(t, f, mode, fixedAmt, ltvCap, productCap, proceedsFirst) {
@@ -518,14 +521,15 @@ function rePlanSimulate(p, prj, plan) {
       const nNew = Math.min(maxNew, 2 - (oldCount - S.reduce((a, l) => a + loansOf(l), 0)));   // never more than two personal loans at once
       if (nNew < 1) { why = why || "two personal loans already running"; continue; }
       const totalRoom = Math.max(0, dbrTarget - (instNow - freed));
-      const room = Math.min(totalRoom, nNew * perLoanTarget);
-      const i1 = Math.min(room, perLoanTarget), i2 = nNew > 1 ? Math.max(0, room - i1) : 0;
+      const capInst = Math.min(perLoanTarget, rePmt(p.plCap, f.rate, f.n));   // a loan's instalment stops at the 33% cap or where the bank's ceiling per loan binds
+      const room = Math.min(totalRoom, nNew * capInst);
+      const i1 = Math.min(room, capInst), i2 = nNew > 1 ? Math.max(0, room - i1) : 0;
       const p1 = i1 > 1 ? onePl(i1) : 0, p2 = i2 > 1 ? onePl(i2) : 0;
       const amount = p1 + p2;
       if (amount < 1) { why = why || "no room left in the bank's debt-burden test"; continue; }
       if (amount < payoff + 1) continue;                                 // the bank must clear the old loans in full
       const net = amount - payoff;
-      const limitedBy = room < nNew * perLoanTarget - 1 ? `${p.dbrCap}% total debt-burden cap` : `${p.perLoanCap}% cap per personal loan${nNew > 1 ? " (two loans)" : ""}`;
+      const limitedBy = room < nNew * capInst - 1 ? `${p.dbrCap}% total debt-burden cap${capInst < perLoanTarget - 1 && p1 >= p.plCap - 1 ? ` (the first loan is at the bank's ceiling of ${fS(p.plCap)})` : ""}` : capInst < perLoanTarget - 1 ? `bank ceiling of ${fS(p.plCap)} per personal loan` : `${p.perLoanCap}% cap per personal loan${nNew > 1 ? " (two loans)" : ""}`;
       const c = { S, freed, payoff, amount, net, split: p2 > 1 ? [p1, p2] : null, limitedBy, room };
       if (!best || c.net > best.net + 1 || (Math.abs(c.net - best.net) <= 1 && c.S.length < best.S.length)) best = c;
     }
@@ -576,7 +580,8 @@ function rePlanSimulate(p, prj, plan) {
     if (t === lmT) originate(t, lm, "max", 0, landValue * p.landLtv / 100, Infinity);
     if (t === eqT) originate(t, eq, "max", 0, p.ownedValue * p.ownedLtv / 100, Infinity);
     if (t === plT) takePersonal(t, pl);
-    if (t === coT) originate(t, co, "max", 0, prj.valueAt(t) * p.cashoutLtv / 100, Infinity);
+    // the land mortgage is still secured on the same home, so the cash-out may only lend up to the LTV less what is still owed on it
+    if (t === coT) originate(t, co, "max", 0, Math.max(0, prj.valueAt(t) * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0)), Infinity);
     if (plan.pl2Use && t === prj.occupy) takePersonal(t, pl2);          // after the cash-out: personal loan(s) fill what is left
     if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Upkeep starts.` });
     // project spend, all from cash (facility proceeds are already in cash)
@@ -623,7 +628,7 @@ function rePlanSimulate(p, prj, plan) {
       instMo: (sum("existInst") + sum("lmPay") + sum("eqPay") + sum("plPay") + sum("coPay") + sum("rfPay")) / (y === 0 ? 1 : 12) });
   }
   const end = months[H];
-  const newDebtInterest = facs.reduce((a, f) => a + f.interestPaid, 0) + settleFees;
+  const newDebtInterest = facs.reduce((a, f) => a + f.interestPaid + f.fees, 0) + settleFees;   // profit + bank fees + early-settlement fees
   const totalInterest = newDebtInterest + loans.reduce((a, l) => a + l.interestPaid, 0);
   const peakDbr = Math.max(...months.map((m) => m.dbr));
   const peakInst = Math.max(...months.map((m) => m.existInst + m.lmPay + m.eqPay + m.plPay + m.coPay + m.rfPay));
@@ -631,6 +636,7 @@ function rePlanSimulate(p, prj, plan) {
   const recoveryMonths = cashRestoredT != null ? cashRestoredT - prj.occupy : null;
   const recoveryOk = feasible && recoveryMonths != null && recoveryMonths <= p.recoveryMonths;
   const after = Math.min(H, prj.occupy + p.recoveryMonths);
+  if (prj.occupy > H) flags.push(`The home is not finished before the end of the comparison (move-in month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.`);
   if (shortfall > 0) flags.unshift(`Cash goes NEGATIVE by ${fS(shortfall)} (lowest at month ${minCashT}) — the project cannot be fully funded this way.`);
   else if (!recoveryOk) flags.push(cashRestoredT == null ? `Cash never gets back to your ${fS(p.cashBuffer)} buffer after move-in within the horizon.` : `Cash gets back to your ${fS(p.cashBuffer)} buffer ${recoveryMonths} months after move-in (you asked for ${p.recoveryMonths}).`);
   events.sort((a, b) => a.t - b.t);
@@ -667,9 +673,11 @@ function computeRE(inp) {
       if (t >= 1) ls.forEach((l) => { if (l.bal <= 0.5) return; if (l.settleAt && t === Math.round(l.settleAt)) { l.bal = 0; return; } const i = l.bal * l.rate / 100 / 12; const pay = Math.min(l.bal + i, l.inst); l.bal -= pay - i; });
       const inst = ls.reduce((a, l) => a + (l.bal > 0.5 ? l.inst : 0), 0);
       const room = Math.max(0, p.income * p.dbrCap / 100 - inst);
-      const mortRoom = Math.min(room, p.income * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100), pl1 = Math.min(room, p.income * p.perLoanCap / 100), pl2 = Math.min(room, 2 * p.income * p.perLoanCap / 100);
+      // personal loans: never more than two running at once (your existing loans count) and each stops at the bank's ceiling per loan
+      const slots = Math.max(0, 2 - ls.filter((l) => l.bal > 0.5).length), capInst = Math.min(p.income * p.perLoanCap / 100, rePmt(p.plCap, rPl, nPl));
+      const mortRoom = Math.min(room, p.income * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100), pl1 = slots >= 1 ? Math.min(room, capInst) : 0, pl2 = Math.min(room, Math.min(slots, 2) * capInst);
       const key = Math.round(inst);
-      if (key !== prev) { rows.push({ t, inst, room, mortRoom, pl1Room: pl1, pl2Room: pl2, maxMortgage: rePrincipalFor(mortRoom, r, n), maxOnePl: rePrincipalFor(pl1, rPl, nPl), maxTwoPl: rePrincipalFor(pl2, rPl, nPl), maxOneLoan: rePrincipalFor(pl1, r, n), maxAllLoans: rePrincipalFor(room, r, n) }); prev = key; }
+      if (key !== prev) { rows.push({ t, inst, room, mortRoom, pl1Room: pl1, pl2Room: pl2, maxMortgage: rePrincipalFor(mortRoom, r, n), maxOnePl: Math.min(p.plCap, rePrincipalFor(pl1, rPl, nPl)), maxTwoPl: Math.min(p.plCap, rePrincipalFor(Math.min(pl2, capInst), rPl, nPl)) + Math.min(p.plCap, rePrincipalFor(Math.max(0, pl2 - capInst), rPl, nPl)), maxOneLoan: rePrincipalFor(pl1, r, n), maxAllLoans: rePrincipalFor(room, r, n) }); prev = key; }
     }
     return rows;
   })();
@@ -679,9 +687,11 @@ function computeRE(inp) {
   let verdict, vColor;
   if (!best) { verdict = "NO OPTION"; vColor = C.sub; }
   else if (home) {
-    // the baseline is renting only if you pay rent today; otherwise it is not building (or not buying) and keeping the cash invested
-    const renting = p.rentNow > 0, act = prj.build ? "BUILDING" : "BUYING";
-    if (best.advantage > 0) { verdict = renting ? "OWNING WINS" : `${act} WINS`; vColor = C.pos; } else { verdict = renting ? "RENTING WINS" : `NOT ${act} WINS`; vColor = C.neg; }
+    // judged on the strategy you can actually carry out (the recommendation), not on one that runs out of cash;
+    // the baseline is renting only if you pay rent today, otherwise it is not building (or not buying) and keeping the cash invested
+    const lead = bestFeasible, renting = p.rentNow > 0, act = prj.build ? "BUILDING" : "BUYING";
+    if (!lead) { verdict = "NO EXECUTABLE STRATEGY"; vColor = C.neg; }
+    else if (lead.advantage > 0) { verdict = renting ? "OWNING WINS" : `${act} WINS`; vColor = C.pos; } else { verdict = renting ? "RENTING WINS" : `NOT ${act} WINS`; vColor = C.neg; }
   } else {
     const i = best.irr == null ? -1 : best.irr * 100;
     if (i >= 12) { verdict = "ATTRACTIVE"; vColor = C.pos; } else if (i >= p.discountRate) { verdict = "ACCEPTABLE"; vColor = C.brass; } else { verdict = "WEAK"; vColor = C.neg; }
@@ -721,7 +731,10 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
   const p = mergeRE(inp);
   maxDelay = maxDelay == null ? 48 : maxDelay; step = step || 3;
   const rows = [];
-  for (let d = 0; d <= maxDelay; d += step) {
+  // every step from today, plus your planned start so "start as planned" is always tested
+  const ds = []; for (let d = 0; d <= maxDelay; d += step) ds.push(d);
+  const cur = Math.max(p.buildStart || 0, p.landMonth || 0); if (!ds.includes(cur)) { ds.push(cur); ds.sort((a, b) => a - b); }
+  for (const d of ds) {
     const q = { ...p, buildStart: d, landMonth: landWithBuild ? d : Math.min(p.landMonth || 0, d) };
     const m = computeRE(q); const r = m.results[idx];
     if (!r) continue;
