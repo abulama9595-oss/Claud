@@ -97,9 +97,9 @@ const RE_PLAN_DEFAULTS = {
   coUse: false, coMode: "need", coAmount: 0, coRate: 4.5, coTenure: 18, coFeesPct: 1,
   settlePolicy: "asNeeded", extraMo: 0,
   plSplit: true, // a shortfall above one personal loan's cap may be taken as two personal loans (each ≤ perLoanCap, together within the bucket)
-  // REFINANCE (bank buy-out): a new facility whose bank pays off old loans directly — no cash needed from you — and tops you up
-  // with the difference. rfKind "mortgage" = secured on the finished home (from completion; may also absorb the land mortgage)
-  // or on the property you already own (before completion); "pl" = a new personal loan that buys out the old personal loans.
+  // REFINANCE (bank buy-out): a new facility whose bank pays off your old PERSONAL loans directly — no cash needed from you —
+  // and tops you up with the difference. Mortgages are never refinanced. rfKind "mortgage" = secured on the finished home (from
+  // completion) or on the property you already own (before completion), net of any mortgage already on it; "pl" = a new personal loan.
   // rfMode "max" = borrow the most the bank allows (recover as much cash as possible) · "need" = only if cash is short of the buffer.
   rfWhen: "none", rfMonth: 0, rfKind: "mortgage", rfMode: "max",
 };
@@ -457,14 +457,16 @@ function rePlanSimulate(p, prj, plan) {
     events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. Net to cash ${fS(cash - cashBefore)}.` });
     if (mode === "need" && gap > amount + 1) flags.push(`${f.label} covers ${fS(amount)} of a ${fS(gap)} shortfall (${c.limitedBy}).`);
   }
-  // REFINANCE: the new bank pays off old loans directly from the new facility (no cash from you), then tops you up.
-  // Searches every subset of eligible loans and keeps the one that nets the most cash (max) or just covers the need.
+  // REFINANCE: the new bank pays off old PERSONAL loans directly from the new facility (no cash from you), then tops you up.
+  // Mortgages are never refinanced; a mortgage already on the same asset reduces the LTV room.
+  // Searches every subset of eligible personal loans and keeps the one that nets the most cash (max) or just covers the need.
   function refinance(t) {
     const f = rf, kind = plan.rfKind;
     const onHome = kind === "mortgage" && prj.build ? t >= prj.occupy : kind === "mortgage" && !prj.build ? t >= prj.landMonth : false;
     const personal = activeExisting().filter((l) => l.canRefi !== false).concat(pl.bal > 0.5 && pl.settledAt === null && pl.startedAt !== null ? [pl] : []);
     const secured = kind !== "mortgage" ? [] : onHome ? [lm].filter((x) => x.bal > 0.5 && x.settledAt === null && x.startedAt !== null) : [eq].filter((x) => x.bal > 0.5 && x.settledAt === null && x.startedAt !== null);
-    const cands = personal.concat(secured).slice(0, 8);
+    const cands = personal.slice(0, 8);                                   // only personal loans are bought out; mortgages stay in place
+    const lockedSecured = secured.reduce((a, x) => a + x.bal, 0);        // ...and still use up the asset's LTV
     const assetCap = kind !== "mortgage" ? Infinity : onHome ? prj.valueAt(t) * p.cashoutLtv / 100 - (co.settledAt === null ? co.bal : 0) : p.ownedValue * p.ownedLtv / 100;
     const facCap = kind === "pl" ? perLoanTarget : mortgageTarget;
     const productCap = kind === "pl" ? p.plCap : Infinity;
@@ -474,7 +476,6 @@ function rePlanSimulate(p, prj, plan) {
     for (let mask = 1; mask < (1 << cands.length); mask++) {
       const S = cands.filter((_, k) => mask & (1 << k));
       const freed = S.reduce((a, l) => a + instOfAny(l), 0), payoff = S.reduce((a, l) => a + settleCost(l), 0);
-      const lockedSecured = kind === "mortgage" ? secured.filter((x) => !S.includes(x)).reduce((a, x) => a + x.bal, 0) : 0;
       const totalRoom = dbrTarget - (instNow - freed), room = Math.max(0, Math.min(totalRoom, facCap));
       const byDbr = rePrincipalFor(room, f.rate, f.n), byLtv = assetCap - lockedSecured;
       const cap = Math.max(0, Math.min(byDbr, byLtv, productCap));
