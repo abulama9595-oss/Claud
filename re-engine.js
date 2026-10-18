@@ -382,8 +382,9 @@ function rePlanSimulate(p, prj, plan) {
   const loans = p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).map((l) => { const left = Math.max(1, Math.round(l.monthsLeft)); return { ...l, bal: l.balance, left, installment: Math.max(l.installment, rePmt(l.balance, l.rate, left)), settledAt: null, interestPaid: 0, kind: "existing" }; });
   const loanPay = (bal, i, inst) => Math.min(bal + i, inst);
   // renter/not-building baseline keeps paying the existing loans untouched
-  const renterInst = new Array(H + 1).fill(0);
+  const renterInst = new Array(H + 1).fill(0), renterDebt = new Array(H + 1).fill(0);
   loans.forEach((l) => { let bal = l.bal; for (let t = 1; t <= H && bal > 0.5; t++) { const i = bal * l.rate / 100 / 12; const pay = loanPay(bal, i, l.installment); bal -= pay - i; renterInst[t] += pay; } });
+  loans.forEach((l) => { let bal = l.bal; for (let t = 0; t <= H; t++) { if (t >= 1 && bal > 0.5) { const i = bal * l.rate / 100 / 12; bal -= loanPay(bal, i, l.installment) - i; } renterDebt[t] += Math.max(0, bal); } });
 
   // the four new facilities
   const mk = (key, label, rate, tenure, fees) => ({ key, label, bal: 0, pmt: 0, amount: 0, rate: reEffRate(p, rate, Math.max(1, Math.round(tenure * 12))), quoted: rate, tenure, n: Math.max(1, Math.round(tenure * 12)), fees: 0, feesPct: fees, startedAt: null, settledAt: null, interestPaid: 0, monthsPaid: 0, capacity: null, kind: key, name: label });
@@ -401,6 +402,10 @@ function rePlanSimulate(p, prj, plan) {
   const instOfAny = (l) => l.kind === "existing" ? l.installment : l.pmt;
 
   let cash = p.cashAvailable, rCash = p.cashAvailable;
+  // NET-WORTH basis (your rule): your own cash + every loan − land, construction, early payoffs and fees (= cash on hand at
+  // completion), then − every loan instalment from the land purchase onward, + home value (no selling costs) − debt still owed.
+  // Salary, living costs and investment return are left out — on both sides of the comparison.
+  let pcash = p.cashAvailable, bcash = p.cashAvailable;
   let minCash = Infinity, minCashT = 0, belowBufferMonths = 0, shortfall = 0, fundingGap = 0;
   const payoffs = [];   // early payoffs from your own cash: { t, name, cost, fee }
   let settledTotal = 0, settleFees = 0, refiTotal = 0, roomSettled = 0, debtFreeT = null, breakEvenMonth = null, cashRestoredT = null;
@@ -421,7 +426,7 @@ function rePlanSimulate(p, prj, plan) {
   }
   function doSettle(l, t, reason) {
     const cost = settleCost(l), fee = cost - l.bal, inst = instOfAny(l);
-    cash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee });
+    cash -= cost; pcash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee });
     events.push({ t, kind: "settle", text: `Settle ${l.name}: ${fSAR(cost)} (incl. ${fSAR(fee)} early-settlement fee) — frees ${fSAR(inst)}/mo — ${reason}.` });
   }
   // only PERSONAL loans may be paid off early: existing loans you allow, the strategy's personal loan, a refinance taken as a personal loan.
@@ -470,7 +475,7 @@ function rePlanSimulate(p, prj, plan) {
       return;
     }
     f.bal = amount; f.amount = amount; f.pmt = rePmt(amount, f.rate, f.n); f.startedAt = t; f.fees = amount * f.feesPct / 100;
-    cash += amount - f.fees;
+    cash += amount - f.fees; pcash += amount - f.fees;
     const onePl = f.key === "pl" ? rePrincipalFor(perLoanTarget, f.rate, f.n) : Infinity;
     f.split = f.key === "pl" && plan.plSplit && amount > onePl + 1 ? [onePl, amount - onePl] : null;
     const dbr = allInst() / p.income * 100;
@@ -525,7 +530,7 @@ function rePlanSimulate(p, prj, plan) {
     best.S.forEach((l) => { const cost = settleCost(l); settleFees += cost - l.bal; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; });
     f.bal = best.amount; f.amount = best.amount; f.split = best.split; f.startedAt = t; f.fees = 0;
     f.pmt = best.split ? rePmt(best.split[0], f.rate, f.n) + rePmt(best.split[1], f.rate, f.n) : rePmt(best.amount, f.rate, f.n);
-    cash += best.amount - best.payoff;
+    cash += best.amount - best.payoff; pcash += best.amount - best.payoff;
     f.capacity = { t, cap: best.amount, room: best.room, limitedBy: best.limitedBy, want: best.amount, mode: "max", taken: best.amount, gap: 0 };
     f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed } : null;
     const loans = best.split ? `two personal loans, ${fS(best.split[0])} + ${fS(best.split[1])}` : `a personal loan of ${fS(best.amount)}`;
@@ -558,7 +563,7 @@ function rePlanSimulate(p, prj, plan) {
     if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Upkeep starts.` });
     // project spend, all from cash (facility proceeds are already in cash)
     const spend = prj.schedule[t] || 0;
-    cash -= spend;
+    cash -= spend; pcash -= spend;
     // debt service
     let existInst = 0, existInterest = 0;
     if (t >= 1) loans.forEach((l) => { if (l.settledAt !== null || l.bal <= 0.5) return; const i = l.bal * l.rate / 100 / 12; const pay = loanPay(l.bal, i, l.installment); l.bal -= pay - i; l.left -= 1; l.interestPaid += i; existInst += pay; existInterest += i; });
@@ -575,18 +580,22 @@ function rePlanSimulate(p, prj, plan) {
     const newPay = pays.lm + pays.eq + pays.pl + pays.pl2 + pays.co + pays.rf;
     cash -= existInst + newPay + ownerCost;
     rCash -= renterInst[t];
+    // net-worth basis: instalments on new loans always; old-loan instalments and rent from the land purchase on (both sides)
+    const fromPurchase = t >= prj.landMonth;
+    pcash -= newPay + ownerCost + (fromPurchase ? existInst + rentPaid : 0);
+    if (fromPurchase) bcash -= renterInst[t] + rentEq;
     const debtExisting = loans.reduce((a, l) => a + (l.settledAt === null ? l.bal : 0), 0);
     const debtNew = facs.reduce((a, f) => a + (f.settledAt === null ? f.bal : 0), 0);
     const debt = debtExisting + debtNew;
-    const liqValue = value * (1 - p.sellCostPct / 100);
-    const netWorth = cash + liqValue - debt, renterNW = rCash, advantage = netWorth - renterNW;
+    const liqValue = value;   // no selling costs: the seller pays no tax or broker fee
+    const netWorth = pcash + value - debt, renterNW = bcash - renterDebt[t], advantage = netWorth - renterNW;
     if (cash < minCash) { minCash = cash; minCashT = t; }
     if (cash < p.cashBuffer) belowBufferMonths++;
     if (cash < 0) shortfall = Math.max(shortfall, -cash);
     if (occupied && cashRestoredT === null && cash >= p.cashBuffer) cashRestoredT = t;
     if (occupied && breakEvenMonth === null && advantage >= 0) breakEvenMonth = t;
     if (debtFreeT === null && t > 0 && debt < 0.5) debtFreeT = t;
-    months.push({ t, year: yearOf(t), cash, rCash, ret, inc: t >= 1 ? p.income : 0, liv: t >= 1 ? p.livingExpenses : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, dbr: (existInst + newPay) / p.income * 100 });
+    months.push({ t, year: yearOf(t), cash, rCash, pcash, bcash, ret, inc: t >= 1 ? p.income : 0, liv: t >= 1 ? p.livingExpenses : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, dbr: (existInst + newPay) / p.income * 100 });
   }
   const nY = yearOf(H), years = [];
   for (let y = 0; y <= nY; y++) {
