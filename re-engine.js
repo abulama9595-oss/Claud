@@ -59,7 +59,7 @@ const RE_BASE = {
   rateQuote: "apr",        // how NEW-facility rates are entered: "apr" (reducing balance) or "flat" (KSA "hamish" per year on the original principal)
   plCap: 3000000,          // bank product ceiling on a single personal loan (the 33%-of-income rule usually binds first)
   perLoanCap: 33,          // no single facility's instalment may exceed this % of income
-  landLtv: 70,             // max LTV for a mortgage on the land being bought
+  landLtv: 90,             // max LTV when the bank finances the land purchase (cash-raising mortgages: 70%)
   recoveryMonths: 24,      // your rule: cash must be back at the buffer within this many months after move-in
   cashoutLtv: 70,          // max LTV for a mortgage raised against an owned, completed home ("cash-out")
   // a property you ALREADY own and could mortgage (equity release) to fund the build or refinance loans
