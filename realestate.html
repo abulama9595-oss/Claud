@@ -191,7 +191,7 @@
       breakEven: "First month after move-in where net worth with the strategy ≥ baseline net worth.",
       debtFree: "First month with no debt outstanding (existing loans and all new facilities).",
       settled: "Principal of existing loans repaid early (planned settlements and those required to pass a bank test) plus the early-settlement fees. A settlement made to pass the bank's test happens in the same month the new facility is drawn, so that facility's proceeds pay for it.",
-      refi: "A refinance (bank buy-out): a new facility whose bank pays off your old PERSONAL loans directly — you put in no cash — and pays you the difference. Only personal loans that have run at least 12 months qualify. Mortgages are never refinanced or paid off early; once taken they run to the end. Into a mortgage: secured on the finished home (from move-in) or, before move-in, on the property you already own, up to its LTV minus any mortgage already on it, and the 55% mortgage cap. Into a personal loan: one new personal loan up to the 33% cap. The tool tries every combination of eligible loans (step 1, 'May refinance?') and keeps the one that releases the most cash ('max') or just restores your buffer ('only if needed'). Early-settlement fees still apply. It cannot fund construction: the cash only arrives when it is taken.",
+      refi: "Refinancing (bank buy-out) of personal loans: the bank lends its MAXIMUM as new personal loans — each instalment up to 33% of income, up to two new loans (one per old loan bought out), together within what is left of your 65% bucket — pays off the old personal loans directly (you put in no cash), and pays you the rest. New loans use the personal-loan rate and tenure. Only personal loans that have run at least 12 months qualify, and the bank's maximum must clear them in full. Mortgages are never refinanced. The tool tries every combination of eligible loans and keeps the one that releases the most cash. It cannot fund construction: the cash arrives when the refinance is taken.",
       settlePolicy: "What a strategy may do with your personal loans to make room in the bank's test (mortgages are never paid off early). 'Keep' never pays one off early. 'Only when needed' pays off old loans, one at a time, only when the bank would otherwise not lend enough for the next facility — in the same month that facility is drawn, so its proceeds cover the payoff. 'Clear all' pays off every loan you allow as soon as the first new facility is drawn. Loans with 'Settle from cash?' unticked in step 1 are never touched; a 'Settle in month' date always happens.",
       dbrRoom: "Bank total cap (65% of income) minus the instalments running today — the free part of your bucket. Inside it a mortgage may use up to 55% of income and one personal loan up to 33%.",
       savings: "Income − living expenses − rent − existing instalments, per month, today.",
@@ -229,7 +229,7 @@
       if (o.eqWhen !== "none") s.push(`mortgage the property you already own ${whenTxt(o.eqWhen, o.eqMonth, prj)} for ${modeTxt(o.eqMode, o.eqAmount)} at ${rateTxt(inp, o.eqRate, o.eqTenure)}`);
       if (o.plWhen !== "none") s.push(`take a personal loan ${whenTxt(o.plWhen, o.plMonth, prj)} for ${modeTxt(o.plMode, o.plAmount)} at ${rateTxt(inp, o.plRate, o.plTenure)}`);
       if (o.coUse) s.push(`take a cash-out mortgage on the finished home at completion (${fCal(prj.occupy)}) for ${modeTxt(o.coMode, o.coAmount)} at ${rateTxt(inp, o.coRate, o.coTenure)}`);
-      if (o.rfWhen && o.rfWhen !== "none") s.push(`refinance ${whenTxt(o.rfWhen, o.rfMonth, prj)} into ${o.rfKind === "pl" ? `a new personal loan (${rateTxt(inp, o.plRate, o.plTenure)})` : `a mortgage (${rateTxt(inp, o.coRate, o.coTenure)})`} — the bank buys out your personal loans and pays you ${o.rfMode === "max" ? "as much extra cash as it allows" : "only what restores your buffer"}`);
+      if (o.rfWhen && o.rfWhen !== "none") s.push(`refinance your personal loans ${whenTxt(o.rfWhen, o.rfMonth, prj)}: the bank lends its maximum as new personal loan(s) at ${rateTxt(inp, o.plRate, o.plTenure)}, clears the old ones and pays you the rest`);
       if (build) s.push(`fund the construction (${fCal(prj.start)} → ${fCal(prj.occupy)}) from cash and those proceeds`);
       const planned = (inp.existingLoans || []).filter((l) => l.balance > 0 && l.settleAt != null && l.settleAt > 0).map((l) => `settle ${l.name} in ${fCal(l.settleAt)} from your cash`);
       if (planned.length) s.push(planned.join(", "));
@@ -244,7 +244,7 @@
       return s.join(", then ") + ".";
     }
     const newDebtOf = (r) => r.newDebtTotal || 0;
-    const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
+    const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
 
     /* ---------- scenarios (localStorage) ---------- */
     const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } };
@@ -562,13 +562,10 @@
                 <Slider label="Tenure" value={o.coTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "coTenure", v)} />
                 <Adv title="Fees"><Slider label="Bank fees (upfront)" value={o.coFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "coFeesPct", v)} /></Adv>
               </>}
-              <div className="subhead">Refinance — a bank buys out your personal loans, no cash from you <Hint text={EXPL.refi} /></div>
+              <div className="subhead">Refinance personal loans — the bank buys them out, no cash from you <Hint text={EXPL.refi} /></div>
               <Select value={o.rfWhen || "none"} onChange={(v) => setPlan(i, "rfWhen", v)} options={[["none", "Not used"], ["completion", `At completion (${fCal(prj.occupy)}) — recover cash after building`], ["build", "When construction starts"], ["land", "When the land is bought"], ["start", "At the start (now)"], ["month", "In a month I choose"]]} />
               {o.rfWhen === "month" && <Slider label="Month" value={o.rfMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "rfMonth", v)} hint={`${fCal(o.rfMonth)} · construction completes ${fCal(prj.occupy)}`} />}
-              {o.rfWhen && o.rfWhen !== "none" && <>
-                <Select label="Into" value={o.rfKind} onChange={(v) => setPlan(i, "rfKind", v)} options={[["mortgage", `A mortgage (${o.rfWhen === "completion" ? "on the finished home" : "on the property you own until move-in"}) · rate & tenure of the cash-out`], ["pl", "A new personal loan · rate & tenure of the personal loan"]]} />
-                <Select label="How much" value={o.rfMode} onChange={(v) => setPlan(i, "rfMode", v)} options={[["max", "As much as the bank allows — maximum cash back"], ["need", "Only if cash is below my buffer, and only that much"]]} />
-              </>}
+              {o.rfWhen && o.rfWhen !== "none" && <Note>New personal loan(s) at the personal-loan rate and tenure above, always for the bank's maximum: each instalment up to {inp.perLoanCap}% of income, up to two loans, within your {inp.dbrCap}% bucket. The bank clears the old personal loans (at least {inp.refiMinMonths} months old) and pays you the rest.</Note>}
               <div className="subhead">Old loans — pay off early with cash? <Hint text={EXPL.settlePolicy} /></div>
               <Select value={o.settlePolicy} onChange={(v) => setPlan(i, "settlePolicy", v)} options={[["none", "No — keep them; new loans get whatever room is left"], ["asNeeded", "Only when needed to make room for a new loan (its proceeds pay the payoff)"], ["all", "Yes — clear them all when the first new loan is drawn"]]} hint="which loans may be touched, and fixed settlement dates, are set per loan in step 1" />
             </div>}
