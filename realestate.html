@@ -277,7 +277,7 @@
       const rf = r.facilities.find((f) => f.key === "rf");
       if (rf && inRange(rf.startedAt) && rf.refi) add(`Refinance: new loans ${fS(rf.amount)} − old loans cleared ${fS(rf.refi.payoff)}`, rf.amount - rf.refi.payoff, fCal(rf.startedAt));
       const ret = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + (x.cRet || 0), 0);
-      add(`Return earned on this cash at ${inp.altReturn}%/yr`, ret, "on the balance each month · \"Return your cash earns\" setting, step 2");
+      add(`Growth on this cash at ${inp.altReturn}%/yr`, ret, "on the balance each month while it is above zero · \"Return your cash earns\" setting, step 2");
       const total = rows.reduce((a, x) => a + x.v, 0);
       // does the salary really carry living costs + every instalment each month?
       let worst = Infinity, worstT = 0, short = 0;
@@ -1115,14 +1115,15 @@
                       {line(`Instalments on your old loans from the land purchase (${fCal(LM)}) until each ends or is paid off`, -oldInst)}
                       {line("Rent from the land purchase until move-in", -rent)}
                       {line("Upkeep after move-in (maintenance, insurance)", -upkeep)}
-                      {line(`Return at ${inp.altReturn}%/yr on this cash from completion to Y${inp.horizon}`, end.pcash - (fbC.total + (fbH.total - fbH.ret) - (fbC.total - fbC.ret) - newInst - oldInst - rent - upkeep), "on the balance each month (negative once instalments exceed the cash: the return those salary payments would have earned) · net of the return lost on instalments paid during construction")}
+                      {line(`Growth at ${inp.altReturn}%/yr on this cash after completion`, ms.filter((x) => x.t > occ).reduce((a, x) => a + (x.pRet || 0), 0), "only while the cash is above zero — once the instalments use it up there is nothing left to grow, and nothing is charged")}
+                      {line("Less growth already counted above on money that went to instalments during construction", ms.filter((x) => x.t <= occ).reduce((a, x) => a + (x.pRet || 0) - (x.cRet || 0), 0), "the completion figure leaves instalments to your salary; here they are counted, so the growth on that money is taken back out")}
                       {line(`Home value at Y${inp.horizon}`, end.value, `${fS(prj.value0)} at completion, growing ${inp.appreciation}%/yr · no selling costs`)}
                       {line(`Debt still owed at Y${inp.horizon}`, -end.debt)}
                       <tr className="tot"><td>Net worth, Y{inp.horizon}</td><td className="v">{fSAR(end.netWorth)}</td></tr>
                       <tr><td colSpan={2} style={{ paddingTop: 10, fontWeight: 600 }}>{renting ? "If you kept renting instead" : "If you don't build"}</td></tr>
                       {line("Your own cash", focusRes.cashStart)}
                       {line(`Old-loan instalments from ${fCal(LM)} until they end${renting ? ", and rent" : ""}`, -ms.reduce((a, x) => a + (x.bOut || 0), 0), "same loans, paid as scheduled")}
-                      {line(`Return at ${inp.altReturn}%/yr on this cash`, ms.reduce((a, x) => a + (x.bRet || 0), 0), "on the balance each month")}
+                      {line(`Growth at ${inp.altReturn}%/yr on this cash`, ms.reduce((a, x) => a + (x.bRet || 0), 0), "on the balance each month")}
                       {line(`Old debt still owed at Y${inp.horizon}`, -(end.bcash - end.renterNW))}
                       <tr className="tot"><td>Net worth if you {renting ? "kept renting" : "don't build"}</td><td className="v">{fSAR(end.renterNW)}</td></tr>
                       <tr className="tot"><td>Difference</td><td className="v" style={{ color: end.advantage >= 0 ? C.pos : C.neg }}>{end.advantage < 0 ? "−" : "+"}{fSAR(Math.abs(end.advantage))}</td></tr>

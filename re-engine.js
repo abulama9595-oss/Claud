@@ -406,7 +406,7 @@ function rePlanSimulate(p, prj, plan) {
   // completion), then − every loan instalment from the land purchase onward, + home value (no selling costs) − debt still owed.
   // Salary, living costs and investment return are left out — on both sides of the comparison.
   // ccash = the "cash on hand at completion" ledger: own cash + loans − project − payoffs − fees (instalments left to the salary).
-  // All three ledgers earn the return-on-cash setting (altReturn) every month.
+  // All three ledgers grow at the return-on-cash setting (altReturn) while positive — growth only, never a charge.
   let pcash = p.cashAvailable, bcash = p.cashAvailable, ccash = p.cashAvailable;
   let minCash = Infinity, minCashT = 0, belowBufferMonths = 0, shortfall = 0, fundingGap = 0;
   const payoffs = [];   // early payoffs from your own cash: { t, name, cost, fee }
@@ -548,7 +548,8 @@ function rePlanSimulate(p, prj, plan) {
     const rentEq = t >= 1 ? p.rentNow * Math.pow(1 + p.rentGrowth / 100, yrIdx) : 0;
     const rentPaid = t >= 1 && !occupied ? rentEq : 0;
     const ret = t >= 1 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
-    const pRet = t >= 1 ? pcash * alt : 0, bRet = t >= 1 ? bcash * alt : 0, cRet = t >= 1 ? ccash * alt : 0;
+    // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall
+    const pRet = t >= 1 && pcash > 0 ? pcash * alt : 0, bRet = t >= 1 && bcash > 0 ? bcash * alt : 0, cRet = t >= 1 && ccash > 0 ? ccash * alt : 0;
     pcash += pRet; bcash += bRet; ccash += cRet;
     if (t >= 1) { cash = cash * (1 + alt) + p.income - p.livingExpenses - rentPaid; rCash = rCash * (1 + alt) + p.income - p.livingExpenses - rentEq; }
     // planned settlements first (e.g. a loan you intend to clear on a known date)
