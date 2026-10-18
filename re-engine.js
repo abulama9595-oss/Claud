@@ -62,7 +62,9 @@ const RE_BASE = {
   mortgageCap: 55,         // a MORTGAGE's instalments (land purchase, existing property, cash-out) may not exceed this % of income
   landLtv: 90,             // max LTV when the bank finances the land purchase (cash-raising mortgages: 70%)
   recoveryMonths: 24,      // your rule: cash must be back at the buffer within this many months after move-in
-  refiMinMonths: 12,       // a personal loan can only be refinanced (bought out) once it has run this many months; mortgages never are
+  refiMinMonths: 12,
+  rentOutPct: 0,           // let the new home out: annual rent as % of the all-in project cost (0 = you live in it)
+  rentOutFixed: 0,         // …or a fixed annual rent in SAR (overrides the % when above zero)       // a personal loan can only be refinanced (bought out) once it has run this many months; mortgages never are
   cashoutLtv: 70,          // max LTV for a mortgage raised against an owned, completed home ("cash-out")
   // a property you ALREADY own and could mortgage (equity release) to fund the build or refinance loans
   ownedValue: 7000000, ownedLtv: 70,
@@ -402,12 +404,17 @@ function rePlanSimulate(p, prj, plan) {
   const instOfAny = (l) => l.kind === "existing" ? l.installment : l.pmt;
 
   let cash = p.cashAvailable, rCash = p.cashAvailable;
-  // NET-WORTH basis (your rule): your own cash + every loan − land, construction, early payoffs and fees (= cash on hand at
-  // completion), then − every loan instalment from the land purchase onward, + home value (no selling costs) − debt still owed.
-  // Salary, living costs and investment return are left out — on both sides of the comparison.
-  // ccash = the "cash on hand at completion" ledger: own cash + loans − project − payoffs − fees (instalments left to the salary).
-  // All three ledgers grow at the return-on-cash setting (altReturn) while positive — growth only, never a charge.
-  let pcash = p.cashAvailable, bcash = p.cashAvailable, ccash = p.cashAvailable;
+  // NET-WORTH basis (your rule):
+  //   ccash  = your own cash + every loan − land, construction, early payoffs and fees; it GROWS at the return-on-cash rate
+  //            (while positive) and is never touched by instalments — the salary pays those.
+  //   net worth = ccash − instalments on the new loans (a plain cost, no growth) + old-loan instalments you no longer pay
+  //            (loans paid off / refinanced) + rent received from letting the new home + rent you no longer pay
+  //            − upkeep + home value (no selling costs) − new-loan debt still owed.
+  //   if you don't build = your own cash growing at the same rate; nothing subtracted (old loans exist either way).
+  let bcash = p.cashAvailable, ccash = p.cashAvailable;
+  let newInstCum = 0, oldSavedCum = 0, rentInCum = 0, rentSavedCum = 0, upkeepCum = 0;
+  const annualRentOut = (p.rentOutFixed || 0) > 0 ? p.rentOutFixed : (p.rentOutPct || 0) > 0 ? prj.total * p.rentOutPct / 100 : 0;
+  const lettingOut = annualRentOut > 0;
   let minCash = Infinity, minCashT = 0, belowBufferMonths = 0, shortfall = 0, fundingGap = 0;
   const payoffs = [];   // early payoffs from your own cash: { t, name, cost, fee }
   let settledTotal = 0, settleFees = 0, refiTotal = 0, roomSettled = 0, debtFreeT = null, breakEvenMonth = null, cashRestoredT = null;
@@ -428,7 +435,7 @@ function rePlanSimulate(p, prj, plan) {
   }
   function doSettle(l, t, reason) {
     const cost = settleCost(l), fee = cost - l.bal, inst = instOfAny(l);
-    cash -= cost; pcash -= cost; ccash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee });
+    cash -= cost; ccash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee });
     events.push({ t, kind: "settle", text: `Settle ${l.name}: ${fSAR(cost)} (incl. ${fSAR(fee)} early-settlement fee) — frees ${fSAR(inst)}/mo — ${reason}.` });
   }
   // only PERSONAL loans may be paid off early: existing loans you allow, the strategy's personal loan, a refinance taken as a personal loan.
@@ -477,7 +484,7 @@ function rePlanSimulate(p, prj, plan) {
       return;
     }
     f.bal = amount; f.amount = amount; f.pmt = rePmt(amount, f.rate, f.n); f.startedAt = t; f.fees = amount * f.feesPct / 100;
-    cash += amount - f.fees; pcash += amount - f.fees; ccash += amount - f.fees;
+    cash += amount - f.fees; ccash += amount - f.fees;
     const onePl = f.key === "pl" ? rePrincipalFor(perLoanTarget, f.rate, f.n) : Infinity;
     f.split = f.key === "pl" && plan.plSplit && amount > onePl + 1 ? [onePl, amount - onePl] : null;
     const dbr = allInst() / p.income * 100;
@@ -532,7 +539,7 @@ function rePlanSimulate(p, prj, plan) {
     best.S.forEach((l) => { const cost = settleCost(l); settleFees += cost - l.bal; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; });
     f.bal = best.amount; f.amount = best.amount; f.split = best.split; f.startedAt = t; f.fees = 0;
     f.pmt = best.split ? rePmt(best.split[0], f.rate, f.n) + rePmt(best.split[1], f.rate, f.n) : rePmt(best.amount, f.rate, f.n);
-    cash += best.amount - best.payoff; pcash += best.amount - best.payoff; ccash += best.amount - best.payoff;
+    cash += best.amount - best.payoff; ccash += best.amount - best.payoff;
     f.capacity = { t, cap: best.amount, room: best.room, limitedBy: best.limitedBy, want: best.amount, mode: "max", taken: best.amount, gap: 0 };
     f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed } : null;
     const loans = best.split ? `two personal loans, ${fS(best.split[0])} + ${fS(best.split[1])}` : `a personal loan of ${fS(best.amount)}`;
@@ -546,11 +553,14 @@ function rePlanSimulate(p, prj, plan) {
     const yrIdx = Math.floor(Math.max(0, t - 1) / 12);
     const occupied = t >= prj.occupy;
     const rentEq = t >= 1 ? p.rentNow * Math.pow(1 + p.rentGrowth / 100, yrIdx) : 0;
-    const rentPaid = t >= 1 && !occupied ? rentEq : 0;
+    const rentPaid = t >= 1 && (!occupied || lettingOut) ? rentEq : 0;   // if the new home is let out you don't move in
     const ret = t >= 1 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
     // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall
-    const pRet = t >= 1 && pcash > 0 ? pcash * alt : 0, bRet = t >= 1 && bcash > 0 ? bcash * alt : 0, cRet = t >= 1 && ccash > 0 ? ccash * alt : 0;
-    pcash += pRet; bcash += bRet; ccash += cRet;
+    const bRet = t >= 1 && bcash > 0 ? bcash * alt : 0, cRet = t >= 1 && ccash > 0 ? ccash * alt : 0;
+    bcash += bRet; ccash += cRet;
+    // rent from letting the new home out: from the month after completion, growing with the rent-growth setting
+    const rentIn = lettingOut && t > prj.occupy ? annualRentOut / 12 * Math.pow(1 + p.rentGrowth / 100, Math.floor((t - prj.occupy - 1) / 12)) : 0;
+    if (rentIn) cash += rentIn;
     if (t >= 1) { cash = cash * (1 + alt) + p.income - p.livingExpenses - rentPaid; rCash = rCash * (1 + alt) + p.income - p.livingExpenses - rentEq; }
     // planned settlements first (e.g. a loan you intend to clear on a known date)
     loans.forEach((l) => { if (l.settledAt === null && l.bal > 0.5 && l.settleAt != null && l.settleAt > 0 && t === Math.round(l.settleAt)) doSettle(l, t, "planned settlement from your cash"); });
@@ -568,7 +578,7 @@ function rePlanSimulate(p, prj, plan) {
     if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Upkeep starts.` });
     // project spend, all from cash (facility proceeds are already in cash)
     const spend = prj.schedule[t] || 0;
-    cash -= spend; pcash -= spend; ccash -= spend;
+    cash -= spend; ccash -= spend;
     // debt service
     let existInst = 0, existInterest = 0;
     if (t >= 1) loans.forEach((l) => { if (l.settledAt !== null || l.bal <= 0.5) return; const i = l.bal * l.rate / 100 / 12; const pay = loanPay(l.bal, i, l.installment); l.bal -= pay - i; l.left -= 1; l.interestPaid += i; existInst += pay; existInterest += i; });
@@ -585,23 +595,22 @@ function rePlanSimulate(p, prj, plan) {
     const newPay = pays.lm + pays.eq + pays.pl + pays.pl2 + pays.co + pays.rf;
     cash -= existInst + newPay + ownerCost;
     rCash -= renterInst[t];
-    // net-worth basis: instalments on new loans always; old-loan instalments and rent from the land purchase on (both sides)
-    const fromPurchase = t >= prj.landMonth;
-    pcash -= newPay + ownerCost + (fromPurchase ? existInst + rentPaid : 0);
-    const bOut = fromPurchase ? renterInst[t] + rentEq : 0;
-    bcash -= bOut;
+    // net-worth basis: new-loan instalments and upkeep are plain costs; old-loan instalments you no longer pay and rent you no
+    // longer pay are savings; rent from letting the new home is income — none of them touch the growing cash
+    newInstCum += newPay; upkeepCum += ownerCost; rentInCum += rentIn;
+    oldSavedCum += renterInst[t] - existInst; rentSavedCum += t >= 1 ? rentEq - rentPaid : 0;
     const debtExisting = loans.reduce((a, l) => a + (l.settledAt === null ? l.bal : 0), 0);
     const debtNew = facs.reduce((a, f) => a + (f.settledAt === null ? f.bal : 0), 0);
     const debt = debtExisting + debtNew;
     const liqValue = value;   // no selling costs: the seller pays no tax or broker fee
-    const netWorth = pcash + value - debt, renterNW = bcash - renterDebt[t], advantage = netWorth - renterNW;
+    const netWorth = ccash - newInstCum + oldSavedCum + rentSavedCum + rentInCum - upkeepCum + value - debtNew, renterNW = bcash, advantage = netWorth - renterNW;
     if (cash < minCash) { minCash = cash; minCashT = t; }
     if (cash < p.cashBuffer) belowBufferMonths++;
     if (cash < 0) shortfall = Math.max(shortfall, -cash);
     if (occupied && cashRestoredT === null && cash >= p.cashBuffer) cashRestoredT = t;
     if (occupied && breakEvenMonth === null && advantage >= 0) breakEvenMonth = t;
     if (debtFreeT === null && t > 0 && debt < 0.5) debtFreeT = t;
-    months.push({ t, year: yearOf(t), cash, rCash, pcash, bcash, ccash, pRet, bRet, cRet, bOut, ret, inc: t >= 1 ? p.income : 0, liv: t >= 1 ? p.livingExpenses : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, dbr: (existInst + newPay) / p.income * 100 });
+    months.push({ t, year: yearOf(t), cash, rCash, bcash, ccash, bRet, cRet, rentIn, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? p.income : 0, liv: t >= 1 ? p.livingExpenses : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, dbr: (existInst + newPay) / p.income * 100 });
   }
   const nY = yearOf(H), years = [];
   for (let y = 0; y <= nY; y++) {
@@ -624,7 +633,7 @@ function rePlanSimulate(p, prj, plan) {
   events.sort((a, b) => a.t - b.t);
   const facOut = (f) => ({ ...f });
   return { plan, months, years, events, flags, feasible, recoveryOk, end,
-    lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), pl2: facOut(pl2), co: facOut(co), rf: facOut(rf), refiTotal, roomSettled, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
+    lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), pl2: facOut(pl2), co: facOut(co), rf: facOut(rf), refiTotal, roomSettled, annualRentOut, rentInTotal: rentInCum, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     cashRestoredT, recoveryMonths, cashAfterWindow: months[after].cash, payoffs, newDebtTotal: facs.reduce((a, f) => a + f.amount, 0),
     settledTotal, settleFees, totalInterest, newDebtInterest, peakDbr, peakInst, debtFreeT, breakEvenMonth,
