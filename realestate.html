@@ -182,7 +182,7 @@
       newDebt: "Sum of all new facilities actually drawn (land mortgage, existing-property mortgage, personal loan, cash-out), after the bank's LTV, per-loan and total debt-burden limits.",
       capacity: "What the bank could lend that month. Your instalment capacity is ONE bucket: 65% of income. What is left of it (65% × income − every instalment running that month) is the room; inside the bucket a mortgage may use up to 55% of income and one personal loan up to 33% (a second personal loan may take what is left). The room is converted to a principal at the facility's rate and tenure, then capped by LTV × asset value and the product ceiling.",
       bucket: "Instalments running each month as % of income, stacked: existing loans, then each new facility. The dashed lines are the bank's limits: 65% for everything together and 55% for mortgages. Free space under the top line is unused borrowing capacity.",
-      optimizer: "For the chosen start the tool tries every mix of: land mortgage (bank max / shortfall only / none), personal loan(s) for the shortfall, existing-property mortgage (none / shortfall at build / max now / max at land purchase), cash-out at completion, and settling old loans only as needed or all first. Rates and tenures are taken from Strategy 1. It keeps the mix that is executable and gets cash back to the buffer within the window, then the highest net worth, then the lowest peak instalment.",
+      optimizer: "For the chosen start the tool tries every mix of: land mortgage yes/no, personal loan(s) at build start yes/no, existing-property mortgage (none / at build start / now / at land purchase), cash-out at completion yes/no, and how far to pay off old personal loans for a mortgage (just enough / for the largest mortgage / never) — every loan always at the bank's maximum. Then it tries refinancing personal loans at completion on the strongest mixes. Rates and tenures come from Strategy 1. It keeps the mix that is executable and gets cash back to the buffer within the window, then the highest net worth, then the lowest peak instalment.",
       newDebtCost: "All profit paid on the new facilities over the horizon plus bank fees and early-settlement fees.",
       totalInterest: "Profit on new facilities + profit still paid on the existing loans + settlement fees.",
       netWorth: "Cash + home value × (1 − selling costs) − all debt outstanding, at the horizon. The home value grows at the appreciation rate from purchase/completion; cash earns the alternative return.",
@@ -220,7 +220,7 @@
 
     /* ---------- plain-English description of a strategy, generated from its settings (presentation only) ---------- */
     function rateTxt(inp, rate, yrs) { return `${rate}%${inp.rateQuote === "flat" ? " flat" : ""} over ${yrs} yrs`; }
-    const modeTxt = (mode, amt) => mode === "max" ? "the maximum the bank allows" : mode === "need" ? "just the shortfall" : fS(amt);
+    const modeTxt = () => "the maximum the bank allows";
     const whenTxt = (w, mo, prj) => w === "start" ? "at the start" : w === "land" ? `when the land is bought (${fCal(prj.landMonth)})` : w === "build" ? `when construction starts (${fCal(prj.start)})` : w === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(mo)}`;
     function describePlan(o, inp, prj, build) {
       const s = [];
@@ -483,10 +483,7 @@
         const r = m.results[i], col = OPT_COLORS[i], edit = !!editing[i];
         const plW = o.plWhen;
         const isRec = r && r === lead;
-        const ModeSel = ({ k, amtKey, label }) => <>
-          <Select label={label} value={o[k]} onChange={(v) => setPlan(i, k, v)} options={[["max", "The bank's maximum that month"], ["need", "Just the shortfall (project cost − cash above buffer)"], ["fixed", "A fixed amount"]]} />
-          {o[k] === "fixed" && <Slider label="Amount" value={o[amtKey]} min={0} max={10000000} step={50000} unit="SAR" onChange={(v) => setPlan(i, amtKey, v)} hint="still capped by LTV, the per-loan cap and the total debt-burden cap" />}
-        </>;
+        const ModeSel = () => <Note>Amount: always the bank's maximum that month — the smallest of the LTV limit, the instalment room left in your {inp.dbrCap}% bucket (mortgages ≤ {inp.mortgageCap}%, each personal loan ≤ {inp.perLoanCap}%) and the product ceiling.</Note>;
         return (
           <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${o.enabled ? col : C.line}`, borderRight: `1px solid ${o.enabled ? col : C.line}`, borderBottom: `1px solid ${o.enabled ? col : C.line}`, borderTop: `4px solid ${col}`, borderRadius: 10, padding: "14px 16px", opacity: o.enabled ? 1 : 0.6, minWidth: 0 }}>
             <div className="flex items-center justify-between" style={{ gap: 8, marginBottom: 8 }}>
@@ -529,7 +526,7 @@
               <div className="subhead">Mortgage on the new land (taken when the land is bought, {fCal(prj.landMonth)})</div>
               <Select value={o.lmUse ? "yes" : "no"} onChange={(v) => setPlan(i, "lmUse", v === "yes")} options={[["no", "Not used — land bought in cash"], ["yes", `Mortgage the land · up to ${inp.landLtv}% of its price`]]} />
               {o.lmUse && <>
-                <ModeSel k="lmMode" amtKey="lmAmount" />
+                <ModeSel />
                 <Slider label="Profit rate" value={o.lmRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "lmRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.lmRate, o.lmTenure * 12).toFixed(2)}% APR` : "reducing balance"} />
                 <Slider label="Tenure" value={o.lmTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "lmTenure", v)} />
                 <Adv title="Fees & prepayment">
@@ -541,7 +538,7 @@
               <Select value={o.eqWhen} onChange={(v) => setPlan(i, "eqWhen", v)} options={[["none", "Not used"], ["start", "At the start (now)"], ["land", "When the land is bought"], ["build", "When construction starts"], ["completion", "At completion"], ["month", "In a month I choose"]]} hint={inp.ownedValue > 0 ? `you own a ${fS(inp.ownedValue)} property → up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} (step 1)` : "set the property's value in step 1 first"} />
               {o.eqWhen === "month" && <Slider label="Month" value={o.eqMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "eqMonth", v)} hint={`${fCal(o.eqMonth)} · construction completes ${fCal(prj.occupy)}`} />}
               {o.eqWhen !== "none" && <>
-                <ModeSel k="eqMode" amtKey="eqAmount" />
+                <ModeSel />
                 <Slider label="Profit rate" value={o.eqRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "eqRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.eqRate, o.eqTenure * 12).toFixed(2)}% APR` : "reducing balance"} />
                 <Slider label="Tenure" value={o.eqTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "eqTenure", v)} />
                 <Adv title="Fees"><Slider label="Bank fees (upfront)" value={o.eqFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "eqFeesPct", v)} /></Adv>
@@ -550,14 +547,14 @@
               <Select value={plW} onChange={(v) => setPlan(i, "plWhen", v)} options={[["none", "Not used"], ["start", "At the start (now)"], ["land", "When the land is bought"], ["build", "When construction starts"], ["completion", "At completion"], ["month", "In a month I choose"]]} />
               {plW === "month" && <Slider label="Month" value={o.plMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "plMonth", v)} hint={`${fCal(o.plMonth)} · construction completes ${fCal(prj.occupy)}`} />}
               {plW !== "none" && <>
-                <ModeSel k="plMode" amtKey="plAmount" />
+                <ModeSel />
                 <Slider label="Rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setPlan(i, "plRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.plRate, o.plTenure * 12).toFixed(2)}% APR` : ""} />
                 <Slider label="Tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setPlan(i, "plTenure", v)} />
               </>}
               <div className="subhead">Cash-out on the finished home (at completion, {fCal(prj.occupy)})</div>
               <Select value={o.coUse ? "yes" : "no"} onChange={(v) => setPlan(i, "coUse", v === "yes")} options={[["no", "Not used"], ["yes", `Mortgage the finished home · up to ${inp.cashoutLtv}% of its value`]]} />
               {o.coUse && <>
-                <ModeSel k="coMode" amtKey="coAmount" />
+                <ModeSel />
                 <Slider label="Profit rate" value={o.coRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "coRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.coRate, o.coTenure * 12).toFixed(2)}% APR` : "reducing balance"} />
                 <Slider label="Tenure" value={o.coTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "coTenure", v)} />
                 <Adv title="Fees"><Slider label="Bank fees (upfront)" value={o.coFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "coFeesPct", v)} /></Adv>

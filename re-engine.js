@@ -83,8 +83,8 @@ const RE_BASE = {
      eq  mortgage on the property you ALREADY own (ownedLtv × ownedValue)
      pl  personal loan (plCap)
      co  cash-out on the FINISHED home at completion (cashoutLtv × value)
-   Sizing mode per facility: "max" = the bank's maximum · "need" = just enough to close the funding gap
-   (remaining project spend − cash above your buffer) · "fixed" = an amount you type. Think of dbrCap × income as ONE
+   Every facility is taken at the bank's MAXIMUM that month (your rule; the engine still accepts "need"/"fixed" internally,
+   but mergeRE and the simulation always use "max"). Think of dbrCap × income as ONE
    BUCKET of instalment capacity: every amount is capped by the smaller of LTV, the product cap, what is left of the
    bucket that month (dbrCap × income − every instalment still running) and the facility's own ceiling inside the
    bucket (mortgageCap for any mortgage; perLoanCap per personal loan, ×2 when plSplit allows a second personal loan). Timing words: start = month 0,
@@ -94,27 +94,30 @@ const RE_BASE = {
 const RE_PLAN_DEFAULTS = {
   lmUse: false, lmMode: "max", lmAmount: 0, lmRate: 4.5, lmTenure: 18, lmFeesPct: 1,
   eqWhen: "none", eqMonth: 0, eqMode: "max", eqAmount: 0, eqRate: 4.5, eqTenure: 18, eqFeesPct: 1,
-  plWhen: "none", plMonth: 0, plMode: "need", plAmount: 0, plRate: 4.0, plTenure: 5,
-  coUse: false, coMode: "need", coAmount: 0, coRate: 4.5, coTenure: 18, coFeesPct: 1,
+  plWhen: "none", plMonth: 0, plMode: "max", plAmount: 0, plRate: 4.0, plTenure: 5,
+  coUse: false, coMode: "max", coAmount: 0, coRate: 4.5, coTenure: 18, coFeesPct: 1,
   settlePolicy: "asNeeded", extraMo: 0,
-  plSplit: true, // a shortfall above one personal loan's cap may be taken as two personal loans (each ≤ perLoanCap, together within the bucket)
+  plSplit: true, // the personal-loan maximum may be taken as two personal loans (each ≤ perLoanCap, together within the bucket)
   // REFINANCE (bank buy-out of personal loans): the bank lends its maximum as new personal loan(s) (≤ perLoanCap each, up to two),
   // pays off the old personal loans directly and pays you the rest. Mortgages are never refinanced. Rate & tenure = the personal loan's.
   rfWhen: "none", rfMonth: 0,
 };
+// your rule: EVERY new loan (mortgage, personal loan, cash-out, refinance) is taken at the bank's maximum that month.
 const RE_PLAN_PRESETS = {
-  landMortgage: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) · cash for the build · personal loan only for any shortfall",
-    lmUse: true, lmMode: "max", plWhen: "build", plMode: "need" },
-  landPlusOwned: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) + mortgage my existing property for the shortfall at build start",
-    lmUse: true, lmMode: "max", eqWhen: "build", eqMode: "need" },
+  landMortgage: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) · cash for the build",
+    lmUse: true },
+  landPlusOwned: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) + mortgage my existing property (max) at build start",
+    lmUse: true, eqWhen: "build" },
   ownedOnly: { ...RE_PLAN_DEFAULTS, name: "Mortgage my existing property (max) at the start · no mortgage on the new land",
-    eqWhen: "start", eqMode: "max" },
-  ownedForNeed: { ...RE_PLAN_DEFAULTS, name: "Mortgage my existing property for just the shortfall when the land is bought",
-    eqWhen: "land", eqMode: "need" },
-  cashPlusPersonal: { ...RE_PLAN_DEFAULTS, name: "Cash + a personal loan for the shortfall · no mortgage",
-    plWhen: "land", plMode: "need" },
-  landThenCashOut: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) → cash-out on the finished home to refill cash",
-    lmUse: true, lmMode: "max", coUse: true, coMode: "need" },
+    eqWhen: "start" },
+  ownedAtLand: { ...RE_PLAN_DEFAULTS, name: "Mortgage my existing property (max) when the land is bought · land in cash",
+    eqWhen: "land" },
+  cashPlusPersonal: { ...RE_PLAN_DEFAULTS, name: "Cash + personal loan(s) (max) when the land is bought · no mortgage",
+    plWhen: "land" },
+  landPlusPersonal: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) + personal loan(s) (max) at build start",
+    lmUse: true, plWhen: "build" },
+  landThenCashOut: { ...RE_PLAN_DEFAULTS, name: "Mortgage the new land (max) → cash-out (max) on the finished home",
+    lmUse: true, coUse: true },
   allCash: { ...RE_PLAN_DEFAULTS, name: "All cash · no new borrowing", settlePolicy: "none" },
 };
 RE_BASE.plans = [
@@ -140,8 +143,8 @@ function mergeRE(inp) {
     const q = { ...RE_PLAN_DEFAULTS, ...(RE_BASE.plans[i] || RE_PLAN_PRESETS.landMortgage), ...o };
     // legacy (v1) plan fields → v2 facilities
     if (o && o.mortgageWhen && o.lmUse == null) { q.lmUse = o.mortgageWhen === "start"; q.coUse = o.mortgageWhen === "completion"; if (o.rate != null) { q.lmRate = o.rate; q.coRate = o.rate; } if (o.tenure != null) { q.lmTenure = o.tenure; q.coTenure = o.tenure; } }
-    if (o && o.eqWhen && o.eqMode == null) q.eqMode = (o.eqAmount || 0) > 0 ? "fixed" : "max";
-    if (o && o.plWhen && o.plMode == null) q.plMode = (o.plAmount || 0) > 0 ? "fixed" : "need";
+    // your rule: every new loan is taken at the bank's maximum — older "shortfall" / "fixed" settings are read as "max"
+    q.lmMode = q.eqMode = q.plMode = q.coMode = "max";
     return q;
   });
   p.existingLoans = (inp && inp.existingLoans ? inp.existingLoans : RE_BASE.existingLoans).map((l, i) => ({ id: i + 1, name: `Loan ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, canSettle: true, canRefi: true, ageMonths: null, ...l }));
@@ -526,10 +529,11 @@ function rePlanSimulate(p, prj, plan) {
     if (t === prj.start && prj.build) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett)} over ${prj.bm} months.` });
     // facilities, in order: land mortgage → existing property → personal loan → cash-out
     const landValue = prj.land;
-    if (t === lmT) originate(t, lm, plan.lmMode, plan.lmAmount, landValue * p.landLtv / 100, Infinity);
-    if (t === eqT) originate(t, eq, plan.eqMode, plan.eqAmount, p.ownedValue * p.ownedLtv / 100, Infinity);
-    if (t === plT) originate(t, pl, plan.plMode, plan.plAmount, Infinity, p.plCap);
-    if (t === coT) originate(t, co, plan.coMode, plan.coAmount, prj.valueAt(t) * p.cashoutLtv / 100, Infinity);
+    // every new loan at the bank's maximum that month (your rule)
+    if (t === lmT) originate(t, lm, "max", 0, landValue * p.landLtv / 100, Infinity);
+    if (t === eqT) originate(t, eq, "max", 0, p.ownedValue * p.ownedLtv / 100, Infinity);
+    if (t === plT) originate(t, pl, "max", 0, Infinity, p.plCap * (plan.plSplit ? 2 : 1));
+    if (t === coT) originate(t, co, "max", 0, prj.valueAt(t) * p.cashoutLtv / 100, Infinity);
     if (t === rfT) refinance(t);
     if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Upkeep starts.` });
     // project spend, all from cash (facility proceeds are already in cash)
@@ -681,18 +685,18 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
 }
 
 /* ---------- OPTIMIZER: fill the debt-burden bucket the best way, for every start month ----------
-   Treats dbrCap × income as one bucket and searches every combination of: land mortgage max / shortfall / none · personal
-   loan(s) for the shortfall yes/no · existing-property mortgage none / shortfall at build / max now / max at land ·
+   Treats dbrCap × income as one bucket; every loan is taken at the bank's maximum. Searches every combination of: land
+   mortgage yes/no · personal loan(s) at build start yes/no · existing-property mortgage none / at build / now / at land ·
    cash-out at completion yes/no · old loans settled only as needed / all cleared first; then tries refinancing the
    personal loans at completion (bank buy-out at its maximum) on the strongest of those. Rates and tenures come from
    strategy 1. For each start: the mix that is executable AND recovers cash within the window, then the highest net
    worth, then the lowest peak instalment. */
 function reAutoName(o) {
   const s = [];
-  s.push(o.lmUse ? (o.lmMode === "need" ? "Land mortgage for the shortfall" : "Land mortgage (max)") : "Land in cash");
-  if (o.eqWhen !== "none") s.push(o.eqMode === "need" ? "existing-property mortgage for the shortfall at build start" : `existing-property mortgage (max) ${o.eqWhen === "start" ? "now" : "when the land is bought"}`);
-  if (o.plWhen !== "none") s.push(o.plSplit ? "personal loan(s) for the shortfall" : "personal loan for the shortfall");
-  if (o.coUse) s.push("cash-out at completion");
+  s.push(o.lmUse ? "Land mortgage (max)" : "Land in cash");
+  if (o.eqWhen !== "none") s.push(`existing-property mortgage (max) ${o.eqWhen === "start" ? "now" : o.eqWhen === "land" ? "when the land is bought" : "at build start"}`);
+  if (o.plWhen !== "none") s.push("personal loan(s) (max) at build start");
+  if (o.coUse) s.push("cash-out (max) at completion");
   s.push(o.settlePolicy === "none" ? "old loans kept" : o.settlePolicy === "forMax" ? "old loans paid off to unlock the full mortgage" : "old loans paid off only to make room for a mortgage");
   return s.join(" · ");
 }
@@ -702,11 +706,12 @@ function optimizeRE(inp, opts) {
   if (p0.mode !== "home") return null;
   const maxDelay = opts.maxDelay == null ? 48 : opts.maxDelay, step = opts.step || 3, landWithBuild = !!opts.landWithBuild;
   const base = { ...RE_PLAN_DEFAULTS, ...(p0.plans[0] || {}) };
-  const eqOpts = p0.ownedValue > 0 ? [["none", "max"], ["build", "need"], ["start", "max"], ["land", "max"]] : [["none", "max"]];
+  const eqOpts = p0.ownedValue > 0 ? ["none", "build", "start", "land"] : ["none"];
   // stage 1: every mix of land mortgage · personal loan(s) · existing-property mortgage · cash-out · settle policy
   const combos = [];
-  for (const [lmUse, lmMode] of [[true, "max"], [true, "need"], [false, "max"]]) for (const plWhen of ["build", "none"]) for (const [eqWhen, eqMode] of eqOpts) for (const coUse of [false, true]) for (const settlePolicy of (lmMode === "max" || eqMode === "max" ? ["asNeeded", "forMax", "none"] : ["asNeeded", "none"])) {
-    const o = { ...base, enabled: true, lmUse, lmMode, plWhen, plMode: "need", plSplit: true, eqWhen, eqMode, coUse, coMode: "need", rfWhen: "none", settlePolicy };
+  // every loan at the bank's maximum; the choices are which loans, when, and how far to pay off old personal loans for a mortgage
+  for (const lmUse of [true, false]) for (const plWhen of ["build", "none"]) for (const eqWhen of eqOpts) for (const coUse of [false, true]) for (const settlePolicy of ["asNeeded", "forMax", "none"]) {
+    const o = { ...base, enabled: true, lmUse, lmMode: "max", plWhen, plMode: "max", plSplit: true, eqWhen, eqMode: "max", coUse, coMode: "max", rfWhen: "none", settlePolicy };
     o.name = reAutoName(o); combos.push(o);
   }
   // stage 2: refinancing personal loans at completion (bank buy-out at its maximum) only changes what
@@ -732,10 +737,10 @@ function optimizeRE(inp, opts) {
     // name each mix by what it actually drew, and offer a cleaned plan (unused facilities switched off) for copying into a strategy slot
     list.forEach((x) => {
       const o = x.plan, parts = [];
-      parts.push(x.lm > 0 ? (o.lmMode === "need" && x.lm < x.lmCap - 1 ? "Land mortgage for the shortfall" : "Land mortgage (max)") : "Land in cash");
-      if (x.eq > 0) parts.push(o.eqMode === "need" ? "existing-property mortgage for the shortfall" : `existing-property mortgage (max) ${o.eqWhen === "start" ? "now" : "at land purchase"}`);
-      if (x.pl > 0) parts.push(x.plSplit ? "two personal loans for the shortfall" : "personal loan for the shortfall");
-      if (x.co > 0) parts.push("cash-out at completion");
+      parts.push(x.lm > 0 ? "Land mortgage (max)" : "Land in cash");
+      if (x.eq > 0) parts.push(`existing-property mortgage (max) ${o.eqWhen === "start" ? "now" : o.eqWhen === "land" ? "at land purchase" : "at build start"}`);
+      if (x.pl > 0) parts.push(x.plSplit ? "two personal loans (max) at build start" : "personal loan (max) at build start");
+      if (x.co > 0) parts.push("cash-out (max) at completion");
       if (x.rf > 0) parts.push("personal loans refinanced at completion (bank max)");
       if (x.roomSettled > 0) parts.push(o.settlePolicy === "forMax" ? "old personal loans paid off to unlock the full mortgage" : "old loans paid off to make room for the mortgage");
       x.name = parts.join(" · ");
