@@ -194,9 +194,9 @@
       optimizer: "For the chosen start the tool tries every mix of: land mortgage yes/no, personal loan(s) at build start yes/no, existing-property mortgage (none / at build start / now / at land purchase), cash-out at completion yes/no, and how far to pay off old personal loans for a mortgage (just enough / for the largest mortgage / never) — every loan always at the bank's maximum. Then it tries refinancing personal loans at completion on the strongest mixes. Rates and tenures come from Strategy 1. It keeps the mix that is executable and gets cash back to the buffer within the window, then the highest net worth, then the lowest peak instalment.",
       newDebtCost: "All profit paid on the new facilities over the horizon plus bank fees and early-settlement fees.",
       totalInterest: "Profit on new facilities + profit still paid on the existing loans + settlement fees.",
-      netWorth: "Cash + home value × (1 − selling costs) − all debt outstanding, at the horizon. The home value grows at the appreciation rate from purchase/completion; cash earns the alternative return.",
-      baseline: "Same income, same living costs, same existing loans, but no project: cash stays invested at the alternative return (and rent keeps being paid if you rent today).",
-      advantage: "Net worth with this strategy − net worth of the baseline (not building / renting). Negative means the project costs you wealth relative to keeping the cash invested; the tool then minimises that cost.",
+      netWorth: "Built on your cash on hand at completion (your own cash + the loans − land, construction, early payoffs and fees), then: − every loan instalment from the land purchase to the horizon (your salary pays them, but they are the real cost of the loans, so they are counted) − upkeep + the home's value at the horizon (no selling costs) − any debt still owed. Salary, living costs and investment return are left out.",
+      baseline: "If you don't build: the same own cash, minus the instalments your old loans would cost from the land purchase until they end (and rent, if you rent today), minus any old debt still owed. Salary, living costs and investment return are left out here too.",
+      advantage: "Net worth with this strategy − net worth if you don't build, on the same basis (own cash and loans only, all instalments counted, no salary or investment return). Negative means the project leaves you poorer than not building.",
       breakEven: "First month after move-in where net worth with the strategy ≥ baseline net worth.",
       debtFree: "First month with no debt outstanding (existing loans and all new facilities).",
       settled: "Principal of existing loans repaid early (planned settlements and those required to pass a bank test) plus the early-settlement fees. A payoff made to pass the bank's test comes from your own cash, just before the mortgage is granted.",
@@ -507,7 +507,7 @@
         [`Debt still owed at Y${inp.horizon}`, (r) => fS(r.endDebt), null, false, false, "All debt outstanding at the horizon."],
         [`Cash at Y${inp.horizon}`, (r) => fS(r.cashEnd), null, false, false, "Cash balance at the horizon."],
         [`Net worth at Y${inp.horizon}`, (r) => fS(r.netWorthEnd), () => C.text, true, true, EXPL.netWorth],
-        [renting ? "Renter's net worth (same income, kept renting)" : "Net worth if you don't build (same income, cash invested)", (r) => fS(r.renterEnd), null, false, false, EXPL.baseline],
+        [renting ? "Renter's net worth (same income, kept renting)" : "Net worth if you don't build (own cash, old loans paid as scheduled)", (r) => fS(r.renterEnd), null, false, false, EXPL.baseline],
         [`Wealth advantage vs ${baseLbl}`, (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, true, true, EXPL.advantage],
         [`Break-even vs ${baseLbl}`, (r) => r.breakEvenMonth != null ? fYr(r.breakEvenMonth) : `> ${inp.horizon} yrs`, null, false, false, EXPL.breakEven],
         ["Debt-free", (r) => r.debtFreeT != null ? fMon(r.debtFreeT) : `> Y${inp.horizon}`, null, false, true, EXPL.debtFree],
@@ -729,7 +729,7 @@
             {opt && opt.planned.best.ok && (!bestF || opt.planned.best.netWorth > bestF.netWorthEnd + 1000 || !bestF.recoveryOk) && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, marginTop: 8, lineHeight: 1.5, background: SOFT_POS, borderRadius: 7, padding: "8px 12px" }}>
               <b>Better fill of your {inp.dbrCap}% bucket:</b> {opt.planned.best.name} — cash low {fS(opt.planned.best.minCash)}, net worth {fS(opt.planned.best.netWorth)} ({fS(opt.planned.best.netWorth - (bestF ? bestF.netWorthEnd : 0))} more). <button className="no-print" onClick={() => useOptPlan(opt.planned)} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "3px 10px", marginLeft: 6 }}>Use as Strategy 1</button> <Hint text={EXPL.optimizer} />
             </div>}
-            {bestF && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(bestF.plan, inp, prj, build)} Net worth at year {inp.horizon}: <b>{fS(bestF.netWorthEnd)}</b>, which is <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "more" : "less"} than {baseLbl}</b>{renting ? " the same home" : " (staying where you live now, cash kept invested)"}.{startBest && !startNow ? ` Starting ${fCal(startBest.delay)} means moving in ${fCal(startBest.occupy)}.` : ""}</div>}
+            {bestF && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(bestF.plan, inp, prj, build)} Net worth at year {inp.horizon}: <b>{fS(bestF.netWorthEnd)}</b>, which is <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "more" : "less"} than {baseLbl}</b>{renting ? " the same home" : " (same own cash, old loans paid as scheduled)"}.{startBest && !startNow ? ` Starting ${fCal(startBest.delay)} means moving in ${fCal(startBest.occupy)}.` : ""}</div>}
             {bestF && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 14 }}>
               <Kpi label="Cash low point" value={fS(bestF.minCash)} sub={`${fCal(bestF.minCashT)} · buffer ${fS(inp.cashBuffer)}`} accent={bestF.minCash < 0 ? C.neg : bestF.minCash < inp.cashBuffer ? C.brass : C.pos} info={EXPL.cashLow} />
               <Kpi label="Cash back at buffer" value={bestF.recoveryMonths == null ? "never" : bestF.recoveryMonths === 0 ? "at move-in" : `${bestF.recoveryMonths} mo`} sub={`${fS(bestF.cashAfterWindow)} cash ${inp.recoveryMonths} mo after move-in`} accent={bestF.recoveryOk ? C.pos : C.neg} info={EXPL.recovery} />
@@ -1013,7 +1013,7 @@
       const StepRes = () => (
         <div>
           <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "res") + 1} · Results`} title={home ? "Which sequence works, and which leaves you wealthiest?" : "Which capital stack earns the most?"}
-            sub={home ? `Ranked by net worth at year ${inp.horizon} (cash + home after selling costs − all debt) against ${renting ? "a renter with the same income who keeps the cash invested" : "not building at all: same income, same old loans, cash kept invested"} at ${inp.altReturn}%. A strategy whose cash goes negative is not executable, however good its end result looks.`
+            sub={home ? `Ranked by net worth at year ${inp.horizon}: cash on hand at completion (own cash and loans) − every loan instalment from the land purchase on + home value − debt still owed, against ${renting ? "keeping renting" : "not building"} on the same basis. Salary, living costs and investment return are left out of both. A strategy whose cash goes negative is not executable, however good its end result looks.`
                       : "Ranked by levered IRR on the cash you actually put in. Unlevered IRR is the property's own return and is the same for every stack; the difference is what the debt adds or destroys."} />
           {/* comparison table */}
           <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
@@ -1058,7 +1058,7 @@
               {home ? <>
                 {LineChartBox({ title: "Total debt outstanding · SAR", keyPrefix: "debt", height: 240, note: "old loans + property mortgages + personal loan" })}
                 {LineChartBox({ title: "Monthly instalments, all debt · SAR/mo (annual average)", keyPrefix: "inst", height: 240, extra: <ReferenceLine y={inp.income * inp.dbrCap / 100} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% of income`, fontFamily: SANS, fontSize: 11, fill: C.sub, position: "insideTopRight" }} /> })}
-                {LineChartBox({ title: `Net worth · cash + home (after selling costs) − debt`, keyPrefix: "nw", height: 240, extra: <Line dataKey="renter" name={renting ? "Keep renting" : "Don't build"} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
+                {LineChartBox({ title: `Net worth · own cash and loans − instalments + home − debt`, keyPrefix: "nw", height: 240, extra: <Line dataKey="renter" name={renting ? "Keep renting" : "Don't build"} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
               </> : <>
                 {LineChartBox({ title: "Monthly instalments + upkeep · SAR/mo (annual average)", keyPrefix: "out", height: 240 })}
                 <Panel title="Annual cash flow after debt service · SAR">
@@ -1097,17 +1097,32 @@
                     ? `Your salary does NOT cover living costs and all instalments in some months — ${fSAR(fb.short)} in total up to move-in (worst month ${fCal(fb.worstT)}: ${fSAR(fb.worst)}). That gap has to come out of the cash above.`
                     : `Salary, living costs and every instalment are left out because your salary covers them each month — the tightest month (${fCal(fb.worstT)}) still leaves ${fSAR(fb.worst)}.`}</div>
                 </details></EvRow>); })()}
-                <EvRow t={`Y${inp.horizon}`} kind="end" last><details className="bridge"><summary>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.months[focusRes.months.length - 1].liqValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>. <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
-                  {(() => { const H = focusRes.months.length - 1, end = focusRes.months[H], cb = cashBridgeRows(focusRes, H, inp, prj, prj.landMonth); return <>
-                    <table className="bridge"><tbody>
-                      <tr><td><details className="bridge"><summary>Cash on hand at Y{inp.horizon} ({fCal(H)})</summary><BridgeTable b={cb} totalLabel={`Cash on hand, ${fCal(H)}`} /></details></td><td className="v">+{fSAR(end.cash)}</td></tr>
-                      <tr><td>Home value at Y{inp.horizon}<div className="n">{fS(prj.value0)} at completion, growing {inp.appreciation}%/yr</div></td><td className="v">+{fSAR(end.value)}</td></tr>
-                      <tr><td>Selling costs if you sold ({inp.sellCostPct}%)<div className="n">counted so the home is valued at what you would actually receive</div></td><td className="v" style={{ color: C.neg }}>−{fSAR(end.value - end.liqValue)}</td></tr>
-                      <tr><td>Debt still owed (all loans)</td><td className="v" style={{ color: end.debt > 0.5 ? C.neg : C.text }}>−{fSAR(end.debt)}</td></tr>
+                <EvRow t={`Y${inp.horizon}`} kind="end" last><details className="bridge"><summary>Net worth <b>{fS(focusRes.netWorthEnd)}</b> vs <b>{fS(focusRes.renterEnd)}</b> if you {renting ? "kept renting" : "don't build"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up (own cash and loans only, no salary)</span></summary>
+                  {(() => {
+                    const H = focusRes.months.length - 1, end = focusRes.months[H], occ = Math.min(H, focusRes.occupy), LM = prj.landMonth;
+                    const fbC = fundingBridgeRows(focusRes, occ, inp, prj), fbH = fundingBridgeRows(focusRes, H, inp, prj);
+                    const ms = focusRes.months, sumF = (k, from) => ms.filter((x) => x.t >= from).reduce((a, x) => a + (x[k] || 0), 0);
+                    const newInst = ms.reduce((a, x) => a + x.lmPay + x.eqPay + x.plPay + x.coPay + x.rfPay, 0);
+                    const oldInst = sumF("existInst", LM), rent = sumF("rentPaid", LM), upkeep = sumF("ownerCost", 0);
+                    const oldBase = focusRes.cashStart - end.renterNW - (renting ? 0 : 0);
+                    const line = (label, v, note) => Math.abs(v) < 0.5 ? null : <tr key={label}><td>{label}{note ? <div className="n">{note}</div> : null}</td><td className="v" style={{ color: v < 0 ? C.neg : C.text }}>{v < 0 ? "−" : "+"}{fSAR(Math.abs(v))}</td></tr>;
+                    return <table className="bridge"><tbody>
+                      <tr><td><details className="bridge"><summary>Cash on hand at completion ({fCal(occ)}) — own cash and loans</summary><BridgeTable b={fbC} totalLabel={`Left from your cash and the loans, ${fCal(occ)}`} /></details></td><td className="v" style={{ color: fbC.total < 0 ? C.neg : C.text }}>{fbC.total < 0 ? "−" : "+"}{fSAR(Math.abs(fbC.total))}</td></tr>
+                      {line("Loans taken or paid off after completion", fbH.total - fbC.total)}
+                      {line("Instalments on the new loans, to the end of each", -newInst, "your salary pays them — counted here because they are what the loans really cost")}
+                      {line(`Instalments on your old loans from the land purchase (${fCal(LM)}) until each ends or is paid off`, -oldInst)}
+                      {line("Rent from the land purchase until move-in", -rent)}
+                      {line("Upkeep after move-in (maintenance, insurance)", -upkeep)}
+                      {line(`Home value at Y${inp.horizon}`, end.value, `${fS(prj.value0)} at completion, growing ${inp.appreciation}%/yr · no selling costs`)}
+                      {line(`Debt still owed at Y${inp.horizon}`, -end.debt)}
                       <tr className="tot"><td>Net worth, Y{inp.horizon}</td><td className="v">{fSAR(end.netWorth)}</td></tr>
-                      <tr><td>{renting ? "If you kept renting instead" : "If you don't build"}<div className="n">same salary, living costs and old loans (paid as scheduled); all cash kept invested at {inp.altReturn}%/yr{renting ? "; rent keeps being paid" : ""}</div></td><td className="v">{fSAR(end.renterNW)}</td></tr>
+                      <tr><td colSpan={2} style={{ paddingTop: 10, fontWeight: 600 }}>{renting ? "If you kept renting instead" : "If you don't build"}</td></tr>
+                      {line("Your own cash", focusRes.cashStart)}
+                      {line(`Old-loan instalments from ${fCal(LM)} until they end${renting ? ", and rent" : ""}`, -(focusRes.cashStart - end.bcash), "same loans, paid as scheduled")}
+                      {line(`Old debt still owed at Y${inp.horizon}`, -(end.bcash - end.renterNW))}
+                      <tr className="tot"><td>Net worth if you {renting ? "kept renting" : "don't build"}</td><td className="v">{fSAR(end.renterNW)}</td></tr>
                       <tr className="tot"><td>Difference</td><td className="v" style={{ color: end.advantage >= 0 ? C.pos : C.neg }}>{end.advantage < 0 ? "−" : "+"}{fSAR(Math.abs(end.advantage))}</td></tr>
-                    </tbody></table></>; })()}
+                    </tbody></table>; })()}
                 </details></EvRow>
               </div>
             )}
