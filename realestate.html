@@ -260,6 +260,28 @@
       add("Upkeep after move-in (maintenance, insurance)", -sum("ownerCost"));
       return { rows, total: r.months[upto].cash };
     }
+    // project money only: your own cash + every loan, minus what the project and the payoffs cost — no salary, living costs,
+    // instalments or investment return (your salary is assumed to carry living costs and instalments; checked month by month)
+    function fundingBridgeRows(r, upto, inp, prj) {
+      const rows = [], add = (label, v, note) => { if (Math.abs(v) >= 0.5) rows.push({ label, v, note }); };
+      const inRange = (t) => t !== null && t !== undefined && t <= upto;
+      add("Your own cash", r.cashStart, "the cash you have, set in step 1");
+      r.payoffs.filter((x) => inRange(x.t)).forEach((x) => add(`Old loan paid off early: ${x.name}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`));
+      const build = inp.acquire === "build";
+      const landPart = inRange(prj.landMonth) ? (build ? prj.land + prj.rett : prj.total) : 0;
+      const spend = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.spend, 0);
+      add(build ? `Land price + ${inp.rettPct}% transfer tax` : "Purchase price, tax, broker and finishing", -landPart, fCal(prj.landMonth));
+      r.facilities.filter((f) => inRange(f.startedAt) && f.amount > 0 && f.key !== "rf").forEach((f) => add(f.key === "lm" ? "  …of which the bank paid the seller (land mortgage)" : `Loan paid to you: ${f.label.toLowerCase()}`, f.amount, f.key === "lm" ? "never passes through your hands" : fCal(f.startedAt)));
+      add("Construction and finishing", -(spend - landPart), `${fCal(prj.start)} → ${fCal(Math.min(upto, prj.occupy))}`);
+      add("Bank fees on new loans", -r.facilities.filter((f) => inRange(f.startedAt) && f.key !== "rf").reduce((a, f) => a + f.fees, 0));
+      const rf = r.facilities.find((f) => f.key === "rf");
+      if (rf && inRange(rf.startedAt) && rf.refi) add(`Refinance: new loans ${fS(rf.amount)} − old loans cleared ${fS(rf.refi.payoff)}`, rf.amount - rf.refi.payoff, fCal(rf.startedAt));
+      const total = rows.reduce((a, x) => a + x.v, 0);
+      // does the salary really carry living costs + every instalment each month?
+      let worst = Infinity, worstT = 0, short = 0;
+      r.months.filter((x) => x.t >= 1 && x.t <= upto).forEach((x) => { const s = x.inc - x.liv - x.rentPaid - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost; if (s < worst) { worst = s; worstT = x.t; } if (s < 0) short -= s; });
+      return { rows, total, worst: worst === Infinity ? 0 : worst, worstT, short };
+    }
     const BridgeTable = ({ b, totalLabel }) => (
       <table className="bridge"><tbody>
         {b.rows.map((x, k) => <tr key={k}><td style={{ paddingLeft: x.label.startsWith("  ") ? 16 : 0 }}>{x.sub ? <details className="bridge"><summary>{x.label.trim()}</summary><BridgeTable b={x.sub} totalLabel="Cash on hand just before the land purchase" /></details> : <>{x.label.trim()}{x.note ? <div className="n">{x.note}</div> : null}</>}</td><td className="v" style={{ color: x.v < 0 ? C.neg : C.text }}>{x.v < 0 ? "−" : "+"}{fSAR(Math.abs(x.v))}</td></tr>)}
@@ -1070,9 +1092,13 @@
                 {focusRes.events.map((e, k) => <EvRow key={k} t={fMon(e.t)} kind={e.kind}>{e.text}</EvRow>)}
                 <EvRow t={fMon(focusRes.minCashT)} kind="cash">Cash low point: <b style={{ color: focusRes.minCash < 0 ? C.neg : C.text }}>{fS(focusRes.minCash)}</b>{focusRes.minCash < inp.cashBuffer ? ` (below your ${fS(inp.cashBuffer)} buffer)` : ""}.</EvRow>
                 {focusRes.debtFreeT != null && <EvRow t={fMon(focusRes.debtFreeT)} kind="end">Debt-free.</EvRow>}
-                <EvRow t={fMon(focusRes.occupy)} kind="cash"><details className="bridge"><summary>Cash on hand at completion ({fCal(focusRes.occupy)}, the month you move in): <b style={{ fontFamily: MONO, color: focusRes.cashAtCompletion < 0 ? C.neg : C.text }}>{fSAR(focusRes.cashAtCompletion)} SAR</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
-                  <BridgeTable b={cashBridgeRows(focusRes, focusRes.occupy, inp, prj, prj.landMonth)} totalLabel={`Cash on hand, ${fCal(focusRes.occupy)}`} />
-                </details></EvRow>
+                {(() => { const fb = fundingBridgeRows(focusRes, focusRes.occupy, inp, prj); return (
+                <EvRow t={fMon(focusRes.occupy)} kind="cash"><details className="bridge"><summary>Cash on hand at completion ({fCal(focusRes.occupy)}, the month you move in) — your own cash and the loans only, no salary: <b style={{ fontFamily: MONO, color: fb.total < 0 ? C.neg : C.text }}>{fSAR(fb.total)} SAR</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
+                  <BridgeTable b={fb} totalLabel={`Left from your cash and the loans, ${fCal(focusRes.occupy)}`} />
+                  <div className="n" style={{ marginLeft: 14, fontSize: 11.5, color: fb.short > 0 ? C.neg : C.sub, maxWidth: 760 }}>{fb.short > 0
+                    ? `Your salary does NOT cover living costs and all instalments in some months — ${fSAR(fb.short)} in total up to move-in (worst month ${fCal(fb.worstT)}: ${fSAR(fb.worst)}). That gap has to come out of the cash above.`
+                    : `Salary, living costs and every instalment are left out because your salary covers them each month — the tightest month (${fCal(fb.worstT)}) still leaves ${fSAR(fb.worst)}.`}</div>
+                </details></EvRow>); })()}
                 <EvRow t={`Y${inp.horizon}`} kind="end" last><details className="bridge"><summary>Net worth <b>{fS(focusRes.netWorthEnd)}</b> (cash {fS(focusRes.cashEnd)} + home {fS(focusRes.months[focusRes.months.length - 1].liqValue)} after selling costs − debt {fS(focusRes.endDebt)}) vs <b>{fS(focusRes.renterEnd)}</b> had you {renting ? "kept renting" : "not built"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b>. <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up</span></summary>
                   {(() => { const H = focusRes.months.length - 1, end = focusRes.months[H], cb = cashBridgeRows(focusRes, H, inp, prj, prj.landMonth); return <>
                     <table className="bridge"><tbody>
