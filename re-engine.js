@@ -57,6 +57,11 @@ const RE_BASE = {
   ],
   settleFeeMonths: 3,      // SAMA: early-settlement cost capped at the next 3 months' term cost
   rateQuote: "apr",        // how NEW-facility rates are entered: "apr" (reducing balance) or "flat" (KSA "hamish" per year on the original principal)
+  // bank terms: ONE set per loan type, used by every strategy and by the optimizer (rates as quoted, see rateQuote)
+  lmRate: 4.5, lmTenure: 18, lmFeesPct: 1, // mortgage that buys the new land (or the ready home), paid to the seller
+  eqRate: 4.5, eqTenure: 18, eqFeesPct: 1, // mortgage on the property you already own
+  plRate: 4.0, plTenure: 5,                // personal loans (at build start and at completion)
+  coRate: 4.5, coTenure: 18, coFeesPct: 1, // cash-out mortgage on the finished home
   plCap: 3000000,          // bank product ceiling on a single personal loan (the 33%-of-income rule usually binds first)
   perLoanCap: 33,          // one PERSONAL LOAN's instalment may not exceed this % of income (a second personal loan may use what is left of the bucket)
   mortgageCap: 55,         // a MORTGAGE's instalments (land purchase, existing property, cash-out) may not exceed this % of income
@@ -94,10 +99,10 @@ const RE_BASE = {
    settlePolicy: "none" | "asNeeded" (settle existing loans, best relief per riyal, only when the funding gap exceeds
    what the bank allows — ONLY for a mortgage; a personal loan never triggers a cash payoff). Legacy "all" = "asNeeded". */
 const RE_PLAN_DEFAULTS = {
-  lmUse: false, lmMode: "max", lmAmount: 0, lmRate: 4.5, lmTenure: 18, lmFeesPct: 1,
-  eqWhen: "none", eqMonth: 0, eqMode: "max", eqAmount: 0, eqRate: 4.5, eqTenure: 18, eqFeesPct: 1,
-  plWhen: "none", plMonth: 0, plMode: "max", plAmount: 0, plRate: 4.0, plTenure: 5,
-  coUse: false, coMode: "max", coAmount: 0, coRate: 4.5, coTenure: 18, coFeesPct: 1,
+  lmUse: false, lmMode: "max", lmAmount: 0,
+  eqWhen: "none", eqMonth: 0, eqMode: "max", eqAmount: 0,
+  plWhen: "none", plMonth: 0, plMode: "max", plAmount: 0,
+  coUse: false, coMode: "max", coAmount: 0,
   settlePolicy: "asNeeded", extraMo: 0,
   plSplit: true, // the personal-loan maximum may be taken as two personal loans (each ≤ perLoanCap, together within the bucket)
   // REFINANCE (bank buy-out of personal loans): the bank lends its maximum as new personal loan(s) (≤ perLoanCap each, up to two),
@@ -139,8 +144,39 @@ const fS = (n) => { // compact SAR: 1.25M / 850K / 420
 };
 const fSAR = (n) => { if (n == null || isNaN(n)) return "—"; const r = Math.round(n); const s = Math.abs(r).toLocaleString("en-US"); return r < 0 ? `(${s})` : s; };
 
+/* ---------- bank terms per loan type ----------
+   Older scenarios kept rates per strategy. They are read once into the shared terms: each loan type takes the terms of the
+   first ENABLED strategy that uses it (then any strategy that uses it, then Strategy 1); differences are reported so the
+   page can say what changed. */
+const RE_TERM_KEYS = { lm: ["lmRate", "lmTenure", "lmFeesPct"], eq: ["eqRate", "eqTenure", "eqFeesPct"], pl: ["plRate", "plTenure"], co: ["coRate", "coTenure", "coFeesPct"] };
+const reLoanUsed = {
+  lm: (o) => !!o.lmUse,
+  eq: (o) => !!o.eqWhen && o.eqWhen !== "none",
+  pl: (o) => (!!o.plWhen && o.plWhen !== "none") || !!o.pl2Use || (!!o.rfWhen && o.rfWhen !== "none"),
+  co: (o) => !!o.coUse,
+};
+function reTermsFromPlans(plans) {
+  // legacy (v1) plans carried one rate/tenure for "the mortgage"
+  const norm = (plans || []).map((o) => { const q = { ...(o || {}) }; if (q.mortgageWhen && q.lmUse == null) { q.lmUse = q.mortgageWhen === "start"; q.coUse = q.mortgageWhen === "completion"; if (q.rate != null) q.lmRate = q.coRate = q.rate; if (q.tenure != null) q.lmTenure = q.coTenure = q.tenure; } return q; });
+  const terms = {}, conflicts = [];
+  for (const [loan, keys] of Object.entries(RE_TERM_KEYS)) {
+    const has = (o) => keys.some((k) => o[k] != null);
+    const users = norm.map((o, i) => ({ o, i })).filter(({ o }) => has(o) && reLoanUsed[loan](o));
+    const src = users.find(({ o }) => o.enabled !== false) || users[0] || norm.map((o, i) => ({ o, i })).find(({ o }) => has(o)) || null;
+    if (!src) continue;
+    keys.forEach((k) => { if (src.o[k] != null) terms[k] = src.o[k]; });
+    const differ = users.filter(({ o }) => o.enabled !== false && keys.some((k) => o[k] != null && o[k] !== src.o[k]));
+    if (differ.length) conflicts.push({ loan, from: src.i, kept: Object.fromEntries(keys.map((k) => [k, src.o[k]])), others: differ.map(({ o, i }) => ({ plan: i, ...Object.fromEntries(keys.map((k) => [k, o[k]])) })) });
+  }
+  return { terms, conflicts };
+}
+
 function mergeRE(inp) {
   const p = { ...RE_BASE, ...inp };
+  // one set of bank terms per loan type: migrate an older scenario once, from its raw strategies; shared terms you already
+  // have are never overwritten, and merging again changes nothing
+  if (inp && inp.plans && inp.termsV == null) { const { terms } = reTermsFromPlans(inp.plans); for (const [k, v] of Object.entries(terms)) if (inp[k] == null) p[k] = v; }
+  p.termsV = 1;
   p.options = (inp && inp.options ? inp.options : RE_BASE.options).map((o, i) => ({ ...RE_BASE.options[i] || RE_OPTION_PRESETS.bank, ...o }));
   p.plans = (inp && inp.plans ? inp.plans : RE_BASE.plans).map((o, i) => {
     const q = { ...RE_PLAN_DEFAULTS, ...(RE_BASE.plans[i] || RE_PLAN_PRESETS.landMortgage), ...o };
@@ -391,12 +427,13 @@ function rePlanSimulate(p, prj, plan) {
 
   // the four new facilities
   const mk = (key, label, rate, tenure, fees) => ({ key, label, bal: 0, pmt: 0, amount: 0, rate: reEffRate(p, rate, Math.max(1, Math.round(tenure * 12))), quoted: rate, tenure, n: Math.max(1, Math.round(tenure * 12)), fees: 0, feesPct: fees, startedAt: null, settledAt: null, interestPaid: 0, monthsPaid: 0, capacity: null, kind: key, name: label });
-  const lm = mk("lm", prj.build ? "Mortgage on the new land" : "Mortgage on the purchase", plan.lmRate, plan.lmTenure, plan.lmFeesPct);
-  const eq = mk("eq", "Mortgage on your existing property", plan.eqRate, plan.eqTenure, plan.eqFeesPct);
-  const pl = mk("pl", "Personal loan", plan.plRate, plan.plTenure, 0);
-  const pl2 = mk("pl2", "Personal loan at completion", plan.plRate, plan.plTenure, 0);
-  const co = mk("co", "Cash-out on the finished home", plan.coRate, plan.coTenure, plan.coFeesPct);
-  const rf = mk("rf", "Refinance (new personal loans)", plan.plRate, plan.plTenure, 0); // bank buy-out of personal loans, at the personal-loan rate & tenure
+  // bank terms are shared by every strategy (one set per loan type)
+  const lm = mk("lm", prj.build ? "Mortgage on the new land" : "Mortgage on the purchase", p.lmRate, p.lmTenure, p.lmFeesPct);
+  const eq = mk("eq", "Mortgage on your existing property", p.eqRate, p.eqTenure, p.eqFeesPct);
+  const pl = mk("pl", "Personal loan", p.plRate, p.plTenure, 0);
+  const pl2 = mk("pl2", "Personal loan at completion", p.plRate, p.plTenure, 0);
+  const co = mk("co", "Cash-out on the finished home", p.coRate, p.coTenure, p.coFeesPct);
+  const rf = mk("rf", "Refinance (new personal loans)", p.plRate, p.plTenure, 0); // bank buy-out of personal loans, at the personal-loan rate & tenure
   const facs = [lm, eq, pl, co, pl2, rf];
   const activeExisting = () => loans.filter((l) => l.settledAt === null && l.bal > 0.5);
   const instOf = (f) => f.bal > 0.5 && f.settledAt === null ? f.pmt : 0;
@@ -666,7 +703,7 @@ function computeRE(inp) {
   const existingDbr = p.income > 0 ? existingInst / p.income * 100 : 0;
   // borrowing-capacity timeline from the existing loans alone (planned settlements honoured): when does room open up?
   const capTimeline = (() => {
-    const H = Math.round(p.horizon * 12), ref = p.plans[0] || RE_PLAN_DEFAULTS, n = Math.max(1, Math.round(ref.lmTenure * 12)), r = reEffRate(p, ref.lmRate, n), nPl = Math.max(1, Math.round(ref.plTenure * 12)), rPl = reEffRate(p, ref.plRate, nPl);
+    const H = Math.round(p.horizon * 12), n = Math.max(1, Math.round(p.lmTenure * 12)), r = reEffRate(p, p.lmRate, n), nPl = Math.max(1, Math.round(p.plTenure * 12)), rPl = reEffRate(p, p.plRate, nPl);
     const ls = p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).map((l) => { const left = Math.max(1, Math.round(l.monthsLeft)); return { bal: l.balance, inst: Math.max(l.installment, rePmt(l.balance, l.rate, left)), rate: l.rate, settleAt: l.settleAt }; });
     const rows = []; let prev = null;
     for (let t = 0; t <= Math.min(H, 120); t++) {
@@ -717,7 +754,7 @@ function tornadoRE(inp, idx) {
     build ? ["Construction duration", "buildMonths"] : null,
   ].filter(Boolean);
   const vary = (k, f) => {
-    if (k === "__rate") return { ...p, options: p.options.map((o) => ({ ...o, rate: o.rate * f })), plans: p.plans.map((o) => ({ ...o, lmRate: o.lmRate * f, plRate: o.plRate * f, eqRate: o.eqRate * f, coRate: o.coRate * f })) };
+    if (k === "__rate") return { ...p, options: p.options.map((o) => ({ ...o, rate: o.rate * f })), lmRate: p.lmRate * f, plRate: p.plRate * f, eqRate: p.eqRate * f, coRate: p.coRate * f };
     return { ...p, [k]: p[k] * f };
   };
   return drivers.map(([label, k]) => {
@@ -768,7 +805,7 @@ function optimizeRE(inp, opts) {
   const p0 = mergeRE(inp);
   if (p0.mode !== "home") return null;
   const maxDelay = opts.maxDelay == null ? 48 : opts.maxDelay, step = opts.step || 3, landWithBuild = !!opts.landWithBuild;
-  const base = { ...RE_PLAN_DEFAULTS, ...(p0.plans[0] || {}) };
+  const base = { ...RE_PLAN_DEFAULTS };   // the shared bank terms apply; nothing else is borrowed from Strategy 1
   const eqOpts = p0.ownedValue > 0 ? ["none", "build", "start", "land"] : ["none"];
   // stage 1: every mix of land mortgage · personal loan(s) · existing-property mortgage · cash-out · settle policy
   const combos = [];
