@@ -1,0 +1,82 @@
+// Identities to the riyal, every month of every strategy: no money is created or lost.
+//   household cash · rule-7 cash (ccash) · baseline · rule-7 ledgers · net worth · debt · each facility's instalments
+const test = require('node:test'), assert = require('node:assert/strict');
+const { loadEngine, scenarios } = require('./helpers.js');
+const E = loadEngine();
+const TOL = 1e-3;
+
+// existing loans on their own schedule (what the not-building side pays), instalment floored at the clearing annuity
+function renterSchedule(p, H) {
+  const inst = new Array(H + 1).fill(0), debt = new Array(H + 1).fill(0);
+  for (const l of p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0)) {
+    const left = Math.max(1, Math.round(l.monthsLeft)), pay0 = Math.max(l.installment, E.rePmt(l.balance, l.rate, left));
+    let bal = l.balance;
+    for (let t = 0; t <= H; t++) { if (t >= 1 && bal > 0.5) { const i = bal * l.rate / 1200; const pm = Math.min(bal + i, pay0); bal -= pm - i; inst[t] += pm; } debt[t] += Math.max(0, bal); }
+  }
+  return { inst, debt };
+}
+
+// each new facility's instalments rebuilt from its amount, rate and instalment
+function facilityPays(r, H) {
+  const pays = { lm: [], eq: [], pl: [], co: [], rf: [] };
+  for (const k of Object.keys(pays)) pays[k] = new Array(H + 1).fill(0);
+  for (const f of r.facilities) {
+    if (f.startedAt == null || !(f.amount > 0)) continue;
+    const key = f.key === 'pl2' ? 'pl' : f.key, rr = f.rate / 1200;
+    let bal = f.amount;
+    for (let t = f.startedAt + 1; t <= H; t++) {
+      if (f.settledAt != null && t >= f.settledAt) break;
+      if (bal <= 0.5) break;
+      const i = bal * rr, pm = Math.min(f.pmt + (f.key === 'lm' ? Math.max(0, r.plan.extraMo || 0) : 0), bal + i);
+      bal -= pm - i; pays[key][t] += pm;
+    }
+  }
+  return pays;
+}
+
+function audit(label, m, r, bad) {
+  const p = m.p, prj = m.prj, H = r.months.length - 1, occ = prj.occupy, alt = Math.pow(1 + p.altReturn / 100, 1 / 12) - 1;
+  const ren = renterSchedule(p, H), fp = facilityPays(r, H);
+  const near = (a, b) => Math.abs(a - b) <= TOL * Math.max(1, Math.abs(b) / 1e6);
+  const flag = (k, msg) => { if (!bad[k]) bad[k] = `${label} ${msg}`; };
+  const grow = (x) => (x > 0 ? x * (1 + alt) : x);
+  let cash, cc, bc, rc, newC = 0, oldC = 0, rsC = 0, riC = 0, upC = 0;
+  for (let t = 0; t <= H; t++) {
+    const mo = r.months[t];
+    const proceeds = r.facilities.filter((f) => f.startedAt === t && f.amount > 0).reduce((a, f) => a + f.amount - f.fees - (f.refi ? f.refi.payoff : 0), 0);
+    const payoffs = r.payoffs.filter((x) => x.t === t).reduce((a, x) => a + x.cost, 0);
+    const flows = proceeds - payoffs - mo.spend;
+    for (const k of ['lm', 'eq', 'pl', 'co', 'rf']) if (!near(mo[k + 'Pay'], fp[k][t])) flag('instalments:' + k, `M${t}: engine ${mo[k + 'Pay']} vs rebuilt ${fp[k][t]}`);
+    const newPay = mo.lmPay + mo.eqPay + mo.plPay + mo.coPay + mo.rfPay;
+    if (t === 0) { cash = p.cashAvailable + flows; cc = p.cashAvailable + flows; bc = p.cashAvailable; rc = p.cashAvailable; }
+    else {
+      cash = grow(cash) + mo.inc - mo.liv - mo.rentPaid + mo.rentIn + flows - mo.existInst - newPay - mo.ownerCost;
+      const cRet = t > occ && cc > 0 ? cc * alt : 0;            // rule-7 cash grows after completion, only while positive
+      cc = cc + cRet + flows;
+      bc += t > occ && bc > 0 ? bc * alt : 0;
+      rc = grow(rc) + mo.inc - mo.liv - mo.rentEq - ren.inst[t];
+    }
+    if (!near(mo.cash, cash)) flag('household cash', `M${t}: engine ${mo.cash} vs rebuilt ${cash}`);
+    if (!near(mo.ccash, cc)) flag('rule-7 cash', `M${t}: engine ${mo.ccash} vs rebuilt ${cc}`);
+    if (!near(mo.bcash, bc)) flag('baseline cash', `M${t}: engine ${mo.bcash} vs rebuilt ${bc}`);
+    if (!near(mo.rCash, rc)) flag('not-building household cash', `M${t}: engine ${mo.rCash} vs rebuilt ${rc}`);
+    cash = mo.cash; cc = mo.ccash; bc = mo.bcash; rc = mo.rCash;   // re-anchor: report one slip once
+    newC += newPay; upC += mo.ownerCost; riC += mo.rentIn; oldC += ren.inst[t] - mo.existInst; rsC += t >= 1 ? mo.rentEq - mo.rentPaid : 0;
+    for (const [k, v] of [['newInstCum', newC], ['upkeepCum', upC], ['rentInCum', riC], ['oldSavedCum', oldC], ['rentSavedCum', rsC]]) if (!near(mo[k], v)) flag('ledger ' + k, `M${t}: engine ${mo[k]} vs ${v}`);
+    const nw = mo.ccash - mo.newInstCum + mo.oldSavedCum + mo.rentSavedCum + mo.rentInCum - mo.upkeepCum + mo.value - mo.debtNew;
+    if (!near(mo.netWorth, nw)) flag('net worth', `M${t}: engine ${mo.netWorth} vs ${nw}`);
+    if (!near(mo.renterNW, mo.bcash) || !near(mo.advantage, mo.netWorth - mo.renterNW)) flag('baseline / advantage', `M${t}`);
+    if (!near(mo.debt, mo.debtNew + mo.debtExisting)) flag('debt = new + existing', `M${t}`);
+  }
+}
+
+test('identities hold to the riyal in every month of every strategy', () => {
+  const bad = {};
+  let n = 0;
+  for (const sc of scenarios(E)) {
+    const m = E.computeRE(sc.inp);
+    m.results.forEach((r, i) => { if (r) { audit(`${sc.label} S${i + 1}`, m, r, bad); n++; } });
+  }
+  assert.ok(n > 300, `only ${n} strategy results checked`);
+  assert.deepEqual(bad, {});
+});
