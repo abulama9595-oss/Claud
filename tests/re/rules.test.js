@@ -101,3 +101,26 @@ test('a planned settlement happens on both sides, so it does not change the comp
   assert.ok(b.payoffs.length === 1 && b.months[6].renterSettle > 0, 'paid off on both sides');
   assert.ok(Math.abs(a.advantage - b.advantage) < 1e-3, `advantage ${a.advantage} vs ${b.advantage}`);
 });
+
+test('everything grows: value in today\'s money = the extra flows discounted at the return on cash (while cash stays positive)', () => {
+  let checked = 0;
+  for (const inp of [{ cashAvailable: 6000000 }, { cashAvailable: 9000000, rentNow: 0, altReturn: 4 }, { cashAvailable: 5000000, income: 120000 }]) {
+    const m = E.computeRE(inp), alt = Math.pow(1 + m.p.altReturn / 100, 1 / 12) - 1;
+    for (const r of m.results.filter(Boolean)) {
+      if (r.months.some((x) => x.cash <= 0 || x.rCash <= 0)) continue;
+      const f = E.reEconFlows(r), npv = f.reduce((a, c, t) => a + c / Math.pow(1 + alt, t), 0);
+      assert.ok(Math.abs(npv - r.econPV) < 1e-3 * Math.max(1, Math.abs(r.econPV) / 1e6), `NPV ${npv} vs ${r.econPV}`);
+      const irr = E.reEconIRR(r);
+      if (irr != null) { const m12 = Math.pow(1 + irr, 1 / 12); const z = f.reduce((a, c, t) => a + c / Math.pow(m12, t), 0); assert.ok(Math.abs(z) < 1, `IRR does not zero the flows (${z})`); }
+      checked++;
+    }
+  }
+  assert.ok(checked >= 3, `only ${checked} strategies checked`);
+});
+
+test('strategies are ranked and judged by the everything-grows measure', () => {
+  const m = E.computeRE({});
+  const ok = m.ranked.filter((r) => r.feasible && r.recoveryOk);
+  for (let k = 1; k < ok.length; k++) assert.ok(ok[k - 1].econAdv >= ok[k].econAdv);
+  assert.equal(m.bestFeasible.econAdv > 0, m.verdict === 'OWNING WINS' || m.verdict === 'BUILDING WINS');
+});

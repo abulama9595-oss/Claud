@@ -80,6 +80,8 @@ function audit(label, m, r, bad) {
     if (!near(mo.netWorth, nw)) flag('net worth', `M${t}: engine ${mo.netWorth} vs ${nw}`);
     if (!near(mo.renterNW, mo.bcash) || !near(mo.advantage, mo.netWorth - mo.renterNW)) flag('baseline / advantage', `M${t}`);
     if (!near(mo.debt, mo.debtNew + mo.debtExisting)) flag('debt = new + existing', `M${t}`);
+    // "everything grows": household cash + home value − all debt, against the not-building cash − old-loan debt it still owes
+    if (!near(mo.econNW, mo.cash + mo.value - mo.debt) || !near(mo.econBase, mo.rCash - ren.debt[t]) || !near(mo.econAdv, mo.econNW - mo.econBase)) flag('everything grows', `M${t}: ${mo.econNW} / ${mo.econBase} / ${mo.econAdv}`);
   }
 }
 

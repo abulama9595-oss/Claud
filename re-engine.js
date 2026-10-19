@@ -421,6 +421,27 @@ function reSettleCost(bal, rateApr, inst, left, feeMonths) {
   return bal + fee;
 }
 
+// "everything grows": the extra money building takes and gives back each month compared with not building (household cash
+// flows net of growth on both sides), plus home value − all debt + the old-loan debt the not-building side still owes at the end
+function reEconFlows(r) {
+  const ms = r.months, H = ms.length - 1, f = new Array(H + 1).fill(0);
+  for (let t = 0; t <= H; t++) {
+    const prevC = t === 0 ? r.cashStart : ms[t - 1].cash, prevR = t === 0 ? r.cashStart : ms[t - 1].rCash;
+    f[t] = (ms[t].cash - prevC - ms[t].ret) - (ms[t].rCash - prevR - ms[t].rRet);
+  }
+  f[H] += (ms[H].econNW - ms[H].cash) - (ms[H].econBase - ms[H].rCash);
+  return f;
+}
+// return on building: the yearly rate at which those flows are worth zero; null when it is not defined (no sign change)
+function reEconIRR(r) {
+  const f = reEconFlows(r), H = f.length - 1;
+  const npv = (R) => { const m = Math.pow(1 + R, 1 / 12); let s = 0, d = 1; for (let t = 0; t <= H; t++) { s += f[t] / d; d *= m; } return s; };
+  let lo = -0.5, hi = 1, flo = npv(lo), fhi = npv(hi);
+  if (!(flo * fhi < 0)) return null;
+  for (let k = 0; k < 100; k++) { const mid = (lo + hi) / 2, fm = npv(mid); if (fm * flo > 0) { lo = mid; flo = fm; } else hi = mid; }
+  return (lo + hi) / 2;
+}
+
 function rePlanSimulate(p, prj, plan) {
   const H = Math.round(p.horizon * 12);
   const alt = Math.pow(1 + p.altReturn / 100, 1 / 12) - 1;
@@ -484,7 +505,7 @@ function rePlanSimulate(p, prj, plan) {
   const lettingOut = annualRentOut > 0;
   let minCash = Infinity, minCashT = 0, belowBufferMonths = 0, shortfall = 0, fundingGap = 0;
   const payoffs = [];   // early payoffs from your own cash: { t, name, cost, fee }
-  let settledTotal = 0, settleFees = 0, refiTotal = 0, roomSettled = 0, debtFreeT = null, breakEvenMonth = null, cashRestoredT = null;
+  let settledTotal = 0, settleFees = 0, refiTotal = 0, roomSettled = 0, debtFreeT = null, breakEvenMonth = null, econBreakEven = null, cashRestoredT = null;
   const months = [];
   const yearOf = (t) => Math.max(0, Math.ceil(t / 12));
   const remainingSpend = (t) => { let s = 0; for (let k = t; k < prj.schedule.length; k++) s += prj.schedule[k] || 0; return s; };
@@ -631,6 +652,7 @@ function rePlanSimulate(p, prj, plan) {
     const rentEq = t >= 1 ? p.rentNow * Math.pow(1 + p.rentGrowth / 100, yrIdx) : 0;
     const rentPaid = t >= 1 && (!occupied || lettingOut) ? rentEq : 0;   // if the new home is let out you don't move in
     const ret = t >= 1 && cash > 0 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
+    const rRet = t >= 1 && rCash > 0 ? rCash * alt : 0;   // …and on the not-building household's cash
     // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall.
     // Both sides grow from today; the rule-6 "cash on hand at completion" is the same cash WITHOUT growth (ccash − cRetCum).
     const growNow = t >= 1;
@@ -694,8 +716,12 @@ function rePlanSimulate(p, prj, plan) {
     if (cash < 0) shortfall = Math.max(shortfall, -cash);
     if (occupied && cashRestoredT === null && cash >= p.cashBuffer) cashRestoredT = t;
     if (occupied && breakEvenMonth === null && advantage >= 0) breakEvenMonth = t;
+    // "everything grows" (how strategies are ranked): household cash (salary in, every payment out, growth on positive
+    // balances) + home value − all debt, against the not-building household's cash − the old-loan debt it still owes
+    const econNW = cash + value - debt, econBase = rCash - renterDebt[t], econAdv = econNW - econBase;
+    if (occupied && econBreakEven === null && econAdv >= 0) econBreakEven = t;
     if (debtFreeT === null && t > 0 && debt < 0.5) debtFreeT = t;
-    months.push({ t, year: yearOf(t), cash, rCash, bcash, ccash, bRet, cRet, cRetCum, renterSettle: renterSettle[t], oldDebtGap, rentIn, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? inc : 0, liv: t >= 1 ? liv : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, extraPay, dbr: (existInst + newPay - extraPay) / inc * 100 });
+    months.push({ t, year: yearOf(t), cash, rCash, rRet, econNW, econBase, econAdv, bcash, ccash, bRet, cRet, cRetCum, renterSettle: renterSettle[t], oldDebtGap, rentIn, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? inc : 0, liv: t >= 1 ? liv : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, extraPay, dbr: (existInst + newPay - extraPay) / inc * 100 });
   }
   const nY = yearOf(H), years = [];
   for (let y = 0; y <= nY; y++) {
@@ -723,7 +749,8 @@ function rePlanSimulate(p, prj, plan) {
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     cashRestoredT, recoveryMonths, cashAfterWindow: months[after].cash, payoffs, newDebtTotal: facs.reduce((a, f) => a + f.amount, 0),
     settledTotal, settleFees, totalInterest, newDebtInterest, peakDbr, peakInst, debtFreeT, breakEvenMonth,
-    netWorthEnd: end.netWorth, renterEnd: end.renterNW, advantage: end.advantage, endDebt: end.debt, endValue: end.value, start: prj.start, landMonth: prj.landMonth, occupy: prj.occupy,
+    netWorthEnd: end.netWorth, renterEnd: end.renterNW, advantage: end.advantage,
+    econEnd: end.econNW, econBaseEnd: end.econBase, econAdv: end.econAdv, econPV: end.econAdv / Math.pow(1 + alt, H), econBreakEven, endDebt: end.debt, endValue: end.value, start: prj.start, landMonth: prj.landMonth, occupy: prj.occupy,
     dbrOk: peakDbr <= p.dbrCap + 0.5 };
 }
 
@@ -734,10 +761,10 @@ function computeRE(inp) {
   const home = p.mode === "home";
   const results = home ? p.plans.map((o) => o.enabled ? rePlanSimulate(p, prj, o) : null) : p.options.map((o) => o.enabled ? reSimulate(p, prj, o) : null);
   const live = results.filter(Boolean);
-  const score = (r) => home ? r.advantage : (r.irr == null ? -Infinity : r.irr);
+  const score = (r) => home ? r.econAdv : (r.irr == null ? -Infinity : r.irr);   // home: ranked by "everything grows"
   const ranked = live.slice().sort((a, b) => score(b) - score(a));
   const best = ranked[0] || null;
-  if (home) ranked.sort((a, b) => (b.feasible && b.recoveryOk) - (a.feasible && a.recoveryOk) || b.feasible - a.feasible || b.netWorthEnd - a.netWorthEnd);
+  if (home) ranked.sort((a, b) => (b.feasible && b.recoveryOk) - (a.feasible && a.recoveryOk) || b.feasible - a.feasible || b.econAdv - a.econAdv);
   const bestFeasible = home ? (ranked.find((r) => r.feasible && r.recoveryOk) || ranked.find((r) => r.feasible) || null) : (ranked.find((r) => r.affordable && r.cashOk && r.ltvOk) || null);
   const existingInst = p.existingLoans.reduce((a, l) => a + (l.balance > 0 ? l.installment : 0), 0);
   const existingDbr = p.income > 0 ? existingInst / p.income * 100 : 0;
@@ -777,7 +804,7 @@ function computeRE(inp) {
     // the baseline is renting only if you pay rent today, otherwise it is not building (or not buying) and keeping the cash invested
     const lead = bestFeasible, renting = p.rentNow > 0, act = prj.build ? "BUILDING" : "BUYING";
     if (!lead) { verdict = "NO EXECUTABLE STRATEGY"; vColor = C.neg; }
-    else if (lead.advantage > 0) { verdict = renting ? "OWNING WINS" : `${act} WINS`; vColor = C.pos; } else { verdict = renting ? "RENTING WINS" : `NOT ${act} WINS`; vColor = C.neg; }
+    else if (lead.econAdv > 0) { verdict = renting ? "OWNING WINS" : `${act} WINS`; vColor = C.pos; } else { verdict = renting ? "RENTING WINS" : `NOT ${act} WINS`; vColor = C.neg; }
   } else {
     const i = best.irr == null ? -1 : best.irr * 100;
     if (i >= 12) { verdict = "ATTRACTIVE"; vColor = C.pos; } else if (i >= p.discountRate) { verdict = "ACCEPTABLE"; vColor = C.brass; } else { verdict = "WEAK"; vColor = C.neg; }
@@ -789,7 +816,7 @@ function computeRE(inp) {
 function tornadoRE(inp, idx) {
   const p = mergeRE(inp);
   const home = p.mode === "home";
-  const metric = (m) => { const r = m.results[idx]; if (!r) return 0; return home ? r.advantage : (r.irr == null ? 0 : r.irr * 100); };
+  const metric = (m) => { const r = m.results[idx]; if (!r) return 0; return home ? r.econAdv : (r.irr == null ? 0 : r.irr * 100); };
   const base = metric(computeRE(p));
   const build = p.acquire === "build";
   const drivers = [
@@ -824,7 +851,7 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
     const q = { ...p, buildStart: d, landMonth: landWithBuild ? d : Math.min(p.landMonth || 0, d) };
     const m = computeRE(q); const r = m.results[idx];
     if (!r) continue;
-    rows.push({ delay: d, feasible: r.feasible, recoveryOk: r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.lm.amount, eq: r.eq.amount, pl: r.pl.amount, co: r.co.amount, rf: r.rf.amount, newDebt: r.newDebtTotal, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, netWorth: r.netWorthEnd, advantage: r.advantage, total: m.prj.total, occupy: m.prj.occupy, bufferOk: r.minCash >= p.cashBuffer });
+    rows.push({ delay: d, feasible: r.feasible, recoveryOk: r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.lm.amount, eq: r.eq.amount, pl: r.pl.amount, co: r.co.amount, rf: r.rf.amount, newDebt: r.newDebtTotal, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: m.prj.total, occupy: m.prj.occupy, bufferOk: r.minCash >= p.cashBuffer });
   }
   // "best" = the EARLIEST start that is executable AND gets cash back to the buffer within your recovery window (fallback: earliest executable)
   const ok = rows.filter((r) => r.feasible);
@@ -868,8 +895,8 @@ function optimizeRE(inp, opts) {
     rf: 0, plNet: r.pl.refi ? r.pl.refi.net : r.pl.amount, plRefi: r.pl.refi ? r.pl.refi.names : [], refiTotal: r.refiTotal,
     pl2: r.pl2.amount, pl2Split: r.pl2.split, pl2Net: r.pl2.refi ? r.pl2.refi.net : r.pl2.amount, pl2Refi: r.pl2.refi ? r.pl2.refi.names : [],
     newDebt: r.newDebtTotal, newDebtInterest: r.newDebtInterest, settled: r.settledTotal, roomSettled: r.roomSettled, settleFees: r.settleFees, cashAfterWindow: r.cashAfterWindow, cashAtCompletion: r.cashAtCompletion,
-    netWorth: r.netWorthEnd, advantage: r.advantage, total: prj.total, occupy: prj.occupy, start: prj.start, landMonth: prj.landMonth, flags: r.flags, _r: r });
-  const rank = (a, b) => (b.ok - a.ok) || (b.feasible - a.feasible) || (b.netWorth - a.netWorth) || (a.peakInst - b.peakInst);
+    netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: prj.total, occupy: prj.occupy, start: prj.start, landMonth: prj.landMonth, flags: r.flags, _r: r });
+  const rank = (a, b) => (b.ok - a.ok) || (b.feasible - a.feasible) || (b.econAdv - a.econAdv) || (a.peakInst - b.peakInst);
   let tried = 0;
   const runStart = (q, delay, planned) => {
     const p = mergeRE(q), prj = reProject(p);
@@ -910,6 +937,6 @@ function optimizeRE(inp, opts) {
   const i = starts.findIndex((s) => s.delay === curStart);
   if (i >= 0 && !landWithBuild) starts[i] = planned; else if (i < 0) { starts.push(planned); starts.sort((a, b) => a.delay - b.delay); }
   const earliest = starts.find((s) => s.best.ok) || starts.find((s) => s.best.feasible) || null;
-  const richest = starts.filter((s) => s.best.ok).sort((a, b) => b.best.netWorth - a.best.netWorth)[0] || null;
+  const richest = starts.filter((s) => s.best.ok).sort((a, b) => b.best.econAdv - a.best.econAdv)[0] || null;
   return { starts, planned, earliest, richest, combos: tried };
 }
