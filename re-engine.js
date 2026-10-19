@@ -40,6 +40,7 @@ const RE_BASE = {
   overrunPct: 0,                           // cost overrun on construction (build + soft + contingency + finishing): adds cost, not value
   landBrokerPct: 2.5,                      // broker fee on the land purchase (REGA default 2.5%); not part of the home's value
   buildMonths: 18, devMarginPct: 10,       // construction duration; market value uplift of a self-built home over its cost
+  buildDeprPct: 2,                         // the building loses this % of its value at move-in each year (straight-line); the land keeps growing
   landMonth: 0, buildStart: 0, costInflation: 3, // timing: month the land is bought, month construction starts (≥ landMonth), construction-cost inflation %/yr
   // ready property
   propertyPrice: 2800000, brokerPct: 2.5,
@@ -255,16 +256,24 @@ function reProject(p) {
   } else {
     schedule[landMonth] += price + rett + broker + finish + vatFinish;
   }
-  // market value path: nothing before the land is bought; land appreciates from purchase; the finished home is worth
-  // land + construction × (1 + self-build uplift) at completion — the uplift is on what you build, not on the land —
-  // with the construction share accruing in proportion to progress. VAT, RETT, fees, contingency and overruns are sunk.
-  const compValue = build ? land + (hard + soft + finish) * (1 + p.devMarginPct / 100) : p.readyValue != null ? p.readyValue : price + finish; // value at completion in purchase-month prices (readyValue: a ready home valued like the one you would build)
+  // market value: nothing before the land is bought. The LAND grows with the market from the month it is bought. The
+  // BUILDING is worth what it cost (construction + design + extras) × (1 + self-build uplift) — the uplift is on what you
+  // build, not the land — accruing with progress during construction, then losing buildDeprPct % of that value a year from
+  // completion (straight-line, never below 0). VAT, RETT, fees, contingency and overruns add no value. A ready home bought
+  // as such keeps price + finishing growing with the market (its land/building split is unknown); readyParts (internal)
+  // values a ready villa like the home you would build: the same land, and a building that already stands.
+  const dep = Math.max(0, p.buildDeprPct == null ? 0 : p.buildDeprPct) / 100;
+  const done = build ? start + bm : landMonth;                    // the month the building is complete
+  const buildValue = build ? (hard + soft + finish) * (1 + p.devMarginPct / 100) : 0;
+  const ready = !build && p.readyParts ? p.readyParts : null;
   const valueAt = (t) => {
     if (t < landMonth) return 0;
-    const prog = build ? Math.min(1, Math.max(0, (t - start) / bm)) : 1;
-    return (land + (compValue - land) * prog) * Math.pow(1 + g, (t - landMonth) / 12);
+    const yrs = (t - landMonth) / 12;
+    if (build) return land * Math.pow(1 + g, yrs) + buildValue * Math.min(1, Math.max(0, (t - start) / bm)) * Math.max(0, 1 - dep * Math.max(0, t - done) / 12);
+    if (ready) return ready.land * Math.pow(1 + g, yrs) + ready.building * Math.max(0, 1 - dep * yrs);
+    return (price + finish) * Math.pow(1 + g, yrs);
   };
-  return { build, land, landToday, price, hard, soft, cont, finish, overrun, vat: vatConstr + vatFinish + vatOverrun, broker, landBroker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), bm, occupy, start, landMonth, inflate, schedule, valueAt,
+  return { build, land, landToday, price, hard, soft, cont, finish, overrun, vat: vatConstr + vatFinish + vatOverrun, broker, landBroker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), buildValue, landValueAt: (t) => t < landMonth ? 0 : (ready ? ready.land : build ? land : price + finish) * Math.pow(1 + g, (t - landMonth) / 12), bm, occupy, start, landMonth, inflate, schedule, valueAt,
     builtArea, costPerSqm: build && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
 }
 
@@ -552,7 +561,7 @@ function rePlanSimulate(p, prj, plan) {
   }
   function doSettle(l, t, reason) {
     const cost = settleCost(l), fee = cost - l.bal, inst = instOfAny(l);
-    cash -= cost; ccash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee });
+    cash -= cost; ccash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee, old: l.kind === "existing" });
     events.push({ t, kind: "settle", text: `Settle ${l.name}: ${fSAR(cost)} (incl. ${fSAR(fee)} early-settlement fee) — frees ${fSAR(inst)}/mo — ${reason}.` });
   }
   // only PERSONAL loans may be paid off early: existing loans you allow, the strategy's personal loan, a refinance taken as a personal loan.
@@ -647,6 +656,7 @@ function rePlanSimulate(p, prj, plan) {
     const pickSet = picks ? eligible.filter((l) => picks.includes(idOf(l))) : null;
     const droppedPicks = picks ? picks.filter((id) => !eligible.some((l) => idOf(l) === id)) : [];
     let best = null, bestCash = null, bestValue = null, pickBest = null, noneBest = null, why = "";
+    const cands = [];   // every buy-out that could be done this month (kept so the page can explain the choice)
     const better = (c, b, k) => !b || c[k] > b[k] + 1 || (Math.abs(c[k] - b[k]) <= 1 && c.S.length < b.S.length);
     for (let mask = 0; mask < (1 << eligible.length); mask++) {
       const S = eligible.filter((_, k) => mask & (1 << k));
@@ -666,6 +676,7 @@ function rePlanSimulate(p, prj, plan) {
       const limitedBy = room < nNew * capInst - 1 ? `${p.dbrCap}% total debt-burden cap${capInst < perLoanTarget - 1 && p1 >= p.plCap - 1 ? ` (the first loan is at the bank's ceiling of ${fS(p.plCap)})` : ""}` : capInst < perLoanTarget - 1 ? `bank ceiling of ${fS(p.plCap)} per personal loan` : `${p.perLoanCap}% cap per personal loan${nNew > 1 ? " (two loans)" : ""}`;
       const value = net - pvPayments(p1, f.rate, rePmt(p1, f.rate, f.n), 1) - (p2 > 1 ? pvPayments(p2, f.rate, rePmt(p2, f.rate, f.n), 1) : 0) + S.reduce((a, l) => a + pvPayments(l.bal, l.rate, instOfAny(l), 0), 0);
       const c = { S, freed, payoff, amount, net, value, split: p2 > 1 ? [p1, p2] : null, limitedBy, room };
+      cands.push(c);
       if (better(c, bestCash, "net")) bestCash = c;
       if (better(c, bestValue, "value")) bestValue = c;
       if (picks && S.length) pickBest = c;
@@ -674,6 +685,14 @@ function rePlanSimulate(p, prj, plan) {
     best = refiMode === "cash" ? bestCash : refiMode === "pick" ? (pickBest || noneBest) : bestValue;
     const sameS = (a, b) => a && b && a.S.length === b.S.length && a.S.every((l) => b.S.includes(l));
     if (bestCash && bestValue && !sameS(bestCash, bestValue)) refiDiffers = true;
+    // what was weighed: each option (which old loans the bank clears, the new loans, cash to you, worth in today's money),
+    // the old loans' rates against the new loan's, and which rule chose
+    f.refiBasis = refiMode === "pick" ? "pick" : refiMode === "cash" ? "cash" : "value";
+    f.refiOld = eligible.map((l) => ({ id: idOf(l), name: l.name, apr: l.rate, bal: l.bal, inst: instOfAny(l) }));
+    f.refiTooYoung = tooYoung;
+    const kept = cands.slice().sort((a, b) => b.value - a.value).slice(0, 16);
+    [best, bestCash, bestValue].forEach((c) => { if (c && !kept.includes(c)) kept.push(c); });
+    f.refiOptions = kept.map((c) => ({ ids: c.S.map(idOf), names: c.S.map((l) => l.name), amount: c.amount, payoff: c.payoff, net: c.net, value: c.value, split: c.split, chosen: c === best, bestValue: c === bestValue, bestCash: c === bestCash }));
     if (!best || best.net < 1) {
       const reason = best ? "would not release any cash" : (why || "no room left in the bank's debt-burden test") + (tooYoung.length ? `; ${tooYoung.join(" + ")} not yet ${minAge} months old, so not refinanceable` : "");
       f.capacity = { t, cap: 0, limitedBy: reason, want: 0, mode: "max", taken: 0, gap: 0 };
@@ -681,18 +700,18 @@ function rePlanSimulate(p, prj, plan) {
       return;
     }
     const before = instNow;
-    best.S.forEach((l) => { const cost = settleCost(l); settleFees += cost - l.bal; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; });
+    const cleared = best.S.map((l) => { const cost = settleCost(l), it = { id: idOf(l), name: l.name, cost, fee: cost - l.bal, old: l.kind === "existing" }; settleFees += it.fee; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; return it; });
     f.bal = best.amount; f.amount = best.amount; f.split = best.split; f.startedAt = t; f.fees = 0;
     f.pmt = best.split ? rePmt(best.split[0], f.rate, f.n) + rePmt(best.split[1], f.rate, f.n) : rePmt(best.amount, f.rate, f.n);
     cash += best.amount - best.payoff; ccash += best.amount - best.payoff;
     f.capacity = { t, cap: best.amount, room: best.room, limitedBy: best.limitedBy, want: best.amount, mode: "max", taken: best.amount, gap: 0 };
-    f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed } : null;
+    f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed, items: cleared } : null;
     const loans = best.split ? `two personal loans, ${fS(best.split[0])} + ${fS(best.split[1])}` : `a personal loan of ${fS(best.amount)}`;
     const basis = refiMode === "pick" ? "the loans you chose" : refiMode === "cash" ? "the most cash in hand" : "the best value";
     let note = "";
     if (picks && droppedPicks.length) note += ` Not bought out: ${droppedPicks.length} of the loans you chose (not running, not yet ${minAge} months old, or not allowed).`;
     if (picks && pickSet.length && !pickBest) note += " The loans you chose can't be cleared in full by this loan, so none is bought out.";
-    if (refiMode !== "pick" && refiMode !== "cash" && bestCash && !sameS(bestCash, best) && bestCash.net > best.net + 1) note += ` Buying out ${bestCash.S.length ? bestCash.S.map((l) => l.name).join(" + ") : "no loan"} instead would put ${fS(bestCash.net - best.net)} more in your hands now but leave you ${fS(best.value - bestCash.value)} poorer in today's money, so it is not done.`;
+    if (refiMode !== "pick" && refiMode !== "cash" && bestCash && !sameS(bestCash, best) && bestCash.net > best.net + 1) note += ` Buying out ${bestCash.S.length ? bestCash.S.map((l) => l.name).join(" + ") : "no loan"} instead would put ${fS(bestCash.net - best.net)} more in your hands now but leave you ${fS((best.value - bestCash.value) / Math.pow(1 + alt, t))} poorer in today's money, so it is not done.`;
     events.push({ t, kind: "pl", text: `${f.label}: the bank lends its maximum — ${loans} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs (limited by the ${best.limitedBy}).${f.refi ? ` It refinances ${f.refi.names.join(" + ")} (chosen for ${basis}): the bank clears ${fS(best.payoff)} (incl. early-settlement fees) directly — no cash from you — and ${fS(best.net)} lands in your cash.` : ` ${fS(best.amount)} lands in your cash.`} Instalments ${fSAR(before)} → ${fSAR(allInst())}/mo (${(allInst() / inc * 100).toFixed(0)}% of income).${note}` });
   }
   const fMonText = (t) => `month ${t}`;
@@ -855,16 +874,20 @@ function reRunPlan(p, prj, plan) {
   const score = (x) => (x.feasible && x.recoveryOk ? 2 : 0) + (x.feasible ? 1 : 0);
   if (score(r2) <= score(r)) return r;
   r2.plan = plan; r2.refiFallback = true;
+  r2.refiFallbackWhy = { feasible: r.feasible, recoveryOk: r.recoveryOk, minCash: r.minCash, minCashT: r.minCashT, recoveryMonths: r.recoveryMonths, econAdv: r.econAdv, econPV: r.econPV };
   r2.events.unshift({ t: 0, kind: "pl", text: `Refinancing: buying out the old loans that give the best value would ${r.feasible ? "miss your cash-recovery window" : "run your cash out"}, so this strategy buys out the ones that put the most cash in your hands.` });
   return r2;
 }
 
 /* ---------- top-level ---------- */
-function computeRE(inp) {
+function computeRE(inp, opts) {
   const p = mergeRE(inp);
   const prj = reProject(p);
   const home = p.mode === "home";
-  const results = home ? p.plans.map((o) => o.enabled ? reRunPlan(p, prj, o) : null) : p.options.map((o) => o.enabled ? reSimulate(p, prj, o) : null);
+  // extra plans (the tool's pick) run after yours, are marked r.tool, and compete in the ranking and the verdict
+  const extra = home && opts && opts.extraPlans ? opts.extraPlans.filter(Boolean).map((o) => ({ ...RE_PLAN_DEFAULTS, ...o, enabled: true, lmMode: "max", eqMode: "max", plMode: "max", coMode: "max" })) : [];
+  const results = home ? p.plans.map((o) => o.enabled ? reRunPlan(p, prj, o) : null).concat(extra.map((o) => { const r = reRunPlan(p, prj, o); r.tool = true; return r; }))
+    : p.options.map((o) => o.enabled ? reSimulate(p, prj, o) : null);
   const live = results.filter(Boolean);
   const score = (r) => home ? r.econAdv : (r.irr == null ? -Infinity : r.irr);   // home: ranked by "everything grows"
   const ranked = live.slice().sort((a, b) => score(b) - score(a));
@@ -996,8 +1019,10 @@ function readyBreakEvenRE(inp, idx) {
   const { prj, r } = reRunOne(p, idx);
   if (!r) return null;
   const g = p.appreciation / 100, buyAt = prj.landMonth;
-  const value = prj.value0 / Math.pow(1 + g, (prj.occupy - 1 - buyAt) / 12);   // the villa's value when you buy it
-  const run = (price) => reRunOne({ ...p, acquire: "buy", propertyPrice: price / Math.pow(1 + g, buyAt / 12), finishExtra: 0, readyValue: value }, idx).r;
+  // the villa: the same land, and a building worth what yours would be at move-in — it already stands, so it starts losing
+  // value from the purchase
+  const parts = { land: prj.land, building: prj.buildValue }, value = parts.land + parts.building;   // its value when you buy it
+  const run = (price) => reRunOne({ ...p, acquire: "buy", propertyPrice: price / Math.pow(1 + g, buyAt / 12), finishExtra: 0, readyParts: parts }, idx).r;
   const solve = (metric) => {
     const target = r[metric]; let lo = value * 0.1, hi = value * 3;
     if (run(lo)[metric] < target) return null;          // even a very cheap villa would not do as well

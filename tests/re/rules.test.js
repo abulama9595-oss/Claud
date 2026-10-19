@@ -66,6 +66,22 @@ test('home value: the self-build uplift applies to construction only; overruns a
   assert.ok(Math.abs(spend(b) - b.total) < 1e-6, 'every riyal of cost is in the spend schedule');
 });
 
+test('home value: the land grows with the market; the building is worth cost × uplift at completion, then loses 2% of that a year', () => {
+  const base = { appreciation: 3, costInflation: 0, landMonth: 6, buildStart: 12, buildMonths: 18, devMarginPct: 20, buildDeprPct: 2 };
+  const prj = E.computeRE(base).prj, done = prj.start + prj.bm, bv = (prj.hard + prj.soft + prj.finish) * 1.2, landAt = (t) => prj.land * Math.pow(1.03, (t - 6) / 12);
+  const near = (x, y) => Math.abs(x - y) < 1e-6;
+  assert.equal(prj.valueAt(5), 0, 'nothing before the land is bought');
+  assert.ok(near(prj.valueAt(prj.start), landAt(prj.start)), 'only the land before construction');
+  assert.ok(near(prj.valueAt(prj.start + 9), landAt(prj.start + 9) + bv * 0.5), 'the building accrues with progress, no growth while it is built');
+  assert.ok(near(prj.value0, landAt(done) + bv), 'at completion: land grown + building at cost × uplift');
+  assert.ok(near(prj.valueAt(done + 12), landAt(done + 12) + bv * 0.98) && near(prj.valueAt(done + 60), landAt(done + 60) + bv * 0.9), 'straight-line: 2% of the completion value a year');
+  assert.ok(near(prj.valueAt(done + 12 * 60), landAt(done + 12 * 60)), 'the building never goes below zero');
+  const flat = E.computeRE({ ...base, buildDeprPct: 0 }).prj;
+  assert.ok(near(flat.valueAt(done + 120), landAt(done + 120) + bv), 'no depreciation: the building keeps its value');
+  const buy = E.computeRE({ acquire: 'buy', propertyPrice: 2000000, finishExtra: 0, appreciation: 3, landMonth: 0 }).prj;
+  assert.ok(near(buy.valueAt(24), 2000000 * Math.pow(1.03, 2)), 'a ready home keeps growing with the market');
+});
+
 test('all mortgages together stay within the mortgage cap', () => {
   const plan = { ...E.RE_PLAN_PRESETS.landPlusOwned, enabled: true, settlePolicy: 'none' };
   const m = E.computeRE({ income: 80000, existingLoans: [], ownedValue: 9000000, landArea: 800, landPrice: 5000, plans: [plan, { ...plan, enabled: false }, { ...plan, enabled: false }, { ...plan, enabled: false }] });
