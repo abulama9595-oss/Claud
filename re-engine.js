@@ -438,7 +438,13 @@ function rePlanSimulate(p, prj, plan) {
   const activeExisting = () => loans.filter((l) => l.settledAt === null && l.bal > 0.5);
   const instOf = (f) => f.bal > 0.5 && f.settledAt === null ? f.pmt : 0;
   const allInst = () => activeExisting().reduce((a, l) => a + l.installment, 0) + facs.reduce((a, f) => a + instOf(f), 0);
-  const settleCost = (l) => { const r = l.rate / 100 / 12; const left = l.kind === "existing" ? Math.max(0, l.left) : Math.max(0, l.n - l.monthsPaid); return l.bal + l.bal * r * Math.min(feeMonths, left); };
+  // early-settlement cost (SAMA cap): the balance plus the next min(feeMonths, months left) months' profit on the DECLINING balance
+  const settleCost = (l) => {
+    const r = l.rate / 100 / 12, left = l.kind === "existing" ? Math.max(0, l.left) : Math.max(0, l.n - l.monthsPaid), inst = l.kind === "existing" ? l.installment : l.pmt;
+    let bal = l.bal, fee = 0;
+    for (let k = 0; k < Math.min(feeMonths, left) && bal > 0.5; k++) { const i = bal * r; fee += i; bal -= Math.min(bal + i, inst) - i; }
+    return l.bal + fee;
+  };
   const instOfAny = (l) => l.kind === "existing" ? l.installment : l.pmt;
 
   let cash = p.cashAvailable, rCash = p.cashAvailable;
@@ -493,18 +499,22 @@ function rePlanSimulate(p, prj, plan) {
     // paying off a loan only helps while the instalment test (not LTV or the product cap) limits the mortgage
     const more = () => dbrBound() && (forMax || gapFn() > capacityOf(f, ltvCap, productCap).cap + 1);
     let guard = 0;
-    while (more() && pool().length && guard++ < 20) {
-      const pick = pool().slice().sort((a, b) => instOfAny(b) / settleCost(b) - instOfAny(a) / settleCost(a))[0];
+    const skipped = new Set();   // loans your own cash can't cover: skip them and try the next one
+    while (more() && guard++ < 20) {
+      const cands = pool().filter((l) => !skipped.has(l));
+      if (!cands.length) break;
+      const pick = cands.sort((a, b) => instOfAny(b) / settleCost(b) - instOfAny(a) / settleCost(a))[0];
       // the bank wants the old loan cleared BEFORE it grants the mortgage, so the payoff must come from cash you already have
       // (a land mortgage drawn this month is owed to the seller — it is not your cash)
       const own = cash - (lm.startedAt === t ? lm.amount : 0);
       if (own - settleCost(pick) < 0) {
-        flags.push(`Not enough cash of your own to pay off ${pick.name} (${fS(settleCost(pick))}) before the ${f.label.toLowerCase()} — the mortgage is limited to what fits without that payoff.`);
+        skipped.add(pick);
         events.push({ t, kind: "settle", text: `Cannot pay off ${pick.name} (${fSAR(settleCost(pick))}) before the ${f.label.toLowerCase()}: only ${fSAR(Math.max(0, own))} of your own cash on hand.` });
-        break;
+        continue;
       }
       roomSettled += pick.bal; doSettle(pick, t, `from your own cash, before the bank grants the ${forMax ? "largest " : ""}${f.label.toLowerCase()} — it frees instalment room in the bank's debt-burden test so the bank can lend more`);
     }
+    if (skipped.size && more()) flags.push(`Not enough cash of your own to pay off ${[...skipped].map((l) => l.name).join(" + ")} before the ${f.label.toLowerCase()} — the mortgage is limited to what fits without ${skipped.size > 1 ? "those payoffs" : "that payoff"}.`);
   }
   function originate(t, f, mode, fixedAmt, ltvCap, productCap, proceedsFirst) {
     const cashBefore = cash;
@@ -629,15 +639,17 @@ function rePlanSimulate(p, prj, plan) {
     if (t >= 1) loans.forEach((l) => { if (l.settledAt !== null || l.bal <= 0.5) return; const i = l.bal * l.rate / 100 / 12; const pay = loanPay(l.bal, i, l.installment); l.bal -= pay - i; l.left -= 1; l.interestPaid += i; existInst += pay; existInterest += i; });
     const pays = {};
     facs.forEach((f) => {
-      let pay = 0, int = 0;
+      let pay = 0, int = 0, extra = 0;
       if (t >= 1 && f.bal > 0.5 && f.settledAt === null && f.startedAt !== null && t > f.startedAt) {
         int = f.bal * f.rate / 100 / 12; pay = Math.min(f.pmt + (f.key === "lm" ? Math.max(0, plan.extraMo) : 0), f.bal + int); f.bal -= pay - int; f.interestPaid += int; f.monthsPaid++;
+        extra = Math.max(0, pay - f.pmt);   // a voluntary extra payment is yours, not an instalment the bank tests
       }
-      pays[f.key] = pay; pays[f.key + "Int"] = int;
+      pays[f.key] = pay; pays[f.key + "Int"] = int; pays[f.key + "Extra"] = extra;
     });
     const value = prj.valueAt(t);
     const ownerCost = occupied ? value * p.maintPct / 100 / 12 + p.insurance / 12 : 0;
     const newPay = pays.lm + pays.eq + pays.pl + pays.pl2 + pays.co + pays.rf;
+    const extraPay = pays.lmExtra + pays.eqExtra + pays.plExtra + pays.pl2Extra + pays.coExtra + pays.rfExtra;
     cash -= existInst + newPay + ownerCost;
     rCash -= renterInst[t];
     // net-worth basis: new-loan instalments and upkeep are plain costs; old-loan instalments you no longer pay and rent you no
@@ -655,7 +667,7 @@ function rePlanSimulate(p, prj, plan) {
     if (occupied && cashRestoredT === null && cash >= p.cashBuffer) cashRestoredT = t;
     if (occupied && breakEvenMonth === null && advantage >= 0) breakEvenMonth = t;
     if (debtFreeT === null && t > 0 && debt < 0.5) debtFreeT = t;
-    months.push({ t, year: yearOf(t), cash, rCash, bcash, ccash, bRet, cRet, rentIn, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? p.income : 0, liv: t >= 1 ? p.livingExpenses : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, dbr: (existInst + newPay) / p.income * 100 });
+    months.push({ t, year: yearOf(t), cash, rCash, bcash, ccash, bRet, cRet, rentIn, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? p.income : 0, liv: t >= 1 ? p.livingExpenses : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, extraPay, dbr: (existInst + newPay - extraPay) / p.income * 100 });
   }
   const nY = yearOf(H), years = [];
   for (let y = 0; y <= nY; y++) {
@@ -668,7 +680,7 @@ function rePlanSimulate(p, prj, plan) {
   const newDebtInterest = facs.reduce((a, f) => a + f.interestPaid + f.fees, 0) + settleFees;   // profit + bank fees + early-settlement fees
   const totalInterest = newDebtInterest + loans.reduce((a, l) => a + l.interestPaid, 0);
   const peakDbr = Math.max(...months.map((m) => m.dbr));
-  const peakInst = Math.max(...months.map((m) => m.existInst + m.lmPay + m.eqPay + m.plPay + m.coPay + m.rfPay));
+  const peakInst = Math.max(...months.map((m) => m.existInst + m.lmPay + m.eqPay + m.plPay + m.coPay + m.rfPay - m.extraPay));
   const feasible = shortfall <= 0;
   const recoveryMonths = cashRestoredT != null ? cashRestoredT - prj.occupy : null;
   const recoveryOk = feasible && recoveryMonths != null && recoveryMonths <= p.recoveryMonths;
@@ -701,6 +713,14 @@ function computeRE(inp) {
   const bestFeasible = home ? (ranked.find((r) => r.feasible && r.recoveryOk) || ranked.find((r) => r.feasible) || null) : (ranked.find((r) => r.affordable && r.cashOk && r.ltvOk) || null);
   const existingInst = p.existingLoans.reduce((a, l) => a + (l.balance > 0 ? l.installment : 0), 0);
   const existingDbr = p.income > 0 ? existingInst / p.income * 100 : 0;
+  // existing loans whose instalment doesn't fit their balance, rate and months left (the simulation raises a too-low
+  // instalment to the one that clears the loan on time; a higher one ends the loan early)
+  const warnings = [];
+  p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).forEach((l) => {
+    const left = Math.max(1, Math.round(l.monthsLeft)), need = rePmt(l.balance, l.rate, left);
+    if (l.installment < need - 1) warnings.push(`${l.name}: an instalment of ${fSAR(l.installment)} does not clear ${fS(l.balance)} in ${left} months at ${l.rate}% a year (APR) — the tool uses ${fSAR(need)}. Check the rate or the months left.`);
+    else if (l.installment > need * 1.02 + 1) { let b = l.balance, k = 0; const r = l.rate / 1200; while (b > 0.5 && k < 1200) { const i = b * r; b -= Math.min(b + i, l.installment) - i; k++; } warnings.push(`${l.name}: an instalment of ${fSAR(l.installment)} clears ${fS(l.balance)} in about ${k} months, not ${left}. Check the rate (APR) or the months left.`); }
+  });
   // borrowing-capacity timeline from the existing loans alone (planned settlements honoured): when does room open up?
   const capTimeline = (() => {
     const H = Math.round(p.horizon * 12), n = Math.max(1, Math.round(p.lmTenure * 12)), r = reEffRate(p, p.lmRate, n), nPl = Math.max(1, Math.round(p.plTenure * 12)), rPl = reEffRate(p, p.plRate, nPl);
@@ -718,7 +738,7 @@ function computeRE(inp) {
     }
     return rows;
   })();
-  const household = { existingInst, existingDbr, dbrRoom: Math.max(0, p.income * p.dbrCap / 100 - existingInst), perLoanRoom: p.income * p.perLoanCap / 100, mortgageRoom: p.income * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100, savings: p.income - p.livingExpenses - p.rentNow - existingInst, capTimeline };
+  const household = { warnings, existingInst, existingDbr, dbrRoom: Math.max(0, p.income * p.dbrCap / 100 - existingInst), perLoanRoom: p.income * p.perLoanCap / 100, mortgageRoom: p.income * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100, savings: p.income - p.livingExpenses - p.rentNow - existingInst, capTimeline };
   // renter path is common to all options (same rent, same alt return) — take it from any live option
   const renter = live[0] ? live[0].months.map((m) => ({ t: m.t, rentEq: m.rentEq })) : [];
   let verdict, vColor;
@@ -842,7 +862,7 @@ function optimizeRE(inp, opts) {
     const best = { ...list[0] };
     const r = best._r; delete best._r;
     best.events = r.events; best.facilities = r.facilities;
-    best.bucket = r.months.map((m) => ({ t: m.t, existing: m.existInst, lm: m.lmPay, eq: m.eqPay, pl: m.plPay, co: m.coPay, rf: m.rfPay }));
+    best.bucket = r.months.map((m) => ({ t: m.t, existing: m.existInst, lm: m.lmPay - m.extraPay, eq: m.eqPay, pl: m.plPay, co: m.coPay, rf: m.rfPay }));
     const lite = (x) => { const { _r, flags, ...rest } = x; return rest; };
     const sig = (x) => x.name + "|" + [x.lm, x.eq, x.pl, x.co, x.pl2, x.settled].map((v) => Math.round(v / 1000)).join("|");
     const seen = new Set([sig(best)]), alts = [];

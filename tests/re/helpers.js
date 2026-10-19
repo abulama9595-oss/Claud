@@ -8,8 +8,11 @@ function loadEngine() {
   const files = ['engine.js', 're-engine.js', 're-ui.js'].filter((f) => fs.existsSync(path.join(ROOT, f)));
   const ctx = { console, Math, Date, JSON, Array, Object, Number, String, Infinity, NaN, isNaN, isFinite, parseFloat, parseInt, Set, Map, RegExp, Error };
   ctx.globalThis = ctx; ctx.window = ctx; vm.createContext(ctx);
-  for (const f of files) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
-  return ctx;
+  // top-level const/let are not properties of the context, so collect every top-level name and expose it
+  const srcs = files.map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')), names = new Set();
+  for (const s of srcs) for (const m of s.matchAll(/^(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)/gm)) names.add(m[1]);
+  vm.runInContext(srcs.join('\n;\n') + '\n;globalThis.__api = {' + [...names].map((n) => `${n}: typeof ${n} === "undefined" ? undefined : ${n}`).join(', ') + '};', ctx, { filename: 'engine-bundle.js' });
+  return ctx.__api;
 }
 
 // deterministic PRNG so failures reproduce
