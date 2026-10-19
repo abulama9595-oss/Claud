@@ -94,3 +94,12 @@ test('stress tests, break-evens, ready villa and loan worth agree with direct re
     assert.ok(near(w.gain, r.econAdv - wo.econAdv, 1e-6) && near(w.perMillionPV, (r.econPV - wo.econPV) / w.amount * 1e6, 1e-6));
   }
 });
+
+test('an existing loan quoted flat is the same loan at its APR (term = months paid + months left)', () => {
+  const flat = { id: 7, name: 'Flat loan', balance: 300000, installment: 6200, monthsLeft: 48, ageMonths: 12, rate: 3.5, rateType: 'flat' };
+  const apr = { ...flat, rateType: undefined, rate: E.reFlatToApr(3.5, 60) };
+  const a = E.computeRE({ ...FAMILY, existingLoans: [flat] }), b = E.computeRE({ ...FAMILY, existingLoans: [apr] });
+  assert.strictEqual(key(a), key(b));
+  const once = E.mergeRE({ existingLoans: [flat] }), twice = E.mergeRE(once);
+  assert.strictEqual(twice.existingLoans[0].rate, once.existingLoans[0].rate, 'merging again does not convert twice');
+});

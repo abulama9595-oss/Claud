@@ -73,6 +73,7 @@ function fundingBridgeRows(r, upto, inp, prj) {
   add("Construction and finishing", -(spend - landPart), `${fCal(prj.start + 1)} → ${fCal(Math.min(upto, prj.start + prj.bm))}`);
   add("Bank fees on new loans", -r.facilities.filter((f) => inRange(f.startedAt) && f.key !== "rf").reduce((a, f) => a + f.fees, 0));
   (r.prepaid || []).filter((x) => inRange(x.t)).forEach((x) => add(`Mortgage paid off early: ${x.name.toLowerCase()}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`));
+  if (r.ownSale && inRange(r.ownSale.t)) add("Sale of the home you lived in, net", r.ownSale.net, `${fCal(r.ownSale.t)} · after selling costs${r.ownSale.payoff > 0 ? " and repaying its mortgage" : ""}`);
   const total = rows.reduce((a, x) => a + x.v, 0);
   const ret = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + (x.cRet || 0), 0);
   // does the salary really carry living costs + every instalment each month?
@@ -135,3 +136,63 @@ function parseLoans(text) {
   // tabs or semicolons win, so "95,000" survives when columns are tab- or semicolon-separated
   return text.split(/\n+/).map((l) => l.trim()).filter((l) => l && !/^name/i.test(l)).map((l, i) => { const c = l.split(/[;\t]/.test(l) ? /[;\t]/ : /,/).map((s) => s.trim()); return { id: Date.now() + i, name: c[0] || `Loan ${i + 1}`, balance: num(c[1]), installment: num(c[2]), monthsLeft: Math.round(num(c[3])), rate: c[4] != null && c[4] !== "" ? num(c[4]) : 6 }; }).filter((l) => l.balance > 0 || l.installment > 0);
 }
+
+/* ---------- preview-page helpers (also usable by the main page) ---------- */
+// one signed style for numbers: −2.15M / −12,306 (never brackets)
+const fM = (n) => n == null || isNaN(n) ? "—" : (Math.round(n) < 0 ? "−" : "") + fS(Math.abs(n));
+const fSARm = (n) => n == null || isNaN(n) ? "—" : (Math.round(n) < 0 ? "−" : "") + fSAR(Math.abs(n));
+
+// rule-6 cash on hand vs your bank balance the same month: the bank also holds what your salary left after living costs,
+// rent, every instalment and upkeep (+ any rent received), and the return earned on the balance
+function cashReconcile(r, upto, inp, prj) {
+  const fb = fundingBridgeRows(r, upto, inp, prj);
+  const salary = r.months.filter((x) => x.t >= 1 && x.t <= upto).reduce((a, x) => a + x.inc - x.liv - x.rentPaid + x.rentIn - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost, 0);
+  const growth = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.ret, 0);
+  return { onHand: fb.total, salary, growth, bank: r.months[upto].cash, fb };
+}
+
+// a strategy's title in plain words, generated from its settings (your own name is kept as a subtitle)
+function planTitle(o, build) {
+  const when = { start: "now", land: "when the land is bought", build: "at build start", completion: "at move-in", month: "in a month you chose" };
+  const pl = o.plWhen && o.plWhen !== "none", pl2 = !!o.pl2Use, parts = [];
+  if (o.lmUse) parts.push(build ? "mortgage the land" : "mortgage the purchase");
+  if (o.eqWhen && o.eqWhen !== "none") parts.push(`mortgage the property you own ${when[o.eqWhen] || ""}`.trim());
+  if (pl || pl2) parts.push(pl && pl2 ? `personal loans ${when[o.plWhen]} and at move-in` : pl ? `personal loans ${when[o.plWhen]}` : "personal loans at move-in");
+  if (o.coUse) parts.push("a cash-out mortgage on the new home at move-in");
+  if (!parts.length) return "Pay from your cash — no new loans";
+  const t = parts.join(", then ");
+  return o.lmUse || (o.eqWhen && o.eqWhen !== "none") || o.coUse ? t.charAt(0).toUpperCase() + t.slice(1) : "No mortgage: " + t;
+}
+
+// what a strategy actually does, in date order, as short steps (from its result)
+function planSteps(r, build) {
+  const s = [];
+  (r.payoffs || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off ${x.name}`, amount: x.cost, note: "from your cash" }));
+  r.facilities.filter((f) => f.startedAt != null && f.amount > 0 && f.key !== "rf").forEach((f) => {
+    const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : f.key === "eq" ? "Mortgage on your property" : f.key === "co" ? "Cash-out mortgage" : f.split ? "Two personal loans" : "Personal loan";
+    const note = f.key === "lm" ? "paid to the seller" : f.refi ? `the bank clears ${f.refi.names.join(" + ")}; ${fS(f.refi.net)} to you` : "paid to you";
+    s.push({ t: f.startedAt, kind: f.key, label, amount: f.amount, note });
+  });
+  (r.prepaid || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off the ${x.name.toLowerCase()} early`, amount: x.cost, note: "from your cash" }));
+  if (r.ownSale) s.push({ t: r.ownSale.t, kind: "cash", label: "Sell the home you lived in", amount: r.ownSale.net, note: "net, into your cash" });
+  return s.sort((a, b) => a.t - b.t);
+}
+
+// one control for when personal loans are taken (it sets plWhen and pl2Use together)
+const RE_PL_TIMING = [
+  ["none", "No personal loans", { plWhen: "none", pl2Use: false }],
+  ["build", "When construction starts", { plWhen: "build", pl2Use: false }],
+  ["movein", "At move-in", { plWhen: "none", pl2Use: true }],
+  ["build+movein", "When construction starts, and again at move-in", { plWhen: "build", pl2Use: true }],
+  ["start", "Now", { plWhen: "start", pl2Use: false }],
+  ["start+movein", "Now, and again at move-in", { plWhen: "start", pl2Use: true }],
+  ["land", "When the land is bought", { plWhen: "land", pl2Use: false }],
+  ["land+movein", "When the land is bought, and again at move-in", { plWhen: "land", pl2Use: true }],
+  ["month", "In a month I choose", { plWhen: "month", pl2Use: false }],
+  ["month+movein", "In a month I choose, and again at move-in", { plWhen: "month", pl2Use: true }],
+  ["completion", "At move-in, before any cash-out (older setting)", { plWhen: "completion", pl2Use: false }],
+];
+const plTimingOf = (o) => { const w = o.plWhen || "none"; if (w === "completion") return "completion"; return w === "none" ? (o.pl2Use ? "movein" : "none") : w + (o.pl2Use ? "+movein" : ""); };
+
+// instalments running each month by loan, for the borrowing-limit chart (a voluntary extra payment is left out)
+const bucketOf = (r) => r.months.map((m) => ({ t: m.t, inc: m.t >= 1 ? m.inc : (r.months[1] ? r.months[1].inc : 0), existing: m.existInst, lm: m.lmPay - m.extraPay, eq: m.eqPay, pl: m.plPay, co: m.coPay, rf: m.rfPay }));

@@ -202,7 +202,13 @@ function mergeRE(inp) {
     if (q.rfWhen && q.rfWhen !== "none") { if (!q.plWhen || q.plWhen === "none") { q.plWhen = q.rfWhen; q.plMonth = q.rfMonth; } q.rfWhen = "none"; }
     return q;
   });
-  p.existingLoans = (inp && inp.existingLoans ? inp.existingLoans : RE_BASE.existingLoans).map((l, i) => ({ id: i + 1, name: `Loan ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, canSettle: true, canRefi: true, ageMonths: null, ...l }));
+  p.existingLoans = (inp && inp.existingLoans ? inp.existingLoans : RE_BASE.existingLoans).map((l, i) => {
+    const q = { id: i + 1, name: `Loan ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, canSettle: true, canRefi: true, ageMonths: null, ...l };
+    // a rate quoted flat ("hamish": on the original amount, over the whole term) becomes the APR the loan amortises at;
+    // the whole term is the months already paid + the months left. Marked "apr" afterwards, so merging again changes nothing.
+    if (q.rateType === "flat") { q.flatRate = q.rate; q.rate = reFlatToApr(q.rate, Math.max(1, Math.round((q.ageMonths || 0) + (q.monthsLeft || 0)))); q.rateType = "apr"; }
+    return q;
+  });
   return p;
 }
 // principal an annuity of `pmt` per month supports at rAnnual over n months
