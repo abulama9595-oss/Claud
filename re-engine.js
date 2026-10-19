@@ -869,12 +869,18 @@ function computeRE(inp) {
   return { p, prj, results, live, ranked, best, bestFeasible, renter, verdict, vColor, household };
 }
 
+// one strategy (or rental option) on its own: what the sensitivity chart and the start-date sweep need, without the others
+function reRunOne(q, idx) {
+  const pq = mergeRE(q), prj = reProject(pq), home = pq.mode === "home";
+  const o = home ? pq.plans[idx] : pq.options[idx];
+  return { prj, r: !o || !o.enabled ? null : home ? reRunPlan(pq, prj, o) : reSimulate(pq, prj, o) };
+}
 // one-way sensitivity (±20%) on the headline metric of one option
 function tornadoRE(inp, idx) {
   const p = mergeRE(inp);
   const home = p.mode === "home";
-  const metric = (m) => { const r = m.results[idx]; if (!r) return 0; return home ? r.econAdv : (r.irr == null ? 0 : r.irr * 100); };
-  const base = metric(computeRE(p));
+  const metric = (q) => { const { r } = reRunOne(q, idx); if (!r) return 0; return home ? r.econAdv : (r.irr == null ? 0 : r.irr * 100); };
+  const base = metric(p);
   const build = p.acquire === "build";
   const drivers = [
     build ? ["Construction cost / m²", "buildCost"] : ["Property price", "propertyPrice"],
@@ -891,12 +897,10 @@ function tornadoRE(inp, idx) {
     return { ...p, [k]: p[k] * f };
   };
   return drivers.map(([label, k]) => {
-    const a = metric(computeRE(vary(k, 0.8))) - base, b = metric(computeRE(vary(k, 1.2))) - base;
+    const a = metric(vary(k, 0.8)) - base, b = metric(vary(k, 1.2)) - base;
     return { label, lo: Math.min(a, b), hi: Math.max(a, b), swing: Math.abs(b - a) };
   }).sort((x, y) => y.swing - x.swing);
 }
-
-// run one strategy at every construction-start month to find the best time to build
 function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
   const p = mergeRE(inp);
   maxDelay = maxDelay == null ? 48 : maxDelay; step = step || 3;
@@ -906,9 +910,9 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
   const cur = Math.max(p.buildStart || 0, p.landMonth || 0); if (!ds.includes(cur)) { ds.push(cur); ds.sort((a, b) => a - b); }
   for (const d of ds) {
     const q = { ...p, buildStart: d, landMonth: landWithBuild ? d : Math.min(p.landMonth || 0, d) };
-    const m = computeRE(q); const r = m.results[idx];
+    const { r, prj: m } = reRunOne(q, idx);
     if (!r) continue;
-    rows.push({ delay: d, feasible: r.feasible, recoveryOk: r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.lm.amount, eq: r.eq.amount, pl: r.pl.amount, co: r.co.amount, rf: r.rf.amount, newDebt: r.newDebtTotal, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: m.prj.total, occupy: m.prj.occupy, bufferOk: r.minCash >= p.cashBuffer });
+    rows.push({ delay: d, feasible: r.feasible, recoveryOk: r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.lm.amount, eq: r.eq.amount, pl: r.pl.amount, co: r.co.amount, rf: r.rf.amount, newDebt: r.newDebtTotal, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: m.total, occupy: m.occupy, bufferOk: r.minCash >= p.cashBuffer });
   }
   // "best" = the EARLIEST start that is executable AND gets cash back to the buffer within your recovery window (fallback: earliest executable)
   const ok = rows.filter((r) => r.feasible);
@@ -955,11 +959,17 @@ function optimizeRE(inp, opts) {
     netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: prj.total, occupy: prj.occupy, start: prj.start, landMonth: prj.landMonth, flags: r.flags, _r: r });
   const rank = (a, b) => (b.ok - a.ok) || (b.feasible - a.feasible) || (b.econAdv - a.econAdv) || (a.peakInst - b.peakInst);
   let tried = 0;
-  const runStart = (q, delay, planned) => {
+  // evaluate a slice of the mixes for one start (the page fills the start-date table a slice at a time); only each slice's
+  // leader keeps its full result, which is all the finish step needs
+  const evalSlice = (q, from, to) => {
     const p = mergeRE(q), prj = reProject(p);
-    const evalAll = (cs) => cs.map((o) => summarize(reRunPlan(p, prj, o), prj));
-    let list = evalAll(combos).sort(rank);
-    tried = combos.length;
+    const list = combos.slice(from, to).map((o) => summarize(reRunPlan(p, prj, o), prj)).sort(rank);
+    list.forEach((x, k) => { if (k > 0) delete x._r; });
+    return { list, prj, p };
+  };
+  const runStart = (q, delay, planned) => { const { list, prj, p } = evalSlice(q, 0, combos.length); tried = combos.length; return finishStart(list, delay, planned, prj, p); };
+  const finishStart = (list, delay, planned, prj, p) => {
+    list.sort(rank);
     // name each mix by what it actually drew, and offer a cleaned plan (unused facilities switched off) for copying into a strategy slot
     list.forEach((x) => {
       const o = x.plan, parts = [];
@@ -986,6 +996,8 @@ function optimizeRE(inp, opts) {
   };
   const curStart = Math.max(p0.buildStart || 0, p0.landMonth || 0);
   const at = (d) => ({ ...p0, buildStart: d, landMonth: landWithBuild ? d : Math.min(p0.landMonth || 0, d) });
+  if (opts.slice) { const d = opts.delays[0], planned = d === curStart && !landWithBuild; return { part: evalSlice(planned ? p0 : at(d), opts.slice[0], opts.slice[1]).list, combos: combos.length }; }
+  if (opts.merge) { const { delay, planned, parts } = opts.merge, q = planned ? p0 : at(delay), p = mergeRE(q); return { start: finishStart([].concat(...parts), delay, planned, reProject(p), p), combos: combos.length }; }
   if (opts.plannedOnly) { const planned = runStart(p0, curStart, true); return { starts: null, planned, earliest: null, richest: null, combos: tried }; }
   if (opts.delays) { const starts = opts.delays.map((d) => (d === curStart && !landWithBuild) ? runStart(p0, d, true) : runStart(at(d), d, false)); return { starts, planned: null, earliest: null, richest: null, combos: tried }; }
   const starts = [];

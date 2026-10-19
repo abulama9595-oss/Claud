@@ -152,3 +152,15 @@ test('early mortgage payoff (your option): paid from cash after move-in, with th
   assert.equal(r.months[t].debtLm, 0);
   assert.ok(r.months.slice(t + 1).every((mo) => mo.lmPay === 0), 'no instalments after the payoff');
 });
+
+test('optimizer slices merge to exactly the full search', () => {
+  const inp = { ownedValue: 3000000 };
+  const full = E.optimizeRE(inp, { delays: [6] }).starts[0];
+  const n = E.optimizeRE(inp, { delays: [6], slice: [0, 1] }).combos, parts = [];
+  for (let a = 0; a < n; a += 48) parts.push(E.optimizeRE(inp, { delays: [6], slice: [a, Math.min(n, a + 48)] }).part);
+  const merged = E.optimizeRE(inp, { merge: { delay: 6, planned: false, parts } }).start;
+  assert.equal(merged.best.name, full.best.name);
+  assert.ok(Math.abs(merged.best.econAdv - full.best.econAdv) < 1e-6);
+  assert.equal(JSON.stringify(merged.alts.map((a) => a.name)), JSON.stringify(full.alts.map((a) => a.name)));
+  assert.equal(merged.nOk, full.nOk);
+});
