@@ -1,7 +1,9 @@
 // Shared helpers for the real-estate engine tests (node --test tests/re/).
 // Scenarios here are synthetic — never put anyone's real figures in this folder.
 const fs = require('fs'), path = require('path'), vm = require('vm');
-const ROOT = path.resolve(__dirname, '..', '..');
+// the model files sit at the repository root (Claud) or under web/ (the studio mirror)
+const REPO = path.resolve(__dirname, '..', '..');
+const ROOT = fs.existsSync(path.join(REPO, 're-engine.js')) ? REPO : path.join(REPO, 'web');
 
 // engine.js + re-engine.js (+ re-ui.js when present) in one isolated context, exactly as the page loads them
 function loadEngine() {
