@@ -52,7 +52,8 @@ function reExpl(inp) {
     savings: "Income − living expenses − rent − existing instalments, per month, today.",
     earliest: "Earliest construction start (every 3 months from today, plus your planned start) that never runs out of cash and gets cash back to your cushion within your recovery window; if no start passes both, the earliest that never runs out of cash is shown. The land purchase stays where you set it unless the start comes first, in which case it moves to the start.",
     cost: "Land (grown at the appreciation rate to the purchase month) + RETT + the broker's fee on the land + construction (built-up m² × SAR/m², inflated to the start month) + soft costs + contingency + extras + any cost overrun + VAT.",
-    value: "Finished home's market value at completion: land + (construction + soft + extras) × (1 + self-build uplift), grown at the appreciation rate. The uplift is on what you build, not on the land; VAT, RETT, fees, contingency and overruns add no value.",
+    value: `The home's market value = land + building. The land grows at the appreciation rate (${inp.appreciation}% a year) from the month it is bought. The building is worth what it costs to build (construction + soft costs + extras) × (1 + self-build uplift ${inp.devMarginPct}%) — the uplift is on what you build, not on the land — added as it is built, then it loses ${inp.buildDeprPct == null ? 2 : inp.buildDeprPct}% of that value a year from move-in (straight-line, never below zero). VAT, RETT, fees, contingency and overruns add no value. A ready home you buy keeps its price + finishing growing with the market.`,
+    buildDepr: "Wear and age: each year from move-in the building loses this % of what it was worth when finished (straight-line, so 2% means it is worth nothing after 50 years). The land is not affected — it keeps growing at the appreciation rate. 0 keeps the building's value flat.",
     terms: "One set of terms per loan type, used by every strategy and by the optimizer. Rates are entered as your bank quotes them (flat \"hamish\" or APR — the switch on this card); the tool converts a flat rate to the APR it amortises with, and shows the effective yearly rate (monthly compounding) next to it.",
   };
 }
@@ -196,3 +197,34 @@ const plTimingOf = (o) => { const w = o.plWhen || "none"; if (w === "completion"
 
 // instalments running each month by loan, for the borrowing-limit chart (a voluntary extra payment is left out)
 const bucketOf = (r) => r.months.map((m) => ({ t: m.t, inc: m.t >= 1 ? m.inc : (r.months[1] ? r.months[1].inc : 0), existing: m.existInst, lm: m.lmPay - m.extraPay, eq: m.eqPay, pl: m.plPay, co: m.coPay, rf: m.rfPay }));
+
+/* ---------- where a plan's "vs not building" comes from (adds up exactly to r.econAdv) ----------
+   Salary and living costs are the same on both sides, so they drop out; principal you borrow and repay drops out against
+   the debt still owed. What is left: */
+function reWealthParts(r) {
+  const ms = r.months, end = ms[ms.length - 1], sum = (k) => ms.reduce((a, m) => a + (m[k] || 0), 0);
+  const refi = [r.pl, r.pl2].filter((f) => f && f.refi && f.refi.items).flatMap((f) => f.refi.items);
+  const oldPaid = (r.payoffs || []).filter((x) => x.old !== false).reduce((a, x) => a + x.cost, 0) + refi.filter((x) => x.old).reduce((a, x) => a + x.cost, 0);
+  const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + (r.ownSale ? r.ownSale.fee : 0);
+  const parts = [
+    { key: "value", label: "The home's value at the end", v: end.value },
+    { key: "cost", label: "What the project cost (land, taxes, fees, construction)", v: -sum("spend") },
+    { key: "newLoans", label: "Profit and fees on the new loans", v: -(sum("newInt") + newFees) },
+    { key: "oldLoans", label: "Old loans: profit and fees, compared with not building", v: end.oldSavedCum + sum("renterSettle") + end.oldDebtGap - oldPaid },
+    { key: "rent", label: "Rent you stop paying", v: end.rentSavedCum },
+    { key: "rentIn", label: "Rent you receive", v: end.rentInCum },
+    { key: "upkeep", label: "Upkeep of the new home", v: -end.upkeepCum },
+    { key: "sold", label: "The home you sold (price after costs, less what it would be worth)", v: r.ownSale ? r.ownSale.value - r.ownSale.costs - end.ownGone : -end.ownGone },
+    { key: "growth", label: "Growth on your cash, compared with not building", v: sum("ret") - sum("rRet") },
+  ];
+  return { parts, total: parts.reduce((a, x) => a + x.v, 0) };
+}
+
+/* ---------- which working copy opens on the main page (after the new layout replaced the old one) ----------
+   main = the page's own autosave (re_current), preview = the preview layout's autosave (re_preview_current) */
+function reBootCopy(main, preview) {
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (main && preview) return same(main, preview) ? { inp: main, offer: null, drop: true } : { inp: main, offer: preview, drop: false };
+  if (preview) return { inp: preview, offer: null, drop: true };
+  return { inp: main || null, offer: null, drop: false };
+}

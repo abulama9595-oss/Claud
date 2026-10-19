@@ -38,3 +38,21 @@ test('breakdowns add up: rule-6 cash is growth-free, rule-7 rows sum to net wort
   }
   assert.deepStrictEqual(bad.slice(0, 10), []);
 });
+
+test('where "vs not building" comes from: the parts add up to it exactly', () => {
+  const bad = [];
+  for (const { label, inp } of scenarios(E, 120).map((s, k) => !s.inp.plans ? s : { ...s, inp: { ...s.inp, plans: s.inp.plans.map((o, j) => j === 2 ? { ...o, lmUse: true, prepayAfter: 12, pl2Use: true, plWhen: 'build' } : o), ...(k % 4 === 1 ? { ownHomePlan: 'sell' } : k % 4 === 2 ? { partRentAnnual: 50000, ownHomePlan: 'let' } : k % 4 === 3 ? { cashZakatPct: 2.5 } : {}) } })) {
+    const m = E.computeRE(inp);
+    m.results.forEach((r, i) => { if (!r) return; const w = E.reWealthParts(r); if (!near(w.total, r.econAdv)) bad.push(`${label} S${i + 1}: parts ${w.total} vs ${r.econAdv}`); });
+  }
+  assert.deepStrictEqual(bad.slice(0, 8), []);
+});
+
+test('the working copy that opens after the switch', () => {
+  const a = { income: 1 }, b = { income: 2 }, j = (x) => JSON.stringify(x);   // compared as JSON: the engine runs in its own context
+  assert.strictEqual(j(E.reBootCopy(null, null)), j({ inp: null, offer: null, drop: false }), 'neither: defaults');
+  assert.strictEqual(j(E.reBootCopy(a, null)), j({ inp: a, offer: null, drop: false }), 'only the main copy');
+  assert.strictEqual(j(E.reBootCopy(null, b)), j({ inp: b, offer: null, drop: true }), 'only the preview copy: open it, then drop the old key');
+  assert.strictEqual(j(E.reBootCopy(a, { income: 1 })), j({ inp: a, offer: null, drop: true }), 'both, the same');
+  assert.strictEqual(j(E.reBootCopy(a, b)), j({ inp: a, offer: b, drop: false }), 'both, different: open the main copy, offer the preview copy');
+});

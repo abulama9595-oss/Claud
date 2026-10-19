@@ -561,7 +561,7 @@ function rePlanSimulate(p, prj, plan) {
   }
   function doSettle(l, t, reason) {
     const cost = settleCost(l), fee = cost - l.bal, inst = instOfAny(l);
-    cash -= cost; ccash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee });
+    cash -= cost; ccash -= cost; settledTotal += l.bal; settleFees += fee; l.settledAt = t; l.bal = 0; payoffs.push({ t, name: l.name, cost, fee, old: l.kind === "existing" });
     events.push({ t, kind: "settle", text: `Settle ${l.name}: ${fSAR(cost)} (incl. ${fSAR(fee)} early-settlement fee) — frees ${fSAR(inst)}/mo — ${reason}.` });
   }
   // only PERSONAL loans may be paid off early: existing loans you allow, the strategy's personal loan, a refinance taken as a personal loan.
@@ -700,12 +700,12 @@ function rePlanSimulate(p, prj, plan) {
       return;
     }
     const before = instNow;
-    best.S.forEach((l) => { const cost = settleCost(l); settleFees += cost - l.bal; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; });
+    const cleared = best.S.map((l) => { const cost = settleCost(l), it = { id: idOf(l), name: l.name, cost, fee: cost - l.bal, old: l.kind === "existing" }; settleFees += it.fee; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; return it; });
     f.bal = best.amount; f.amount = best.amount; f.split = best.split; f.startedAt = t; f.fees = 0;
     f.pmt = best.split ? rePmt(best.split[0], f.rate, f.n) + rePmt(best.split[1], f.rate, f.n) : rePmt(best.amount, f.rate, f.n);
     cash += best.amount - best.payoff; ccash += best.amount - best.payoff;
     f.capacity = { t, cap: best.amount, room: best.room, limitedBy: best.limitedBy, want: best.amount, mode: "max", taken: best.amount, gap: 0 };
-    f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed } : null;
+    f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed, items: cleared } : null;
     const loans = best.split ? `two personal loans, ${fS(best.split[0])} + ${fS(best.split[1])}` : `a personal loan of ${fS(best.amount)}`;
     const basis = refiMode === "pick" ? "the loans you chose" : refiMode === "cash" ? "the most cash in hand" : "the best value";
     let note = "";
