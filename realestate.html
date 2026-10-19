@@ -21,7 +21,8 @@
     body { background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; overflow-x: hidden; }
     button { font-family: inherit; }
     .mono { font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace; }
-    .flex { display: flex; } .items-center { align-items: center; } .items-start { align-items: flex-start; } .justify-between { justify-content: space-between; } .flex-wrap { flex-wrap: wrap; } .grid { display: grid; }
+    .flex { display: flex; } .items-center { align-items: center; } .items-start { align-items: flex-start; } .justify-between { justify-content: space-between; } .flex-wrap { flex-wrap: wrap; } .grid { display: grid; grid-template-columns: minmax(0, 1fr); }
+    select { min-width: 0; }   /* a list with long choices must not widen its column (phones) */
     input[type=text], input[type=number], input[type=month], select, textarea { font-family: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--lineIn); border-radius: 6px; background: #fff; color: var(--text); max-width: 100%; min-height: 32px; }
     input[type=number] { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; text-align: right; }
     textarea { width: 100%; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; }
@@ -1052,7 +1053,7 @@
         } else if (mode === "pick") {
           s.push(`You chose the loans yourself: the bank ${out}.`);
         } else {
-          s.push(`${mode === "auto" ? "Auto" : "Best value"}: the bank ${out} — of the ${opts.length} ${opts.length === 1 ? "way" : "ways"} it could do this, that leaves you richest in today's money.`);
+          s.push(`${mode === "auto" ? "Auto" : "Best value"}: the bank ${out} — ${opts.length === 1 ? "the only way it could lend then" : `of the ${opts.length} ways it could do this, that leaves you richest in today's money`}.`);
           if (keepTxt.length) s.push(`It ${keepTxt.join("; it ")}.`);
           if (bc && bc !== ch && bc.net > ch.net + 1) s.push(`The choice with the most cash now (buy out ${names(bc)}) would put ${fM(bc.net - ch.net)} more in your hands but leave you ${fM(pv(ch.value - bc.value))} poorer in today's money.`);
         }
