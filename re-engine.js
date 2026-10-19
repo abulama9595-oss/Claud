@@ -78,6 +78,7 @@ const RE_BASE = {
   mortgageCap: 55,         // a MORTGAGE's instalments (land purchase, existing property, cash-out) may not exceed this % of income
   landLtv: 90,             // max LTV when the bank finances the land purchase (cash-raising mortgages: 70%)
   recoveryMonths: 24,      // your rule: cash must be back at the buffer within this many months after move-in
+  minCashMoveIn: 0,        // your rule: cash on hand at move-in (own cash + every loan − costs, no salary, no growth) must be at least this
   refiMinMonths: 12,
   rentOutPct: 0,           // let the new home out: annual rent as % of the all-in project cost (0 = you live in it)
   rentOutFixed: 0,         // …or a fixed annual rent in SAR (overrides the % when above zero)       // a personal loan can only be refinanced (bought out) once it has run this many months; mortgages never are
@@ -842,6 +843,11 @@ function rePlanSimulate(p, prj, plan) {
   const feasible = shortfall <= 0;
   const recoveryMonths = cashRestoredT != null ? cashRestoredT - prj.occupy : null;
   const recoveryOk = feasible && recoveryMonths != null && recoveryMonths <= p.recoveryMonths;
+  // your rule: your own cash + every loan − every cost so far, in the month you move in (no salary, no growth — the rule-6
+  // "cash on hand") must be at least minCashMoveIn. A plan below it can still work if your salary carries it, but it ranks
+  // after plans that meet the rule (and the tool's search does the same)
+  const occM = months[Math.min(H, prj.occupy)], onHandAtMoveIn = occM.ccash - occM.cRetCum;
+  const moveInLine = p.minCashMoveIn == null ? 0 : p.minCashMoveIn, moveInOk = onHandAtMoveIn >= moveInLine - 0.5;
   const after = Math.min(H, prj.occupy + p.recoveryMonths);
   // liquidity: what the low point covers, and how thin the monthly surplus gets (salary − living − rent − instalments − upkeep + rent received)
   const outgo = (m) => m.liv + m.rentPaid + m.existInst + m.lmPay + m.eqPay + m.plPay + m.coPay + m.rfPay - m.extraPay + m.ownerCost;
@@ -852,9 +858,10 @@ function rePlanSimulate(p, prj, plan) {
   if (prj.occupy > H) flags.push(`The home is not finished before the end of the comparison (move-in month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.`);
   if (shortfall > 0) flags.unshift(`Cash goes NEGATIVE by ${fS(shortfall)} (lowest at month ${minCashT}) — the project cannot be fully funded this way.`);
   else if (!recoveryOk) flags.push(cashRestoredT == null ? `Cash never gets back to your ${fS(p.cashBuffer)} buffer after move-in within the horizon.` : `Cash gets back to your ${fS(p.cashBuffer)} buffer ${recoveryMonths} months after move-in (you asked for ${p.recoveryMonths}).`);
+  if (feasible && !moveInOk) flags.push(`Cash at move-in (your own cash and the loans after every cost, without salary) is ${fS(onHandAtMoveIn)} — below your line of ${fS(moveInLine)}; your salary carries the rest.`);
   events.sort((a, b) => a.t - b.t);
   const facOut = (f) => ({ ...f });
-  return { plan, months, years, events, flags, feasible, recoveryOk, end,
+  return { plan, months, years, events, flags, feasible, recoveryOk, onHandAtMoveIn, moveInOk, end,
     lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), pl2: facOut(pl2), co: facOut(co), rf: facOut(rf), refiTotal, roomSettled, annualRentOut, rentInTotal: rentInCum, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ id: l.id, name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     cashRestoredT, recoveryMonths, cashAfterWindow: months[after].cash, payoffs, newDebtTotal: facs.reduce((a, f) => a + f.amount, 0),
@@ -865,17 +872,17 @@ function rePlanSimulate(p, prj, plan) {
     dbrOk: peakDbr <= p.dbrCap + 0.5 };
 }
 
-// one strategy, with the "auto" refinance rule: best value first; if that plan fails (runs out of cash or misses your
-// recovery window) while the most-cash choice passes, use the most-cash choice and say so
+// one strategy, with the "auto" refinance rule: best value first; if that plan fails (runs out of cash, misses your recovery
+// window or leaves your cash at move-in below your line) while the most-cash choice does better, use it and say so
 function reRunPlan(p, prj, plan) {
   const r = rePlanSimulate(p, prj, plan);
-  if ((plan.refiMode || "auto") !== "auto" || !r.refiDiffers || (r.feasible && r.recoveryOk)) return r;
+  if ((plan.refiMode || "auto") !== "auto" || !r.refiDiffers || (r.feasible && r.recoveryOk && r.moveInOk)) return r;
   const r2 = rePlanSimulate(p, prj, { ...plan, refiMode: "cash" });
-  const score = (x) => (x.feasible && x.recoveryOk ? 2 : 0) + (x.feasible ? 1 : 0);
+  const score = (x) => (x.feasible ? 1 : 0) + (x.feasible && x.recoveryOk ? 1 : 0) + (x.feasible && x.moveInOk ? 1 : 0);
   if (score(r2) <= score(r)) return r;
   r2.plan = plan; r2.refiFallback = true;
-  r2.refiFallbackWhy = { feasible: r.feasible, recoveryOk: r.recoveryOk, minCash: r.minCash, minCashT: r.minCashT, recoveryMonths: r.recoveryMonths, econAdv: r.econAdv, econPV: r.econPV };
-  r2.events.unshift({ t: 0, kind: "pl", text: `Refinancing: buying out the old loans that give the best value would ${r.feasible ? "miss your cash-recovery window" : "run your cash out"}, so this strategy buys out the ones that put the most cash in your hands.` });
+  r2.refiFallbackWhy = { feasible: r.feasible, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHandAtMoveIn: r.onHandAtMoveIn, minCash: r.minCash, minCashT: r.minCashT, recoveryMonths: r.recoveryMonths, econAdv: r.econAdv, econPV: r.econPV };
+  r2.events.unshift({ t: 0, kind: "pl", text: `Refinancing: buying out the old loans that give the best value would ${!r.feasible ? "run your cash out" : !r.recoveryOk ? "miss your cash-recovery window" : `leave your cash at move-in at ${fS(r.onHandAtMoveIn)}, below your line of ${fS(p.minCashMoveIn == null ? 0 : p.minCashMoveIn)}`}, so this strategy buys out the ones that put the most cash in your hands.` });
   return r2;
 }
 
@@ -892,8 +899,11 @@ function computeRE(inp, opts) {
   const score = (r) => home ? r.econAdv : (r.irr == null ? -Infinity : r.irr);   // home: ranked by "everything grows"
   const ranked = live.slice().sort((a, b) => score(b) - score(a));
   const best = ranked[0] || null;
-  if (home) ranked.sort((a, b) => (b.feasible && b.recoveryOk) - (a.feasible && a.recoveryOk) || b.feasible - a.feasible || b.econAdv - a.econAdv);
-  const bestFeasible = home ? (ranked.find((r) => r.feasible && r.recoveryOk) || ranked.find((r) => r.feasible) || null) : (ranked.find((r) => r.affordable && r.cashOk && r.ltvOk) || null);
+  // home: plans that work every month first; among them, the more of your two rules a plan meets (cash back at the cushion in
+  // time, cash at move-in at or above your line) the higher it ranks; then the "everything grows" result
+  const rulesMet = (r) => (r.recoveryOk ? 1 : 0) + (r.moveInOk ? 1 : 0);
+  if (home) ranked.sort((a, b) => b.feasible - a.feasible || (b.feasible ? rulesMet(b) - rulesMet(a) : 0) || b.econAdv - a.econAdv);
+  const bestFeasible = home ? (ranked.find((r) => r.feasible) || null) : (ranked.find((r) => r.affordable && r.cashOk && r.ltvOk) || null);
   const existingInst = p.existingLoans.reduce((a, l) => a + (l.balance > 0 ? l.installment : 0), 0);
   const existingDbr = p.income > 0 ? existingInst / p.income * 100 : 0;
   // existing loans whose instalment doesn't fit their balance, rate and months left (the simulation raises a too-low
@@ -973,7 +983,7 @@ function tornadoRE(inp, idx) {
   }).sort((x, y) => y.swing - x.swing);
 }
 /* ---------- what-ifs on ONE strategy (the page computes these only when their panel is opened) ---------- */
-const reBrief = (r) => r && { feasible: r.feasible, recoveryOk: r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, econAdv: r.econAdv, econPV: r.econPV, advantage: r.advantage, netWorth: r.netWorthEnd, peakDbr: r.peakDbr };
+const reBrief = (r) => r && { feasible: r.feasible, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHand: r.onHandAtMoveIn, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, econAdv: r.econAdv, econPV: r.econPV, advantage: r.advantage, netWorth: r.netWorthEnd, peakDbr: r.peakDbr };
 // stress tests: each shock on its own, then a combined one; "passes" = the cash never goes below zero
 function stressRE(inp, idx) {
   const p = mergeRE(inp), build = p.acquire === "build";
@@ -1057,11 +1067,12 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
     const q = { ...p, buildStart: d, landMonth: landWithBuild ? d : Math.min(p.landMonth || 0, d) };
     const { r, prj: m } = reRunOne(q, idx);
     if (!r) continue;
-    rows.push({ delay: d, feasible: r.feasible, recoveryOk: r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.lm.amount, eq: r.eq.amount, pl: r.pl.amount, co: r.co.amount, rf: r.rf.amount, newDebt: r.newDebtTotal, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: m.total, occupy: m.occupy, bufferOk: r.minCash >= p.cashBuffer });
+    rows.push({ delay: d, feasible: r.feasible, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHand: r.onHandAtMoveIn, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.lm.amount, eq: r.eq.amount, pl: r.pl.amount, co: r.co.amount, rf: r.rf.amount, newDebt: r.newDebtTotal, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: m.total, occupy: m.occupy, bufferOk: r.minCash >= p.cashBuffer });
   }
-  // "best" = the EARLIEST start that is executable AND gets cash back to the buffer within your recovery window (fallback: earliest executable)
-  const ok = rows.filter((r) => r.feasible);
-  const best = ok.find((r) => r.recoveryOk) || ok[0] || null;
+  // "best" = the EARLIEST start that is executable AND meets the most of your rules (cash back at the buffer within your
+  // recovery window, cash at move-in at or above your line); with both met it is the earliest such start
+  const ok = rows.filter((r) => r.feasible), met = (r) => (r.recoveryOk ? 1 : 0) + (r.moveInOk ? 1 : 0);
+  const best = ok.length ? ok.reduce((b, r) => met(r) > met(b) ? r : b) : null;
   return { rows, best };
 }
 
@@ -1096,13 +1107,15 @@ function optimizeRE(inp, opts) {
     const o = { ...base, enabled: true, lmUse, lmMode: "max", plWhen, plMode: "max", plSplit: true, eqWhen, eqMode: "max", coUse, coMode: "max", pl2Use, rfWhen: "none", settlePolicy };
     o.name = reAutoName(o); combos.push(o);
   }
-  const summarize = (r, prj) => ({ name: r.plan.name, plan: r.plan, feasible: r.feasible, recoveryOk: r.recoveryOk, ok: r.feasible && r.recoveryOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakInst: r.peakInst, peakDbr: r.peakDbr,
+  const summarize = (r, prj) => ({ name: r.plan.name, plan: r.plan, feasible: r.feasible, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHand: r.onHandAtMoveIn, ok: r.feasible && r.recoveryOk && r.moveInOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakInst: r.peakInst, peakDbr: r.peakDbr,
     lm: r.lm.amount, lmCap: r.lm.capacity ? r.lm.capacity.cap : 0, eq: r.eq.amount, eqCap: r.eq.capacity ? r.eq.capacity.cap : 0, pl: r.pl.amount, plCap: r.pl.capacity ? r.pl.capacity.cap : 0, plSplit: r.pl.split, co: r.co.amount, coCap: r.co.capacity ? r.co.capacity.cap : 0,
     rf: 0, plNet: r.pl.refi ? r.pl.refi.net : r.pl.amount, plRefi: r.pl.refi ? r.pl.refi.names : [], refiTotal: r.refiTotal,
     pl2: r.pl2.amount, pl2Split: r.pl2.split, pl2Net: r.pl2.refi ? r.pl2.refi.net : r.pl2.amount, pl2Refi: r.pl2.refi ? r.pl2.refi.names : [],
     newDebt: r.newDebtTotal, newDebtInterest: r.newDebtInterest, settled: r.settledTotal, roomSettled: r.roomSettled, settleFees: r.settleFees, cashAfterWindow: r.cashAfterWindow, cashAtCompletion: r.cashAtCompletion,
     netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: prj.total, occupy: prj.occupy, start: prj.start, landMonth: prj.landMonth, flags: r.flags, _r: r });
-  const rank = (a, b) => (b.ok - a.ok) || (b.feasible - a.feasible) || (b.econAdv - a.econAdv) || (a.peakInst - b.peakInst);
+  // works every month → the more of your rules met (recovery, cash at move-in) → result → lowest peak instalment
+  const met = (x) => (x.recoveryOk ? 1 : 0) + (x.moveInOk ? 1 : 0);
+  const rank = (a, b) => (b.feasible - a.feasible) || (b.feasible ? met(b) - met(a) : 0) || (b.econAdv - a.econAdv) || (a.peakInst - b.peakInst);
   let tried = 0;
   // evaluate a slice of the mixes for one start (the page fills the start-date table a slice at a time); only each slice's
   // leader keeps its full result, which is all the finish step needs

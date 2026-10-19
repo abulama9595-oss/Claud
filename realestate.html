@@ -275,7 +275,11 @@
         {foot}
       </div>
     );
-    const Status = ({ r }) => !r ? null : r.feasible && r.recoveryOk ? <span className="tag" style={{ background: "#E2EFE9", color: K.pos }}>✓ Works every month</span> : r.feasible ? <span className="tag" style={{ background: SOFT_AMB, color: "#7A4F12" }}>✓ Works · slow to recover</span> : <span className="tag" style={{ background: SOFT_NEG, color: K.neg }}>✗ Runs out of cash</span>;
+    // a plan that works every month can still break one of your rules: cash back at the cushion in time, cash at move-in at or above your line
+    const brokenRules = (r) => [!r.recoveryOk && "slow to recover", r.moveInOk === false && "short at move-in"].filter(Boolean);
+    const Status = ({ r }) => !r ? null : !r.feasible ? <span className="tag" style={{ background: SOFT_NEG, color: K.neg }}>✗ Runs out of cash</span> : brokenRules(r).length === 0 ? <span className="tag" style={{ background: "#E2EFE9", color: K.pos }}>✓ Works every month</span> : <span className="tag" style={{ background: SOFT_AMB, color: "#7A4F12" }}>✓ Works · {brokenRules(r).join(" · ")}</span>;
+    const worksTxt = (r) => !r.feasible ? "no" : brokenRules(r).join(" · ") || "yes";
+    const worksCol = (r) => !r.feasible ? K.neg : brokenRules(r).length ? "#7A4F12" : K.pos;
     const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } };
     const saveStore = (o) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} };
     const readJSON = (k) => { try { const j = JSON.parse(localStorage.getItem(k) || "null"); return j && typeof j === "object" ? j : null; } catch (e) { return null; } };
@@ -411,6 +415,7 @@
       const netRet = lead && home ? lead.netReturn : inp.altReturn;
       const curStart = Math.max(inp.buildStart, inp.landMonth);
       const dep = inp.buildDeprPct == null ? 2 : inp.buildDeprPct;     // the building loses this % of its finished value a year
+      const moveLine = inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn; // your rule: cash at move-in at least this
       const isTool = (i) => i >= 0 && i === toolIdx;
       const planName = (i) => !home ? `Option ${i + 1}` : isTool(i) ? "The tool's pick" : `Plan ${i + 1}`;
       const planRef = (i) => isTool(i) ? "the tool's pick" : planName(i);     // inside a sentence
@@ -620,6 +625,7 @@
             {inp.rentNow > 0 && <Row k="Rent today" v={`${fSAR(inp.rentNow)}/mo`} />}
             <Row k="Cash today" v={fM(inp.cashAvailable)} />
             <Row k="Safety cushion" v={fM(inp.cashBuffer)} />
+            <Row k="Cash at move-in at least" v={fM(moveLine)} />
             {inp.ownedValue > 0 && <Row k="Property you own" v={fM(inp.ownedValue)} sub={!renting && inp.ownHomePlan !== "keep" ? (inp.ownHomePlan === "let" ? `let at ${inp.ownHomeYield}% from move-in` : "sold at move-in") : null} />}
           </RailGroup>
           <RailGroup title={`Existing loans · ${household.existingDbr.toFixed(0)}% of income`} onEdit={() => go("loans")}>
@@ -727,7 +733,7 @@
               <tbody>{liveIdx.map((i) => { const r = m.results[i]; return (
                 <tr key={i} style={{ cursor: "pointer", background: i === focusIdx ? SOFT : "transparent" }} onClick={() => { setFocus(i); }}>
                   <td className="l" style={{ padding: "6px 4px 6px 0", color: colT(i), fontWeight: 700 }}>{planName(i)}{r === lead ? " ★" : ""}{!r.feasible && <span style={{ color: K.neg, fontWeight: 400 }}> · runs out</span>}{isTool(i) && optStale && <span style={{ color: K.sub, fontWeight: 400 }}> · updating…</span>}</td>
-                  <td style={{ padding: 4 }}>{fM(cashAtMoveIn(r))}</td>
+                  <td style={{ padding: 4, color: r.moveInOk === false ? K.neg : K.text }}>{fM(cashAtMoveIn(r))}</td>
                   <td style={{ padding: "4px 0 4px 4px", color: signCol(r.econAdv), fontWeight: 700 }}>{fM(r.econAdv)}</td>
                 </tr>); })}</tbody>
             </table>
@@ -768,6 +774,7 @@
             <Box title="What you have">
               <Field label="Cash today" value={inp.cashAvailable} min={0} max={8000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
               <Field label="Safety cushion to keep" value={inp.cashBuffer} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="a plan that dips below it is flagged; one that goes below zero does not work" help={EXPL.recovery} />
+              <Field label="Cash at move-in must be at least" value={moveLine} min={-2000000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("minCashMoveIn", v)} hint="your own cash + loans − costs at move-in, without salary · 0 = never negative · a plan below it ranks after plans that meet it" help={EXPL.moveIn} />
               <Field label="Property you already own — its value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint={inp.ownedValue > 0 ? `a bank would lend up to ${fM(inp.ownedValue * inp.ownedLtv / 100)} against it (${inp.ownedLtv}%)` : "0 if none"} />
             </Box>
           </div>
@@ -1023,7 +1030,7 @@
         const planned = (p) => inp.existingLoans.some((l) => l.name === p.name && l.settleAt != null && Math.round(l.settleAt) === p.t);
         const paid = x.payoffs.filter((p) => !planned(p)), mort = x.lm.amount + x.eq.amount + x.co.amount;
         const parts = [paid.length ? `pays off ${paid.map((p) => p.name).join(" + ")} (${fM(paid.reduce((a, p) => a + p.cost, 0))})` : "pays nothing off", `mortgage${x.lm.amount + x.eq.amount > 0 && x.co.amount > 0 ? "s" : ""} ${fM(mort)}`];
-        return x.feasible ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.recoveryOk ? "" : " · slow to recover"}` : `${parts.join(" · ")} · cash runs out: ${fM(x.minCash)} in ${fCal(x.minCashT)} ✗`;
+        return x.feasible ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.recoveryOk ? "" : " · slow to recover"}${x.moveInOk === false ? ` · short at move-in (${fM(x.onHandAtMoveIn)})` : ""}` : `${parts.join(" · ")} · cash runs out: ${fM(x.minCash)} in ${fCal(x.minCashT)} ✗`;
       };
       /* ---------- which old loans the bank buys out: what each personal-loan step weighed, in words and as a table ---------- */
       const refiSteps = (r) => !r ? [] : [r.pl, r.pl2].filter((f) => f && f.capacity && ((f.refiOld && f.refiOld.length) || (f.refiTooYoung && f.refiTooYoung.length)));
@@ -1046,7 +1053,7 @@
         const out = ch.ids.length ? `buys out ${names(ch)} (the bank clears ${fM(ch.payoff)} and ${fM(ch.net)} reaches you)` : `buys out none of your old loans (all ${fM(ch.net)} reaches you)`;
         if (r.refiFallback && r.refiFallbackWhy) {
           const w = r.refiFallbackWhy;
-          s.push(`Auto first tried the best-value choice (buy out ${names(bv)}), but with it ${!w.feasible ? `your cash would run out in ${fCal(w.minCashT)} (${fM(w.minCash)})` : `your cash would be back at your cushion only ${w.recoveryMonths == null ? "after the end of the comparison" : `${w.recoveryMonths} months after move-in`}, later than your ${inp.recoveryMonths}-month rule`}. So it took the choice that puts the most cash in your hands: the bank ${out}.`);
+          s.push(`Auto first tried the best-value choice (buy out ${names(bv)}), but with it ${!w.feasible ? `your cash would run out in ${fCal(w.minCashT)} (${fM(w.minCash)})` : !w.recoveryOk ? `your cash would be back at your cushion only ${w.recoveryMonths == null ? "after the end of the comparison" : `${w.recoveryMonths} months after move-in`}, later than your ${inp.recoveryMonths}-month rule` : `your cash at move-in would be ${fM(w.onHandAtMoveIn)}, below your line of ${fM(moveLine)}`}. So it took the choice that puts the most cash in your hands: the bank ${out}.`);
         } else if (mode === "cash") {
           s.push(`You chose "most cash": the bank ${out}.`);
           if (bv && bv !== ch) s.push(`The best-value choice (buy out ${names(bv)}) would put ${fM(ch.net - bv.net)} less in your hands but leave you ${fM(pv(bv.value - ch.value))} richer in today's money.`);
@@ -1121,7 +1128,7 @@
                 <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{st.length ? st.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
                 {r && <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
                   <Status r={r} />
-                  <span>cash at move-in <b className="mono">{fM(cashAtMoveIn(r))}</b></span>
+                  <span>cash at move-in <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fM(cashAtMoveIn(r))}</b></span>
                   <span>vs {baseLbl} <b className="mono" style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b><Hint text={EXPL.econ} label="vs not building" /> <span style={{ color: K.sub, fontSize: 12 }}>rule 7: {fM(r.advantage)}</span></span>
                 </div>}
                 {r && r.flags.length > 0 && <div style={{ fontSize: 12.5, color: r.feasible ? "#7A4F12" : K.neg, marginTop: 6, lineHeight: 1.45 }}>{calText(r.flags[0])}</div>}
@@ -1211,11 +1218,11 @@
         return (
           <div className="plan" style={{ borderLeftColor: K.ink, background: "#F7F4EC", boxShadow: focusIdx === i && cur !== "pay" ? `0 0 0 2px ${K.ink}` : "none" }}>
             <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.45 }}><span className="tag" style={{ background: K.ink, color: "#ECE4D3", marginRight: 8, letterSpacing: ".04em" }}>THE TOOL'S PICK{r === lead ? " · ★ BEST" : ""}</span>{planTitle(toolPlan, build)}</div>
-            <div style={{ fontSize: 12.5, color: K.sub, marginTop: 2 }}>the best of {opt.combos} mixes for a {fCal(st.delay)} start · {st.nOk} of them work every month and recover in time{optStale && <b style={{ color: K.text }}> · updating…</b>}<Hint text={EXPL.optimizer} label="The tool's pick" /></div>
+            <div style={{ fontSize: 12.5, color: K.sub, marginTop: 2 }}>the best of {opt.combos} mixes for a {fCal(st.delay)} start · {st.nOk} of them meet your rules (work every month, cash back at your cushion within {inp.recoveryMonths} months, cash at move-in at least {fM(moveLine)}){optStale && <b style={{ color: K.text }}> · updating…</b>}<Hint text={EXPL.optimizer} label="The tool's pick" /></div>
             <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{steps2.length ? steps2.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
             <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
               <Status r={r} />
-              <span>cash at move-in <b className="mono">{fM(cashAtMoveIn(r))}</b></span>
+              <span>cash at move-in <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fM(cashAtMoveIn(r))}</b></span>
               <span>vs {baseLbl} <b className="mono" style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b> <span style={{ color: K.sub, fontSize: 12 }}>rule 7: {fM(r.advantage)}</span></span>
             </div>
             {r.flags.length > 0 && <div style={{ fontSize: 12.5, color: r.feasible ? "#7A4F12" : K.neg, marginTop: 6, lineHeight: 1.45 }}>{calText(r.flags[0])}</div>}
@@ -1326,7 +1333,7 @@
                 {w && w.pts && w.pts.length > 1 && <select aria-label="Start date to compare" value={whyOk ? w.A : ""} onChange={(e) => pickDate(+e.target.value)}>{w.pts.filter((x) => x.d !== curStart).map((x) => <option key={x.d} value={x.d}>start {fCal(x.d)} · {fM(x.v)}</option>)}</select>}
               </div>
               {!w ? <div className="note">Working it out…</div> : w.none ? <div className="note" style={{ marginTop: 0 }}>{whyLine === "best" && !optRows.done && !w.pts.length ? "Finding the best mix for every date…" : `No other start date works on this line, so there is nothing to compare with your start.`}</div> : <>
-                <p style={{ fontSize: 14, lineHeight: 1.55, marginBottom: 6 }}>Starting in <b>{fCal(w.A)}</b> instead of {fCal(w.B)} leaves you <b style={{ color: signCol(w.total) }}>{fM(Math.abs(w.total))} {w.total >= 0 ? "better" : "worse"} off</b> in {endDate} when everything grows{w.line === "best" ? ", each date with its own best mix" : ""}. You move in {fCal(w.rA.occupy)} instead of {fCal(w.rB.occupy)}.{!w.rB.feasible ? <span style={{ color: K.neg }}> At your start this plan runs out of cash.</span> : null}{!w.rA.recoveryOk ? <span style={{ color: "#7A4F12" }}> At {fCal(w.A)} it is slow to get cash back to your cushion.</span> : null}</p>
+                <p style={{ fontSize: 14, lineHeight: 1.55, marginBottom: 6 }}>Starting in <b>{fCal(w.A)}</b> instead of {fCal(w.B)} leaves you <b style={{ color: signCol(w.total) }}>{fM(Math.abs(w.total))} {w.total >= 0 ? "better" : "worse"} off</b> in {endDate} when everything grows{w.line === "best" ? ", each date with its own best mix" : ""}. You move in {fCal(w.rA.occupy)} instead of {fCal(w.rB.occupy)}.{!w.rB.feasible ? <span style={{ color: K.neg }}> At your start this plan runs out of cash.</span> : null}{w.rA.feasible && !w.rA.recoveryOk ? <span style={{ color: "#7A4F12" }}> At {fCal(w.A)} it is slow to get cash back to your cushion.</span> : null}{w.rA.feasible && w.rA.moveInOk === false ? <span style={{ color: "#7A4F12" }}> At {fCal(w.A)} your cash at move-in is {fM(w.rA.onHandAtMoveIn)}, below your line of {fM(moveLine)}.</span> : null}</p>
                 {w.parts.length === 0 ? <div className="note">The two starts end up the same to the riyal.</div> : w.parts.map((x) => <div key={x.key} className="why-row"><span>{whyText(x, w)}</span><span className="v" style={{ color: signCol(x.v) }}>{fM(x.v)}</span></div>)}
                 <div className="why-row" style={{ borderTop: `1.5px solid ${K.text}`, fontWeight: 700 }}><span>Difference in {endDate}</span><span className="v" style={{ color: signCol(w.total) }}>{fM(w.total)}</span></div>
               </>}
@@ -1334,13 +1341,14 @@
             <div className="box" style={{ marginTop: 14, padding: "0 18px" }}>
               <Dis id="startsTable" title="The best mix for every start date" sub="table" open={!!openDis.startsTable} onToggle={toggleDis}>
                 <div className="scroll-x"><table className="tbl">
-                  <thead><tr>{["Start", "Move in", `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, "Best mix", "Lowest balance", "Peak instalments", "Land mortgage (taken / max)", "Own-property mortgage", "Personal loans", "Cash-out", "New loans", "Profit + fees", "Rule 7", ""].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
+                  <thead><tr>{["Start", "Move in", `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, "Cash at move-in", "Best mix", "Lowest balance", "Peak instalments", "Land mortgage (taken / max)", "Own-property mortgage", "Personal loans", "Cash-out", "New loans", "Profit + fees", "Rule 7", ""].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
                   <tbody>{rowsS.map((st) => { const b = st.best; return (
                     <tr key={st.delay} style={{ background: st.delay === curStart ? SOFT : "transparent" }}>
                       <td className="l">{fCal(st.delay)}{st.delay === curStart ? " · planned" : ""}</td><td className="l">{fCal(st.occupy)}</td>
                       <td style={{ color: signCol(b.econAdv), fontWeight: 700 }}>{fM(b.econAdv)}</td>
-                      <td style={{ color: b.ok ? K.pos : b.feasible ? "#7A4F12" : K.neg }}>{b.ok ? "yes" : b.feasible ? "slow" : "no"}</td>
+                      <td style={{ color: worksCol(b) }}>{worksTxt(b)}</td>
                       <td>{b.recoveryMonths == null ? "never" : b.recoveryMonths === 0 ? "at move-in" : `${b.recoveryMonths} mo`}</td>
+                      <td style={{ color: b.moveInOk === false ? K.neg : K.text }}>{fM(b.onHand)}</td>
                       <td className="l" style={{ minWidth: 220 }}>{planTitle(b.cleanPlan || b.plan, build)}</td>
                       <td style={{ color: b.minCash < 0 ? K.neg : K.text }}>{fM(b.minCash)}</td><td>{fSAR(b.peakInst)}/mo · {pct1(b.peakDbr)}</td>
                       <td>{b.lm > 0 ? `${fM(b.lm)} / ${fM(b.lmCap)}` : "–"}</td><td>{b.eq > 0 ? `${fM(b.eq)} / ${fM(b.eqCap)}` : "–"}</td>
@@ -1353,12 +1361,13 @@
               </Dis>
               <Dis id="planTable" title={`${planName(focusIdx)} at every start date`} sub="table" open={!!openDis.planTable} onToggle={toggleDis}>
                 <div className="scroll-x"><table className="tbl">
-                  <thead><tr>{["Start", "Move in", `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, "Cost", "Lowest balance", "Peak instalments", "Land mortgage", "Own-property mortgage", "Personal loans", "Cash-out", "Old loans paid off", "Profit + fees", "Rule 7"].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
+                  <thead><tr>{["Start", "Move in", `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, "Cash at move-in", "Cost", "Lowest balance", "Peak instalments", "Land mortgage", "Own-property mortgage", "Personal loans", "Cash-out", "Old loans paid off", "Profit + fees", "Rule 7"].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
                   <tbody>{sw.rows.map((x) => <tr key={x.delay} style={{ background: x.delay === curStart ? SOFT : earliest && x.delay === earliest.delay ? "#F6EFE1" : "transparent" }}>
                     <td className="l">{fCal(x.delay)}{x.delay === curStart ? " · planned" : earliest && x.delay === earliest.delay ? " · earliest" : ""}</td><td className="l">{fCal(x.occupy)}</td>
                     <td style={{ color: signCol(x.econAdv), fontWeight: 700 }}>{fM(x.econAdv)}</td>
-                    <td style={{ color: x.recoveryOk ? K.pos : x.feasible ? "#7A4F12" : K.neg }}>{x.recoveryOk ? "yes" : x.feasible ? "slow" : "no"}</td>
+                    <td style={{ color: worksCol(x) }}>{worksTxt(x)}</td>
                     <td>{x.recoveryMonths == null ? "never" : x.recoveryMonths === 0 ? "at move-in" : `${x.recoveryMonths} mo`}</td>
+                    <td style={{ color: x.moveInOk === false ? K.neg : K.text }}>{fM(x.onHand)}</td>
                     <td>{fM(x.total)}</td><td style={{ color: x.minCash < 0 ? K.neg : K.text }}>{fM(x.minCash)} · {fCal(x.minCashT)}</td><td>{fSAR(x.peakInst)}/mo · {pct1(x.peakDbr)}</td>
                     <td>{fM(x.mortgage)}</td><td>{fM(x.eq)}</td><td>{fM(x.pl)}</td><td>{fM(x.co)}</td><td>{fM(x.settled)}</td><td>{fM(x.newDebtInterest)}</td><td>{fM(x.advantage)}</td>
                   </tr>)}</tbody>
@@ -1371,7 +1380,7 @@
 
       /* ---------- step 6: your answer ---------- */
       const homeRows = [
-        ["Works every month?", (r) => r.feasible ? (r.recoveryOk ? "yes" : "yes · slow to recover") : "no — runs out of cash", (r) => r.feasible ? (r.recoveryOk ? K.pos : "#7A4F12") : K.neg, EXPL.executable],
+        ["Works every month, and meets your rules?", (r) => r.feasible ? (brokenRules(r).length ? `yes · ${brokenRules(r).join(" · ")}` : "yes") : "no — runs out of cash", (r) => worksCol(r), EXPL.executable],
         [`Cash back at your cushion within ${inp.recoveryMonths} months of move-in?`, (r) => r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} months after`, (r) => r.recoveryOk ? K.pos : K.neg, EXPL.recovery],
         [`vs ${baseLbl} in ${endDate} — everything grows`, (r) => fM(r.econAdv), (r) => signCol(r.econAdv), EXPL.econ],
         ["…the same in today's money", (r) => fM(r.econPV), (r) => signCol(r.econPV), EXPL.econ],
@@ -1388,7 +1397,7 @@
         ["Personal loans, refinancing included", (r) => facTxt(r.pl), null, EXPL.refi],
         ["Cash-out on the new home", (r) => facTxt(r.co), null, EXPL.capacity],
         ["Personal loans at move-in", (r) => facTxt(r.pl2), null, EXPL.refi],
-        ["Cash at move-in (your cash + loans − costs)", (r) => fM(cashAtMoveIn(r)), null, EXPL.cashMoveIn],
+        ["Cash at move-in (your cash + loans − costs)", (r) => fM(cashAtMoveIn(r)), (r) => r.moveInOk === false ? K.neg : K.text, EXPL.moveIn],
         ["Bank balance at move-in (with salary)", (r) => fM(r.cashAtCompletion), null, EXPL.cashMoveIn],
         [`Bank balance ${inp.recoveryMonths} months after move-in`, (r) => fM(r.cashAfterWindow), (r) => r.cashAfterWindow >= inp.cashBuffer ? K.pos : K.neg, EXPL.cashAfter],
         ["Lowest bank balance", (r) => `${fM(r.minCash)} · ${fCal(r.minCashT)}`, (r) => r.minCash < 0 ? K.neg : K.text, EXPL.cashLow],
@@ -1421,8 +1430,9 @@
         const nm = (r) => planName(m.results.indexOf(r));
         if (bestF) {
           bestF.flags.forEach((f) => b.push({ warn: true, text: calText(f) }));
-          if (best && best !== bestF) b.push({ warn: false, text: best.feasible ? `${nm(best)} would leave you ${fM(best.econAdv - bestF.econAdv)} richer (everything grows) but does not get your cash back to your ${fM(inp.cashBuffer)} cushion within ${inp.recoveryMonths} months of move-in.` : `${nm(best)} would leave you ${fM(best.econAdv - bestF.econAdv)} richer (everything grows) but runs out of cash: ${calText(best.flags[0] || "")}` });
-          if (bestF.feasible && !bestF.recoveryOk) b.push({ warn: true, text: `No plan gets your cash back to your ${fM(inp.cashBuffer)} cushion within ${inp.recoveryMonths} months of move-in; the answer uses the workable one with the best "everything grows" result.` });
+          const broke = (r) => [!r.recoveryOk && `does not get your cash back to your ${fM(inp.cashBuffer)} cushion within ${inp.recoveryMonths} months of move-in`, r.moveInOk === false && `leaves your cash at move-in at ${fM(r.onHandAtMoveIn)}, below your line of ${fM(moveLine)}`].filter(Boolean).join(", and ");
+          if (best && best !== bestF) b.push({ warn: false, text: best.feasible ? `${nm(best)} would leave you ${fM(best.econAdv - bestF.econAdv)} richer (everything grows) but ${broke(best) || "ranks lower on your rules"}.` : `${nm(best)} would leave you ${fM(best.econAdv - bestF.econAdv)} richer (everything grows) but runs out of cash: ${calText(best.flags[0] || "")}` });
+          if (bestF.feasible && brokenRules(bestF).length) b.push({ warn: true, text: `No plan meets all your rules (works every month, cash back at your ${fM(inp.cashBuffer)} cushion within ${inp.recoveryMonths} months of move-in, cash at move-in at least ${fM(moveLine)}); the answer uses the workable one that meets the most of them with the best "everything grows" result.` });
         } else liveIdx.forEach((i) => { const r = m.results[i]; b.push({ warn: true, text: `${planName(i)}: ${calText(r.flags[0] || "runs out of cash")}` }); });
         if (household.dbrRoom <= 0) b.push({ warn: true, text: `Your old loans (${fSAR(household.existingInst)}/mo) already fill the bank's ${inp.dbrCap}% limit — a new loan fits only once one is paid off, bought out by the bank, or ends.` });
         household.warnings.forEach((w) => b.push({ warn: false, text: `Check your loan list — ${w}` }));
@@ -1457,7 +1467,7 @@
         if (!lead) return <Box>Tick at least one plan in step 4.</Box>;
         const r = focusRes, i = focusIdx, occ = occOf(r), rc = cashReconcile(r, occ, inp, prj);
         const ahead = lead.econAdv >= 0, word = renting ? "renting" : "keeping your cash invested", act = build ? "Building" : "Buying";
-        const irr = econIrr[i], okStart = sweepRec && sweepRec.rows.find((x) => x.feasible && x.recoveryOk);
+        const irr = econIrr[i], okStart = sweepRec && sweepRec.rows.find((x) => x.feasible && x.recoveryOk && x.moveInOk !== false);
         return (
           <>
             <section className="box" style={{ borderLeft: `6px solid ${bestF ? (ahead ? K.pos : K.neg) : K.neg}` }}>
@@ -1470,7 +1480,7 @@
               </p>
               {i !== recIdx && <div className="note" style={{ marginTop: 0 }}>The figures below are for {planRef(i)}, the one you picked; the sentence above is about the best one.</div>}
               <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10, marginTop: 12 }}>
-                <Tile label={`Cash at move-in · ${fCal(occ)}`} value={fM(rc.onHand)} sub={<>your cash + loans − costs, no salary · <b>{fM(rc.bank)}</b> in the bank</>} help={EXPL.cashMoveIn} />
+                <Tile label={`Cash at move-in · ${fCal(occ)}`} value={fM(rc.onHand)} tone={r.moveInOk === false ? K.neg : K.text} sub={<>your cash + loans − costs, no salary · <b>{fM(rc.bank)}</b> in the bank{r.moveInOk === false ? <> · <span style={{ color: K.neg }}>below your line of {fM(moveLine)}</span></> : null}</>} help={EXPL.cashMoveIn} />
                 <Tile label={`Lowest bank balance · ${fCal(r.minCashT)}`} value={fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={r.minCash < 0 ? "runs short — this plan doesn't work" : inp.cashBuffer > 0 ? (r.minCash >= inp.cashBuffer ? `never below your ${fM(inp.cashBuffer)} cushion` : `below your ${fM(inp.cashBuffer)} cushion for ${r.belowBufferMonths} months; back ${r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} months after move-in`}`) : "never runs short"} help={EXPL.cashLow} />
                 <Tile label={`Wealth in ${endDate}`} value={fM(r.econEnd)} sub={<>vs {fM(r.econBaseEnd)} if you {renting ? "keep renting" : "don't build"} · <b style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b></>} help={EXPL.econ} />
               </div>
@@ -1628,7 +1638,7 @@
                   <div style={{ fontSize: 13, marginBottom: 6 }}>{st[0].passes ? <>{planName(focusIdx)} survives <b>{st.filter((x) => x.key !== "base" && x.passes).length} of {st.length - 1}</b> shocks without running out of cash.</> : <>{planName(focusIdx)} already runs out of cash as you entered it — the shocks show how much worse it gets.</>}</div>
                   <div className="scroll-x"><table className="tbl">
                     <thead><tr><th>If…</th><th>Works?</th><th>Lowest balance</th><th>vs {baseLbl} (everything grows)</th><th>Rule 7</th></tr></thead>
-                    <tbody>{st.map((x) => <tr key={x.key} style={{ background: x.key === "base" ? SOFT : "transparent" }}><td className="l">{x.label}</td><td style={{ color: x.feasible ? (x.recoveryOk ? K.pos : "#7A4F12") : K.neg, fontWeight: 700 }}>{x.feasible ? (x.recoveryOk ? "yes" : "slow") : "runs out"}</td><td style={{ color: x.minCash < 0 ? K.neg : K.text }}>{fM(x.minCash)} · {fCal(x.minCashT)}</td><td style={{ color: signCol(x.econAdv) }}>{fM(x.econAdv)}</td><td>{fM(x.advantage)}</td></tr>)}</tbody>
+                    <tbody>{st.map((x) => <tr key={x.key} style={{ background: x.key === "base" ? SOFT : "transparent" }}><td className="l">{x.label}</td><td style={{ color: worksCol(x), fontWeight: 700 }}>{x.feasible ? worksTxt(x) : "runs out"}</td><td style={{ color: x.minCash < 0 ? K.neg : K.text }}>{fM(x.minCash)} · {fCal(x.minCashT)}</td><td style={{ color: signCol(x.econAdv) }}>{fM(x.econAdv)}</td><td>{fM(x.advantage)}</td></tr>)}</tbody>
                   </table></div>
                   <div className="note">"Loan rates +2 points" raises the APR of every new loan; your old loans keep their rates. Costs +20% add cost but no value.</div>
                 </>}
