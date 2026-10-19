@@ -8,10 +8,11 @@ vm.runInContext(fs.readFileSync(path.join(ROOT, 'vendor', 'babel.js'), 'utf8'), 
 const pages = fs.readdirSync(ROOT).filter((f) => /^realestate.*\.html$/.test(f));
 
 for (const page of pages) {
+  const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
+  const scripts = [...html.matchAll(/<script type="text\/babel"([^>]*)>([\s\S]*?)<\/script>/g)];
+  // a page without an app (the old preview address) may only send you on to the tool
+  if (!scripts.length) { test(`${page}: sends you to realestate.html`, () => assert.match(html, /location\.replace\("realestate\.html"/)); continue; }
   test(`${page}: Babel scripts compile`, () => {
-    const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
-    const scripts = [...html.matchAll(/<script type="text\/babel"([^>]*)>([\s\S]*?)<\/script>/g)];
-    assert.ok(scripts.length > 0, 'no Babel scripts found');
     for (const s of scripts) {
       const src = /src="([^"]+)"/.exec(s[1]);
       const code = src ? fs.readFileSync(path.join(ROOT, src[1]), 'utf8') : s[2];
