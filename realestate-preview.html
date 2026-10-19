@@ -1,0 +1,1428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home Financing · New Layout (Preview)</title>
+  <script src="vendor/react.js"></script>
+  <script src="vendor/react-dom.js"></script>
+  <script src="vendor/babel.js"></script>
+  <script src="vendor/prop-types.js"></script>
+  <script src="vendor/recharts.js"></script>
+  <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
+  <script src="engine.js"></script>
+  <script src="re-engine.js"></script>
+  <script src="re-ui.js"></script>
+  <style>
+    /* AA text colours for this page only (the shared palette also styles the clinic pages) */
+    :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; overflow-x: hidden; }
+    button { font-family: inherit; }
+    .mono { font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace; }
+    .flex { display: flex; } .items-center { align-items: center; } .items-start { align-items: flex-start; } .justify-between { justify-content: space-between; } .flex-wrap { flex-wrap: wrap; } .grid { display: grid; }
+    input[type=text], input[type=number], input[type=month], select, textarea { font-family: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--lineIn); border-radius: 6px; background: #fff; color: var(--text); max-width: 100%; min-height: 32px; }
+    input[type=number] { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; text-align: right; }
+    textarea { width: 100%; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; }
+    input[type=checkbox], input[type=radio] { width: 18px; height: 18px; accent-color: #0E1A2B; flex: none; }
+    :focus-visible { outline: 2px solid #2F6DB5; outline-offset: 2px; }
+    /* sliders: 24-px touch height, visible track and thumb */
+    input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; width: 100%; height: 24px; cursor: pointer; }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #CFC6B4; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; margin-top: -6px; background: #8A6427; border: 2px solid #fff; box-shadow: 0 0 0 1px #8A6427; }
+    input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: #CFC6B4; }
+    input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #8A6427; border: 2px solid #fff; }
+    /* header */
+    .hdr { background: #0E1A2B; color: #ECE4D3; }
+    .hdr-in { max-width: 1480px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .hdr a { color: #D9B36A; }
+    .hbtn { background: transparent; color: #ECE4D3; border: 1px solid #3A4B62; border-radius: 7px; padding: 6px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer; min-height: 32px; }
+    .hbtn.gold { background: #B0823A; border-color: #B0823A; color: #0E1A2B; }
+    .hbtn:hover { border-color: #9DAEC0; }
+    .pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: #D9B36A; color: #0E1A2B; }
+    .seg { display: inline-flex; border: 1px solid var(--lineIn); border-radius: 8px; overflow: hidden; background: #fff; flex-wrap: wrap; }
+    .seg button { border: none; background: transparent; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--sub); cursor: pointer; min-height: 32px; }
+    .seg button.on { background: #0E1A2B; color: #fff; }
+    .seg.dark { border-color: #3A4B62; background: transparent; }
+    .seg.dark button { color: #C8D3DF; }
+    .seg.dark button.on { background: #B0823A; color: #0E1A2B; }
+    /* step bar */
+    .stepper { position: sticky; top: 0; z-index: 30; background: rgba(241,237,228,.97); border-bottom: 1px solid var(--line); backdrop-filter: blur(6px); }
+    .stepper-in { max-width: 1480px; margin: 0 auto; padding: 8px 20px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .stepper-in::-webkit-scrollbar { display: none; }
+    .st { flex: none; display: inline-flex; align-items: center; gap: 8px; border: 1px solid transparent; background: transparent; border-radius: 999px; padding: 6px 13px 6px 6px; font-size: 13px; font-weight: 600; color: var(--sub); cursor: pointer; white-space: nowrap; min-height: 34px; }
+    .st .n { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #DBD4C5; color: #1B2733; }
+    .st.done .n { background: #E2EFE9; color: var(--pos); }
+    .st.on { background: #0E1A2B; color: #ECE4D3; }
+    .st.on .n { background: #B0823A; color: #0E1A2B; }
+    .st:hover:not(.on) { background: #E7E1D3; }
+    @media (max-width: 820px) { .stepper { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); } }
+    /* three columns: inputs summary · the step · what the bank will lend and your plans */
+    .shell { max-width: 1480px; margin: 0 auto; padding: 18px 20px 60px; display: grid; grid-template-columns: 250px minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+    .rail { position: sticky; top: 62px; max-height: calc(100vh - 74px); overflow: auto; scrollbar-width: thin; display: grid; gap: 14px; }
+    .sum-compact { display: none; }
+    @media (max-width: 1180px) { .shell { grid-template-columns: minmax(0, 1fr) 290px; } .rail-l { display: none; } .sum-compact { display: block; } }
+    @media (max-width: 820px) { .shell { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 48px; } .rail { position: static; max-height: none; overflow: visible; } }
+    /* cards and text */
+    .box { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+    .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--brassTx); }
+    .h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; margin: 4px 0 6px; }
+    .h2 { font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+    .lead { font-size: 13.5px; color: var(--sub); line-height: 1.55; max-width: 760px; }
+    .note { font-size: 12px; color: var(--sub); line-height: 1.5; margin-top: 8px; }
+    .lbl { font-size: 13px; color: var(--text); font-weight: 500; }
+    .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+    .chip { display: inline-flex; gap: 6px; align-items: baseline; font-size: 12px; padding: 4px 9px; border-radius: 6px; background: #EFEAE0; color: var(--text); }
+    .row-l { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 3px 0; }
+    .row-l .v { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; text-align: right; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; justify-content: center; border-radius: 8px; border: 1px solid var(--lineIn); background: #fff; color: var(--text); padding: 7px 13px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 34px; }
+    .btn.gold { background: #B0823A; border-color: #B0823A; color: #0E1A2B; }
+    .btn.ink { background: #0E1A2B; border-color: #0E1A2B; color: #fff; }
+    .btn.small { padding: 4px 10px; font-size: 12.5px; min-height: 30px; }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .lnk { background: none; border: none; color: var(--brassTx); font-weight: 600; font-size: 12.5px; cursor: pointer; padding: 4px 2px; min-height: 24px; text-decoration: underline; text-underline-offset: 2px; }
+    /* help bubble: a real button; opens on tap, click, Enter; closes on Esc or a click elsewhere */
+    .hint { position: relative; display: inline-flex; vertical-align: middle; margin-left: 4px; }
+    .hint > button { width: 24px; height: 24px; border-radius: 50%; border: 1px solid transparent; background: transparent; color: var(--sub); font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    .hint > button span { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; line-height: 1; }
+    .hint > button[aria-expanded=true] { color: var(--ink); }
+    .hint .pop { position: absolute; z-index: 50; top: 26px; left: -8px; width: min(320px, 80vw); background: #0E1A2B; color: #ECE4D3; font-size: 12.5px; font-weight: 400; line-height: 1.5; letter-spacing: 0; text-transform: none; padding: 10px 12px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); text-align: left; white-space: normal; }
+    /* disclosure */
+    details.dis { border-top: 1px solid var(--line); }
+    details.dis > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 2px; font-size: 14px; font-weight: 700; min-height: 44px; }
+    details.dis > summary::-webkit-details-marker { display: none; }
+    details.dis > summary::before { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--brassTx); border-bottom: 2px solid var(--brassTx); transform: rotate(-45deg); transition: transform .15s; flex: none; margin: 0 4px; }
+    details.dis[open] > summary::before { transform: rotate(45deg); }
+    details.dis > summary .s { font-weight: 400; font-size: 12.5px; color: var(--sub); }
+    details.dis > .body { padding: 2px 0 14px; }
+    details.adv { border: 1px dashed var(--lineIn); border-radius: 9px; padding: 0 12px; margin-top: 10px; background: #FBFAF6; }
+    details.adv > summary { list-style: none; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--sub); padding: 10px 0; min-height: 40px; display: flex; align-items: center; gap: 8px; }
+    details.adv > summary::-webkit-details-marker { display: none; }
+    details.adv > summary::before { content: "+"; font-weight: 700; color: var(--brassTx); width: 14px; }
+    details.adv[open] > summary::before { content: "−"; }
+    details.adv > .adv-body { padding: 2px 0 10px; }
+    /* tables */
+    .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .tbl th { text-align: right; font-size: 12px; font-weight: 700; color: #fff; background: #15263B; padding: 8px 10px; white-space: normal; vertical-align: bottom; }
+    .tbl th:first-child, .tbl td.l { text-align: left; }
+    .tbl td { padding: 6px 10px; border-bottom: 1px solid #E6E0D3; text-align: right; font-family: 'SF Mono', ui-monospace, Menlo, monospace; white-space: nowrap; }
+    .tbl td.l { font-family: inherit; white-space: normal; }
+    .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table.bridge { border-collapse: collapse; font-size: 12.5px; width: 100%; }
+    table.bridge td { padding: 4px 8px 4px 0; border-bottom: 1px dotted #E2DCCD; vertical-align: top; }
+    table.bridge td.v { text-align: right; font-family: 'SF Mono', ui-monospace, Menlo, monospace; white-space: nowrap; }
+    table.bridge tr.tot td { font-weight: 700; border-top: 1.5px solid #1B2430; border-bottom: none; }
+    table.bridge .n { color: var(--sub); font-size: 12px; }
+    /* timeline */
+    .ev { display: grid; grid-template-columns: 96px 1fr; gap: 12px; padding: 9px 0; border-bottom: 1px solid #ECE7DA; font-size: 13px; line-height: 1.5; }
+    .ev .d { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: var(--sub); padding-top: 1px; }
+    .ev.hi { background: #FBF6EA; }
+    @media (max-width: 640px) { .ev { grid-template-columns: 1fr; gap: 2px; } }
+    /* plan cards */
+    .plan { background: var(--paper); border: 1px solid var(--line); border-left-width: 5px; border-radius: 10px; padding: 12px 14px; }
+    .plan.off { padding: 8px 12px; }
+    .toast { position: fixed; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); background: #0E1A2B; color: #ECE4D3; border-radius: 10px; padding: 10px 14px; display: flex; gap: 14px; align-items: center; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.3); max-width: calc(100vw - 32px); }
+    .toast button { background: #B0823A; color: #0E1A2B; border: none; border-radius: 7px; padding: 6px 12px; font-weight: 700; cursor: pointer; min-height: 32px; }
+    .wf-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(120px, 2fr) 92px; gap: 10px; align-items: center; padding: 5px 0; font-size: 12.5px; }
+    .wf-track { position: relative; height: 18px; }
+    .wf-bar { position: absolute; top: 2px; height: 14px; border-radius: 3px; }
+    @media (max-width: 640px) { .wf-row { grid-template-columns: 1fr 90px; } .wf-track { grid-column: 1 / -1; order: 3; } }
+    @media print {
+      @page { margin: 11mm; }
+      body { background: #fff !important; }
+      .no-print, .stepper, .rail-r .no-print, .toast { display: none !important; }
+      .shell { display: block; padding: 0; max-width: none; }
+      .rail { position: static; max-height: none; overflow: visible; }
+      .rail-l { display: block !important; }
+      .sum-compact { display: none !important; }
+      .box, .plan { break-inside: avoid; }
+      input[type=range] { display: none !important; }
+      .scroll-x { overflow: visible; }
+      .tbl { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="components.jsx" data-presets="react"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo, useEffect, useRef } = React;
+    const { LineChart, AreaChart, BarChart, Line, Area, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, ReferenceDot } = window.Recharts;
+
+    /* AA palette for this page; plan colours fixed per slot (fills) with darker text versions */
+    const K = { text: "#1B2733", sub: "#56616C", brass: "#B0823A", brassTx: "#8A6427", pos: "#276B55", neg: "#A33D29", line: "#DBD4C5", ink: "#0E1A2B", paper: "#FBFAF6" };
+    const PLAN_FILL = ["#2F6DB5", "#B0823A", "#1F9A80", "#A24FB8"], PLAN_TEXT = ["#245A99", "#8A6427", "#1A6E5C", "#87409B"];
+    const STORE_KEY = "re_scenarios";            // shared with the current page
+    const CUR_KEY = "re_preview_current";        // this page's own autosave
+    const MAIN_KEY = "re_current";               // the current page's autosave (used once, to start from your inputs)
+    const SOFT = "#F3EFE6", SOFT_NEG = "#F7E9E5", SOFT_POS = "#E6F0EC", SOFT_AMB = "#FBEFD9";
+    const tipStyle = { fontFamily: SANS, fontSize: 12, border: `1px solid ${K.line}`, borderRadius: 6 };
+    const axisT = { fontFamily: MONO, fontSize: 12, fill: K.sub };
+    const axisS = { fontFamily: SANS, fontSize: 12, fill: K.sub };
+    const signCol = (v) => v >= 0 ? K.pos : K.neg;
+    const calText = (s) => String(s || "").replace(/\b(?:at |in )?month (\d+)\b/g, (_, n) => `in ${fCal(+n)}`);
+
+    /* ---------- building blocks ---------- */
+    // help bubble: a button that opens on tap / click / Enter and closes on Esc or a click elsewhere
+    function Hint({ text, label }) {
+      const [open, setOpen] = useState(false);
+      const ref = useRef(null);
+      useEffect(() => {
+        if (!open) return;
+        const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+        document.addEventListener("mousedown", close); document.addEventListener("touchstart", close); document.addEventListener("keydown", esc);
+        return () => { document.removeEventListener("mousedown", close); document.removeEventListener("touchstart", close); document.removeEventListener("keydown", esc); };
+      }, [open]);
+      if (!text) return null;
+      return <span className="hint no-print" ref={ref}><button type="button" aria-expanded={open} aria-label={label ? `How is "${label}" worked out?` : "How is this worked out?"} onClick={() => setOpen(!open)}><span>i</span></button>{open && <span className="pop" role="note">{text}</span>}</span>;
+    }
+    // slider with a number box (type a value) and a 24-px touch height
+    function Field({ label, value, min, max, step, unit, onChange, hint, help, show }) {
+      const [txt, setTxt] = useState(null);
+      const v = value == null ? 0 : value;
+      const commit = () => { if (txt == null) return; const n = parseFloat(String(txt).replace(/[^0-9.\-]/g, "")); if (!isNaN(n)) onChange(n); setTxt(null); };
+      return (
+        <div style={{ marginBottom: 14 }}>
+          <div className="flex items-center justify-between" style={{ gap: 8 }}>
+            <label className="lbl" style={{ minWidth: 0 }}>{label}<Hint text={help} label={label} /></label>
+            <span className="flex items-center" style={{ gap: 4, flex: "none" }}>
+              <input type="text" inputMode="decimal" aria-label={label} value={txt != null ? txt : (show ? show(v) : (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-US") : String(+v.toFixed(2))))} onChange={(e) => setTxt(e.target.value)} onFocus={(e) => { setTxt(String(v)); setTimeout(() => e.target.select(), 0); }} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") { setTxt(null); e.target.blur(); } }} style={{ width: Math.abs(v) >= 100000 ? 104 : 76, textAlign: "right", fontFamily: MONO, fontSize: 12.5, padding: "4px 6px", minHeight: 30 }} />
+              {unit && <span style={{ fontSize: 12, color: K.sub, minWidth: 0 }}>{unit}</span>}
+            </span>
+          </div>
+          <input type="range" aria-label={label} min={min} max={max} step={step} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(parseFloat(e.target.value))} />
+          {hint && <div style={{ fontSize: 12, color: K.sub, marginTop: 1, lineHeight: 1.45 }}>{hint}</div>}
+        </div>
+      );
+    }
+    function NumIn({ v, on, w, dec, label, nullable, placeholder }) {
+      const [t, setT] = useState(null);
+      const show = v == null || v === "" ? "" : dec ? String(v) : Math.round(v).toLocaleString("en-US");
+      const commit = () => { if (t == null) return; const s = t.trim(); if (s === "") on(nullable ? null : 0); else { const n = parseFloat(s.replace(/[^0-9.\-]/g, "")); if (!isNaN(n)) on(n); } setT(null); };
+      return <input type="text" inputMode="decimal" aria-label={label} placeholder={placeholder} value={t != null ? t : show} onChange={(e) => setT(e.target.value)} onFocus={() => setT(v == null ? "" : String(v))} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} style={{ width: w || 90, textAlign: "right", fontFamily: MONO, fontSize: 12.5, padding: "4px 6px", minHeight: 30 }} />;
+    }
+    // a month of the plan (0 = month 0 of the scenario) chosen as a calendar month
+    const monthKeyOf = (idx) => reMonthKey(new Date(RE_T0.getFullYear(), RE_T0.getMonth() + Math.round(idx || 0), 1));
+    const idxOfMonthKey = (k) => { const mm = /^(\d{4})-(\d{2})$/.exec(k || ""); return mm ? (+mm[1] - RE_T0.getFullYear()) * 12 + (+mm[2] - 1 - RE_T0.getMonth()) : null; };
+    function MonthField({ label, value, min, max, onChange, hint, help }) {
+      const v = Math.round(value || 0);
+      return (
+        <div style={{ marginBottom: 14 }}>
+          <div className="flex items-center justify-between" style={{ gap: 8 }}>
+            <label className="lbl">{label}<Hint text={help} label={label} /></label>
+            <input type="month" aria-label={label} value={monthKeyOf(v)} min={monthKeyOf(min)} max={monthKeyOf(max)} onChange={(e) => { const i = idxOfMonthKey(e.target.value); if (i != null) onChange(Math.max(min, Math.min(max, i))); }} style={{ minHeight: 30, padding: "3px 6px", fontSize: 12.5 }} />
+          </div>
+          <input type="range" aria-label={label} min={min} max={max} step={1} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(parseFloat(e.target.value))} />
+          {hint && <div style={{ fontSize: 12, color: K.sub, marginTop: 1, lineHeight: 1.45 }}>{hint}</div>}
+        </div>
+      );
+    }
+    const Seg = ({ value, options, onChange, dark, label }) => (
+      <div className={"seg" + (dark ? " dark" : "")} role="radiogroup" aria-label={label}>
+        {options.map(([id, l]) => <button key={id} type="button" role="radio" aria-checked={value === id} className={value === id ? "on" : ""} onClick={() => onChange(id)}>{l}</button>)}
+      </div>
+    );
+    const Pick = ({ label, value, onChange, options, hint, help }) => (
+      <div style={{ marginBottom: 12 }}>
+        {label && <label className="lbl" style={{ display: "block", marginBottom: 4 }}>{label}<Hint text={help} label={label} /></label>}
+        <select value={value} onChange={(e) => onChange(e.target.value)} style={{ width: "100%" }}>{options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+        {hint && <div style={{ fontSize: 12, color: K.sub, marginTop: 3, lineHeight: 1.45 }}>{hint}</div>}
+      </div>
+    );
+    const Tick = ({ checked, onChange, label, sub }) => (
+      <label className="flex items-start" style={{ gap: 8, fontSize: 13, cursor: "pointer", margin: "4px 0 10px", lineHeight: 1.4 }}>
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /> <span>{label}{sub && <span style={{ display: "block", fontSize: 12, color: K.sub }}>{sub}</span>}</span>
+      </label>
+    );
+    const Box = ({ title, right, children, style, help }) => (
+      <section className="box" style={style}>
+        {(title || right) && <div className="flex items-center justify-between flex-wrap" style={{ gap: 8, marginBottom: 10 }}>{title && <h3 className="h2" style={{ margin: 0 }}>{title}<Hint text={help} label={typeof title === "string" ? title : null} /></h3>}{right}</div>}
+        {children}
+      </section>
+    );
+    const More = ({ title, children, open }) => <details className="adv" open={open}><summary>{title}</summary><div className="adv-body">{children}</div></details>;
+    // a disclosure whose body is computed only once it is opened
+    const Dis = ({ id, title, sub, open, onToggle, children }) => (
+      <details className="dis" open={open} onToggle={(e) => onToggle(id, e.currentTarget.open)}>
+        <summary>{title}{sub && <span className="s">{sub}</span>}</summary>
+        {open && <div className="body">{children}</div>}
+      </details>
+    );
+    const Tile = ({ label, value, sub, tone, foot, help }) => (
+      <div style={{ background: "#fff", border: `1px solid ${K.line}`, borderRadius: 10, padding: "12px 14px", minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, color: K.sub }}>{label}<Hint text={help} label={label} /></div>
+        <div className="mono" style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1.15, color: tone || K.text, margin: "4px 0 2px", overflowWrap: "anywhere" }}>{value}</div>
+        {sub && <div style={{ fontSize: 12.5, color: K.sub, lineHeight: 1.45 }}>{sub}</div>}
+        {foot}
+      </div>
+    );
+    const Status = ({ r }) => !r ? null : r.feasible && r.recoveryOk ? <span className="tag" style={{ background: "#E2EFE9", color: K.pos }}>✓ Works every month</span> : r.feasible ? <span className="tag" style={{ background: SOFT_AMB, color: "#7A4F12" }}>✓ Works · slow to recover</span> : <span className="tag" style={{ background: SOFT_NEG, color: K.neg }}>✗ Runs out of cash</span>;
+    const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } };
+    const saveStore = (o) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} };
+    const readJSON = (k) => { try { const j = JSON.parse(localStorage.getItem(k) || "null"); return j && typeof j === "object" ? j : null; } catch (e) { return null; } };
+
+    /* ---------- pictures (plain HTML/CSS bars: crisp, print well) ---------- */
+    // how a figure adds up, as a waterfall: each step starts where the last one ended
+    function Waterfall({ rows, totalLabel, total }) {
+      let run = 0; const pts = rows.map((x) => { const a = run; run += x.v; return { ...x, a, b: run }; });
+      const lo = Math.min(0, ...pts.map((x) => Math.min(x.a, x.b))), hi = Math.max(1, ...pts.map((x) => Math.max(x.a, x.b)), total);
+      const pos = (v) => (v - lo) / (hi - lo) * 100;
+      return (
+        <div>
+          {pts.map((x, k) => (
+            <div key={k} className="wf-row">
+              <div style={{ minWidth: 0 }}>{x.label}{x.note && <div style={{ fontSize: 12, color: K.sub }}>{x.note}</div>}</div>
+              <div className="wf-track"><div className="wf-bar" style={{ left: `${pos(Math.min(x.a, x.b))}%`, width: `${Math.max(0.6, Math.abs(pos(x.b) - pos(x.a)))}%`, background: k === 0 ? "#5B6773" : x.v < 0 ? "#C0604B" : "#3C8A6E" }} /></div>
+              <div className="mono" style={{ textAlign: "right", color: x.v < 0 ? K.neg : K.text }}>{x.v < 0 ? "−" : "+"}{fS(Math.abs(x.v))}</div>
+            </div>
+          ))}
+          <div className="wf-row" style={{ borderTop: `1.5px solid ${K.text}`, marginTop: 4, paddingTop: 7, fontWeight: 700 }}>
+            <div>{totalLabel}</div>
+            <div className="wf-track"><div className="wf-bar" style={{ left: `${pos(Math.min(0, total))}%`, width: `${Math.max(0.6, Math.abs(pos(total) - pos(0)))}%`, background: "#0E1A2B" }} /></div>
+            <div className="mono" style={{ textAlign: "right" }}>{fM(total)}</div>
+          </div>
+        </div>
+      );
+    }
+    // two stacked bars on one scale: what you end up with if you build, and if you don't
+    function WealthBars({ bars }) {
+      const ends = bars.map((b) => b.parts.reduce((a, p) => a + p.v, 0));
+      const tops = bars.map((b) => b.parts.filter((p) => p.v > 0).reduce((a, p) => a + p.v, 0));
+      const hi = Math.max(1, ...tops), lo = Math.min(0, ...ends);
+      const pos = (v) => (v - lo) / (hi - lo) * 100;
+      return (
+        <div style={{ display: "grid", gap: 16 }}>
+          {bars.map((b, i) => {
+            let up = 0; const segs = [];
+            b.parts.filter((p) => p.v > 0).forEach((p) => { segs.push({ ...p, a: up, b: up + p.v, row: 0 }); up += p.v; });
+            let down = up; b.parts.filter((p) => p.v < 0).forEach((p) => { segs.push({ ...p, a: down + p.v, b: down, row: 1 }); down += p.v; });
+            return (
+              <div key={i}>
+                <div className="flex justify-between" style={{ fontSize: 13, marginBottom: 4 }}><b>{b.label}</b><span className="mono" style={{ fontWeight: 700 }}>= {fM(ends[i])}</span></div>
+                <div style={{ position: "relative", height: segs.some((s) => s.row) ? 48 : 24 }}>
+                  {segs.map((s, k) => <div key={k} title={`${s.label}: ${fM(s.v)}`} style={{ position: "absolute", top: s.row ? 26 : 0, height: 22, left: `${pos(s.a)}%`, width: `${Math.max(0.4, pos(s.b) - pos(s.a))}%`, background: s.color, borderRight: "1px solid #fff", color: "#fff", fontSize: 12, lineHeight: "22px", paddingLeft: 5, overflow: "hidden", whiteSpace: "nowrap" }}>{pos(s.b) - pos(s.a) > 11 ? `${s.label} ${fS(Math.abs(s.v))}` : ""}</div>)}
+                  <div style={{ position: "absolute", top: -2, bottom: -2, left: `${pos(ends[i])}%`, borderLeft: `2px solid ${K.ink}` }} />
+                </div>
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap" style={{ gap: "6px 14px", fontSize: 12, color: K.sub }}>
+            {[...new Map(bars.flatMap((b) => b.parts).map((p) => [p.label, p.color])).entries()].map(([l, c]) => <span key={l} className="flex items-center" style={{ gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 2, background: c, display: "inline-block" }} />{l}</span>)}
+          </div>
+        </div>
+      );
+    }
+
+    const RailGroup = ({ title, onEdit, children }) => (
+      <div style={{ padding: "10px 0", borderTop: `1px solid ${K.line}` }}>
+        <div className="flex justify-between items-center" style={{ marginBottom: 4 }}><b style={{ fontSize: 13 }}>{title}</b>{onEdit && <button className="lnk no-print" onClick={onEdit}>Edit</button>}</div>
+        {children}
+      </div>
+    );
+    const Row = ({ k, v, tone, sub }) => <div className="row-l"><span style={{ color: K.sub }}>{k}{sub && <span style={{ display: "block", fontSize: 12 }}>{sub}</span>}</span><span className="v" style={{ color: tone || K.text }}>{v}</span></div>;
+
+    /* ---------- the app ---------- */
+    function App() {
+      // this page keeps its own working copy; the first time it starts from what you entered on the current page
+      const [boot] = useState(() => { const own = readJSON(CUR_KEY); if (own) return { inp: own, from: "own" }; const main = readJSON(MAIN_KEY); return main ? { inp: main, from: "main" } : { inp: null, from: "defaults" }; });
+      const [inp, setInp] = useState(() => ({ ...mergeRE(boot.inp || {}), asOf: reAsOfOf(boot.inp) }));
+      const [banner, setBanner] = useState(boot.from === "main" ? "main" : null);
+      const [termsNote, setTermsNote] = useState(() => reTermsNotice(boot.inp));
+      reSetAsOf(inp.asOf);
+      const EXPL = useMemo(() => reExpl(inp), [inp]);
+      useEffect(() => { const id = setTimeout(() => { try { localStorage.setItem(CUR_KEY, JSON.stringify(inp)); } catch (e) {} }, 400); return () => clearTimeout(id); }, [inp]);
+      const [step, setStep] = useState(0);
+      const [editIdx, setEditIdx] = useState(-1);      // the plan whose editor is open
+      const [focus, setFocus] = useState(-1);          // the plan shown in detail; -1 = the recommended one
+      const [landWithBuild, setLandWithBuild] = useState(false);
+      const [printAll, setPrintAll] = useState(false);
+      const [saved, setSaved] = useState(loadStore);
+      const [loadedName, setLoadedName] = useState(null);
+      const [snap, setSnap] = useState(() => JSON.stringify(inp));   // your inputs as last saved or loaded
+      const [showScen, setShowScen] = useState(false);
+      const [undo, setUndo] = useState(null);
+      const [openDis, setOpenDis] = useState({});
+      const [measure, setMeasure] = useState("econ");
+      const [loanTxt, setLoanTxt] = useState("");
+      const [loanMore, setLoanMore] = useState(false);
+      const [whatIf, setWhatIf] = useState({});
+      const toggleDis = (id, open) => setOpenDis((s) => s[id] === open ? s : { ...s, [id]: open });
+      const dirty = useMemo(() => JSON.stringify(inp) !== snap, [inp, snap]);
+
+      const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
+      const setMany = (o) => setInp((s) => ({ ...s, ...o }));
+      const setPlan = (i, k, v) => setInp((s) => ({ ...s, plans: s.plans.map((o, j) => j === i ? { ...o, [k]: v } : o) }));
+      const setPlanMany = (i, o2) => setInp((s) => ({ ...s, plans: s.plans.map((o, j) => j === i ? { ...o, ...o2 } : o) }));
+      const setOpt = (i, k, v) => setInp((s) => ({ ...s, options: s.options.map((o, j) => j === i ? { ...o, [k]: v } : o) }));
+      const setLoans = (l, replaced) => setInp((s) => ({ ...s, existingLoans: l, plans: replaced ? s.plans.map((o) => ({ ...o, refiPick: null })) : s.plans }));
+      // anything that replaces your work can be undone for 10 seconds
+      const withUndo = (label, apply) => {
+        const before = { inp, saved, loadedName, snap };
+        apply();
+        setUndo({ label, id: Date.now(), restore: () => { setInp(before.inp); setSaved(before.saved); saveStore(before.saved); setLoadedName(before.loadedName); setSnap(before.snap); } });
+      };
+      useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 10000); return () => clearTimeout(t); }, [undo]);
+
+      const m = useMemo(() => computeRE(inp), [inp]);
+      const econIrr = useMemo(() => m.results.map((r) => r && m.p.mode === "home" ? reEconIRR(r) : null), [m]);
+      const home = inp.mode === "home", build = inp.acquire === "build";
+      const { prj, household } = m;
+      const liveIdx = m.results.map((r, i) => r ? i : -1).filter((i) => i >= 0);
+      const bestF = m.bestFeasible, best = m.best, lead = bestF || best;
+      const recIdx = lead ? m.results.indexOf(lead) : -1;
+      const focusIdx = focus >= 0 && m.results[focus] ? focus : recIdx;
+      const focusRes = focusIdx >= 0 ? m.results[focusIdx] : null;
+      const renting = inp.rentNow > 0, baseLbl = renting ? "renting" : build ? "not building" : "not buying";
+      const H = Math.round((home ? inp.horizon : inp.exitYear) * 12), endDate = fCal(H);
+      const netRet = lead && home ? lead.netReturn : inp.altReturn;
+      const curStart = Math.max(inp.buildStart, inp.landMonth);
+      const planName = (i) => home ? `Plan ${i + 1}` : `Option ${i + 1}`;
+
+      /* steps */
+      const steps = home
+        ? [["money", "Your money"], ["loans", "Your loans"], ["home", build ? "The home" : "The property"], ["pay", "How to pay"], ["when", "When"], ["answer", "Your answer"]]
+        : [["property", "The property"], ["letting", "Letting & you"], ["rfin", "Financing"], ["rres", "Results"]];
+      const stepI = Math.min(step, steps.length - 1), cur = steps[stepI][0];
+      const stepIdx = (id) => steps.findIndex((s) => s[0] === id);
+      const stepRow = useRef(null);
+      const go = (i) => { const j = typeof i === "string" ? stepIdx(i) : i; if (j < 0) return; setStep(Math.max(0, Math.min(steps.length - 1, j))); window.scrollTo({ top: 0, behavior: "smooth" }); };
+      useEffect(() => { const row = stepRow.current; const b = row && row.querySelector(".st.on"); if (b && b.scrollIntoView) b.scrollIntoView({ block: "nearest", inline: "center" }); }, [stepI]);
+
+      /* optimizer (debounced; a slice of 48 mixes per tick): the planned start always, every start on "When" */
+      const [optInp, setOptInp] = useState(inp);
+      useEffect(() => { const id = setTimeout(() => setOptInp(inp), 350); return () => clearTimeout(id); }, [inp]);
+      const [opt, setOptPlanned] = useState(null);
+      const [optRows, setOptRows] = useState({ rows: [], done: false, total: 0 });
+      const optStale = !opt || opt.src !== inp, startsStale = !optRows.done || optRows.src !== inp;
+      const SLICE = 48;
+      const runSlices = (inp0, d, planned, onDone, isCancelled) => {
+        const n = optimizeRE(inp0, { delays: [d], slice: [0, 0], planned, landWithBuild }).combos, parts = [];
+        let a = 0, id = null;
+        const tick = () => {
+          if (isCancelled()) return;
+          parts.push(optimizeRE(inp0, { delays: [d], slice: [a, Math.min(n, a + SLICE)], planned, landWithBuild }).part); a += SLICE;
+          if (a < n) { id = setTimeout(tick, 0); return; }
+          onDone(optimizeRE(inp0, { merge: { delay: d, planned, parts }, landWithBuild }));
+        };
+        id = setTimeout(tick, 0);
+        return () => clearTimeout(id);
+      };
+      useEffect(() => {
+        if (optInp.mode !== "home") { setOptPlanned(null); return; }
+        let cancelled = false;
+        const stop = runSlices(optInp, Math.max(optInp.buildStart, optInp.landMonth), true, (r) => { if (!cancelled) setOptPlanned({ planned: r.start, combos: r.combos, src: optInp }); }, () => cancelled);
+        return () => { cancelled = true; stop(); };
+      }, [optInp, landWithBuild]);
+      const wantStarts = home && cur === "when";
+      useEffect(() => {
+        if (!wantStarts || optInp.mode !== "home") return;
+        const delays = []; for (let d = 0; d <= 60; d += 3) delays.push(d);
+        const cs = Math.max(optInp.buildStart, optInp.landMonth); if (!delays.includes(cs)) { delays.push(cs); delays.sort((a, b) => a - b); }
+        let cancelled = false, k = 0, stop = () => {}; const rows = [];
+        setOptRows({ rows: [], done: false, total: delays.length, src: optInp });
+        const next = () => {
+          if (cancelled) return;
+          const d = delays[k];
+          stop = runSlices(optInp, d, d === cs && !landWithBuild, (r) => {
+            if (cancelled) return;
+            rows.push(r.start); k++;
+            setOptRows({ rows: rows.slice(), done: k >= delays.length, total: delays.length, combos: r.combos, src: optInp });
+            if (k < delays.length) next();
+          }, () => cancelled);
+        };
+        next();
+        return () => { cancelled = true; stop(); };
+      }, [optInp, landWithBuild, wantStarts]);
+      // the recommended plan at every start date (and the plan you look at, on "When")
+      const sweepRec = useMemo(() => home && optInp.mode === "home" && recIdx >= 0 ? timingSweepRE(optInp, recIdx, 60, 3, landWithBuild) : null, [optInp, recIdx, home, landWithBuild]);
+      const sweep = useMemo(() => home && optInp.mode === "home" && focusIdx >= 0 && focusIdx !== recIdx && cur === "when" ? timingSweepRE(optInp, focusIdx, 60, 3, landWithBuild) : null, [optInp, focusIdx, recIdx, home, landWithBuild, cur]) || sweepRec;
+      const tornado = useMemo(() => focusIdx >= 0 && openDis.sens && optInp.mode === inp.mode ? tornadoRE(optInp, focusIdx) : [], [optInp, focusIdx, openDis.sens, inp.mode]);
+      const startBest = sweepRec && sweepRec.best, startNow = startBest && startBest.delay <= curStart;
+      // copy a mix into Plan 1 (and move the start if it was found for another date)
+      const useOptPlan = (st, label) => withUndo(label || `Copied "${st.best.name}" into Plan 1`, () => {
+        setInp((s0) => {
+          const plans = s0.plans.map((o, j) => j === 0 ? { ...(st.best.cleanPlan || st.best.plan), enabled: true, name: st.best.name } : o);
+          const q = { ...s0, plans };
+          if (st.delay !== Math.max(s0.buildStart, s0.landMonth)) { q.buildStart = st.delay; q.landMonth = landWithBuild ? st.delay : Math.min(s0.landMonth, st.delay); }
+          return q;
+        });
+        setFocus(0);
+      });
+      // what each old-loan option does to the plan you are editing (three runs of that plan)
+      const settleFx = useMemo(() => {
+        if (!home || optInp.mode !== "home" || editIdx < 0 || !optInp.plans[editIdx] || !optInp.plans[editIdx].enabled) return null;
+        const q = mergeRE(optInp);
+        return ["asNeeded", "forMax", "none"].map((pol) => ({ pol, r: reRunOne({ ...q, plans: q.plans.map((o, j) => j === editIdx ? { ...o, settlePolicy: pol } : o) }, editIdx).r }));
+      }, [optInp, editIdx, home]);
+      // what-if panels: computed when opened, cached until the inputs or the plan change (break-evens one at a time)
+      useEffect(() => {
+        if (!home || optInp.mode !== "home" || focusIdx < 0) return;
+        const want = ["stress", "breakeven", "ready", "worth", "liquid"].filter((k) => openDis[k]);
+        let cancelled = false; const timers = [];
+        const fresh = (id) => { const c = whatIf[id]; return c && c.src === optInp && c.idx === focusIdx && !c.partial; };
+        want.forEach((id0) => {
+          const id = id0 === "liquid" ? "stress" : id0;
+          if (fresh(id)) return;
+          if (id === "breakeven") {
+            const keys = ["rent", "appreciation", "return", "uplift"], acc = [];
+            const next = (k) => {
+              if (cancelled) return;
+              acc.push(...(breakEvenRE(optInp, focusIdx, [keys[k]]) || []));
+              const done = k + 1 >= keys.length;
+              setWhatIf((s) => ({ ...s, breakeven: { src: optInp, idx: focusIdx, data: acc.slice(), partial: !done } }));
+              if (!done) timers.push(setTimeout(() => next(k + 1), 0));
+            };
+            timers.push(setTimeout(() => next(0), 30));
+          } else timers.push(setTimeout(() => { if (cancelled) return; const data = id === "stress" ? stressRE(optInp, focusIdx) : id === "ready" ? readyBreakEvenRE(optInp, focusIdx) : loanWorthRE(optInp, focusIdx); setWhatIf((s) => ({ ...s, [id]: { src: optInp, idx: focusIdx, data } })); }, 30));
+        });
+        return () => { cancelled = true; timers.forEach(clearTimeout); };
+      }, [openDis, optInp, focusIdx, home]);
+      const wi = (id) => { const c = whatIf[id]; return c && c.idx === focusIdx ? c : null; };
+      // print: a one-pager of the answer, once it is drawn
+      useEffect(() => { if (!printAll) return; const t = setTimeout(() => { window.print(); setPrintAll(false); }, 400); return () => clearTimeout(t); }, [printAll]);
+
+      /* scenarios (shared with the current page) */
+      const persist = (o) => { setSaved(o); saveStore(o); };
+      const saveAs = (n) => { const k = (n || "").trim(); if (!k) return; persist({ ...saved, [k]: { inp, savedAt: new Date().toISOString() } }); setLoadedName(k); setSnap(JSON.stringify(inp)); };
+      const quickSave = () => { const n = window.prompt("Save this scenario as (the same name replaces it)", loadedName || "My scenario"); if (n) saveAs(n); };
+      const doLoad = (n) => {
+        const s0 = saved[n]; if (!s0) return;
+        if (dirty && !window.confirm(`Load "${n}"? The changes you have not saved here are replaced (you can undo for 10 seconds).`)) return;
+        withUndo(`Loaded "${n}"`, () => { const q = { ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }; setTermsNote(reTermsNotice(s0.inp)); setInp(q); setLoadedName(n); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); });
+      };
+      const doDelete = (n) => { if (!window.confirm(`Delete the saved scenario "${n}"?`)) return; withUndo(`Deleted "${n}"`, () => { const o = { ...saved }; delete o[n]; persist(o); if (loadedName === n) setLoadedName(null); }); };
+      const resetAll = () => { if (!window.confirm("Start again from the tool's defaults? Your inputs here are replaced (you can undo for 10 seconds).")) return; withUndo("Started from the defaults", () => { const q = { ...mergeRE({}), asOf: reAsOfOf(null) }; setInp(q); setLoadedName(null); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); }); };
+      const doExport = () => { const blob = new Blob([JSON.stringify({ scenarios: saved, current: inp }, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "realestate-scenarios.json"; a.click(); };
+      const doImport = (e) => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { const j = JSON.parse(rd.result); const add = j.scenarios || (j.inp ? { [f.name]: j } : { [f.name]: { inp: j } }); withUndo(`Imported ${Object.keys(add).length} scenario(s)`, () => persist({ ...saved, ...add })); } catch (err) { alert("Could not read that file."); } }; rd.readAsText(f); e.target.value = ""; };
+      const savedRows = useMemo(() => Object.entries(saved).map(([n, s]) => { try { const r = computeRE(s.inp); const b = r.bestFeasible || r.best; return { n, at: s.savedAt, home: r.p.mode === "home", total: r.prj.total, metric: b ? (r.p.mode === "home" ? b.econAdv : (b.irr == null ? null : b.irr * 100)) : null, verdict: r.verdict, vColor: r.vColor }; } catch (e) { return { n, at: s.savedAt, error: true }; } }), [saved]);
+
+      /* ---------- small derived things ---------- */
+      const tWhen = (w, mo) => w === "start" ? 0 : w === "land" ? prj.landMonth : w === "build" ? prj.start : w === "completion" ? prj.occupy : Math.max(0, Math.round(mo || 0));
+      const loanEnds = (l) => l.settleAt != null && l.settleAt > 0 ? Math.min(Math.round(l.settleAt), Math.round(l.monthsLeft)) : Math.round(l.monthsLeft);
+      const rateOf = (l) => `${l.rate}%${l.rateType === "flat" ? " flat" : ""}`;
+      const sameResult = (a, b) => !!a && !!b && Math.abs(a.econAdv - b.econAdv) < 1 && ["lm", "eq", "pl", "co", "pl2"].every((k) => Math.abs((a[k] ? a[k].amount : 0) - (b[k] ? b[k].amount : 0)) < 1);
+      const occOf = (r) => Math.min(r.months.length - 1, r.occupy);
+      const cashAtMoveIn = (r) => fundingBridgeRows(r, occOf(r), inp, prj).total;
+
+      /* ---------- left rail: your inputs at a glance ---------- */
+      const InputsSummary = () => home ? (
+        <>
+          <RailGroup title="You" onEdit={() => go("money")}>
+            <Row k="Income" v={`${fSAR(inp.income)}/mo`} />
+            <Row k="Living costs" v={`${fSAR(inp.livingExpenses)}/mo`} />
+            {inp.rentNow > 0 && <Row k="Rent today" v={`${fSAR(inp.rentNow)}/mo`} />}
+            <Row k="Cash today" v={fM(inp.cashAvailable)} />
+            <Row k="Safety cushion" v={fM(inp.cashBuffer)} />
+            {inp.ownedValue > 0 && <Row k="Property you own" v={fM(inp.ownedValue)} sub={!renting && inp.ownHomePlan !== "keep" ? (inp.ownHomePlan === "let" ? `let at ${inp.ownHomeYield}% from move-in` : "sold at move-in") : null} />}
+          </RailGroup>
+          <RailGroup title={`Existing loans · ${household.existingDbr.toFixed(0)}% of income`} onEdit={() => go("loans")}>
+            {inp.existingLoans.filter((l) => l.balance > 0).length === 0 ? <div style={{ fontSize: 12.5, color: K.sub }}>none</div> : inp.existingLoans.filter((l) => l.balance > 0).map((l, k) => (
+              <div key={l.id || k} style={{ fontSize: 12.5, padding: "3px 0" }}><b>{l.name}</b> <span style={{ color: K.sub }}>({rateOf(l)})</span><div className="mono" style={{ fontSize: 12, color: K.sub }}>{fSAR(l.installment)}/mo · {fM(l.balance)} left · ends {fCal(loanEnds(l))}</div></div>
+            ))}
+          </RailGroup>
+          <RailGroup title={build ? "The home" : "The property"} onEdit={() => go("home")}>
+            {build ? <>
+              <Row k={`Land ${inp.landArea} m² · ${fCal(prj.landMonth)}`} v={fM(prj.land)} />
+              <Row k={`Build ${Math.round(prj.builtArea)} m² · ${prj.bm} mo`} v={fM(prj.hard)} />
+            </> : <Row k={`Price · ${fCal(prj.landMonth)}`} v={fM(prj.price)} />}
+            <Row k="All-in cost" v={fM(prj.total)} />
+            <Row k="Value at move-in" v={fM(prj.value0)} />
+            <Row k="Move in" v={fCal(prj.occupy)} />
+          </RailGroup>
+          <RailGroup title="Assumptions" onEdit={() => go("home")}>
+            <Row k="Cash earns" v={`${(+netRet.toFixed(2))}%/yr`} sub={(inp.cashZakatPct || 0) > 0 ? `${inp.altReturn}% less ${inp.cashZakatPct}% zakat` : null} />
+            <Row k="Home value grows" v={`${inp.appreciation}%/yr`} />
+            <Row k="Compare until" v={endDate} />
+            <Row k="Bank limit" v={`${inp.dbrCap}% of income`} />
+          </RailGroup>
+          <RailGroup title="Bank terms" onEdit={() => go("pay")}>
+            {[["Land mortgage", "lmRate", "lmTenure"], ["Own-property mortgage", "eqRate", "eqTenure"], ["Personal loans", "plRate", "plTenure"], ["Cash-out", "coRate", "coTenure"]].filter(([, rk]) => rk !== "eqRate" || inp.ownedValue > 0).map(([l, rk, tk]) => <Row key={rk} k={l} v={`${inp[rk]}%${inp.rateQuote === "flat" ? " flat" : ""} · ${inp[tk]}y`} />)}
+          </RailGroup>
+        </>
+      ) : (
+        <>
+          <RailGroup title="The property" onEdit={() => go("property")}><Row k="All-in cost" v={fM(prj.total)} /><Row k="Rent" v={`${fSAR(inp.rentMo)}/mo`} /><Row k="Sell in" v={fCal(H)} /></RailGroup>
+          <RailGroup title="You" onEdit={() => go("letting")}><Row k="Income" v={`${fSAR(inp.income)}/mo`} /><Row k="Cash to commit" v={fM(inp.cashAvailable)} /></RailGroup>
+        </>
+      );
+      const InputsRail = () => <div className="box" style={{ padding: "12px 16px" }}><div className="eyebrow" style={{ marginBottom: 2 }}>Your inputs</div>{InputsSummary()}</div>;
+
+      /* ---------- right rail: what the bank will lend you, and your plans ---------- */
+      const capRows = household.capTimeline.slice(0, 5);
+      const capWhy = (c) => {
+        if (c.t === 0) return "Today";
+        const ended = inp.existingLoans.filter((l) => l.balance > 0 && loanEnds(l) === c.t).map((l) => l.name);
+        return `From ${fCal(c.t)}${ended.length ? ` (${ended.join(" + ")} ${ended.length > 1 ? "end" : "ends"})` : (inp.incomeGrowth || 0) > 0 ? " (income steps up)" : ""}`;
+      };
+      const BankRail = () => {
+        const used = household.existingInst, cap = inp.income * inp.dbrCap / 100;
+        return (
+          <div className="box" style={{ padding: "14px 16px" }}>
+            <div className="eyebrow">What the bank will lend you<Hint text={EXPL.capacity} label="What the bank will lend you" /></div>
+            <div style={{ fontSize: 12.5, color: K.sub, margin: "6px 0 8px", lineHeight: 1.45 }}>All instalments together may use {inp.dbrCap}% of your income: <b className="mono" style={{ color: K.text }}>{fSAR(cap)}/mo</b>.</div>
+            <div style={{ height: 12, borderRadius: 6, background: "#E6EFEA", overflow: "hidden", border: `1px solid ${K.line}` }}><div style={{ width: `${Math.min(100, used / Math.max(1, cap) * 100)}%`, height: "100%", background: "#8C877D" }} /></div>
+            <div style={{ fontSize: 12, color: K.sub, margin: "4px 0 8px" }}>today: old loans {fSAR(used)}/mo · free {fSAR(Math.max(0, cap - used))}/mo</div>
+            {capRows.map((c) => (
+              <div key={c.t} style={{ fontSize: 12.5, padding: "7px 0", borderTop: `1px solid ${K.line}`, lineHeight: 1.45 }}>
+                <b>{capWhy(c)}</b>: free <span className="mono">{fSAR(c.room)}/mo</span> → a mortgage up to <b className="mono">{fM(c.maxMortgage)}</b>{c.maxOnePl > 0 ? <> or a personal loan up to <b className="mono">{fM(c.maxOnePl)}</b></> : null}
+              </div>
+            ))}
+            {inp.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).length > 0 && <div style={{ fontSize: 12, color: K.sub, borderTop: `1px solid ${K.line}`, paddingTop: 7, lineHeight: 1.45 }}>Paying off {inp.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).map((l) => `${l.name} frees ${fSAR(l.installment)}/mo`).join("; ")}.</div>}
+          </div>
+        );
+      };
+      const PlansRail = () => !home ? (
+        <div className="box" style={{ padding: "14px 16px" }}>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Your options</div>
+          {liveIdx.length === 0 ? <div style={{ fontSize: 13, color: K.sub }}>Tick at least one option in "Financing".</div> : liveIdx.map((i) => { const r = m.results[i], ok = r.affordable && r.cashOk && r.ltvOk; return (
+            <div key={i} className="row-l"><span style={{ color: PLAN_TEXT[i], fontWeight: 700 }}>{planName(i)}{r === lead ? " ★" : ""}{!ok && <span style={{ color: K.neg, fontWeight: 400 }}> · doesn't fit</span>}</span><span className="v">{pct1(r.irr == null ? null : r.irr * 100)} return</span></div>); })}
+          {lead && <div style={{ fontSize: 12.5, marginTop: 10, background: SOFT, borderRadius: 7, padding: "8px 10px" }}><b>Verdict:</b> <span style={{ color: m.vColor, fontWeight: 700 }}>{m.verdict}</span></div>}
+        </div>
+      ) : (
+        <div className="box" style={{ padding: "14px 16px" }}>
+          <div className="eyebrow" style={{ marginBottom: 8 }}>Your plans</div>
+          {liveIdx.length === 0 ? <div style={{ fontSize: 13, color: K.sub }}>Tick at least one plan in "How to pay".</div> : (
+            <table className="tbl" style={{ fontSize: 12 }}>
+              <thead><tr><th style={{ background: "transparent", color: K.sub, padding: "4px 4px 4px 0" }}>Plan</th><th style={{ background: "transparent", color: K.sub, padding: 4 }}>At move-in</th><th style={{ background: "transparent", color: K.sub, padding: "4px 0 4px 4px" }}>vs {baseLbl}</th></tr></thead>
+              <tbody>{liveIdx.map((i) => { const r = m.results[i]; return (
+                <tr key={i} style={{ cursor: "pointer" }} onClick={() => { setFocus(i); }}>
+                  <td className="l" style={{ padding: "6px 4px 6px 0", color: PLAN_TEXT[i], fontWeight: 700 }}>{planName(i)}{r === lead ? " ★" : ""}{!r.feasible && <span style={{ color: K.neg, fontWeight: 400 }}> · runs out</span>}</td>
+                  <td style={{ padding: 4 }}>{fM(cashAtMoveIn(r))}</td>
+                  <td style={{ padding: "4px 0 4px 4px", color: signCol(r.econAdv), fontWeight: 700 }}>{fM(r.econAdv)}</td>
+                </tr>); })}</tbody>
+            </table>
+          )}
+          {lead && <div style={{ fontSize: 12.5, marginTop: 10, background: lead.econAdv >= 0 ? SOFT_POS : SOFT_NEG, borderRadius: 7, padding: "8px 10px", lineHeight: 1.45 }}><b>So far:</b> {bestF ? <>best of your plans is {planName(recIdx)}, <b style={{ color: signCol(lead.econAdv) }}>{fM(lead.econAdv)}</b> vs {baseLbl} in {endDate} when everything grows.</> : "none of your plans works every month."}</div>}
+          <div style={{ fontSize: 12, color: K.sub, marginTop: 6 }}>"At move-in": your own cash and the loans, after every cost, without salary or growth.</div>
+          {cur === "answer" && <div className="grid no-print" style={{ gap: 8, marginTop: 12 }}>
+            <button className="btn gold" onClick={quickSave}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved as "${loadedName}"`) : "Save this scenario"}</button>
+            <button className="btn" onClick={() => setPrintAll(true)}>Print / PDF (one page)</button>
+            <button className="btn" onClick={() => go("pay")}>Change an answer</button>
+          </div>}
+        </div>
+      );
+
+      /* ---------- step pieces ---------- */
+      const Head = ({ id, title, sub }) => (
+        <div style={{ marginBottom: 14 }}>
+          <div className="eyebrow">Step {stepIdx(id) + 1} of {steps.length}</div>
+          <h1 className="h1">{title}</h1>
+          {sub && <p className="lead">{sub}</p>}
+        </div>
+      );
+      const twoCol = { gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 14 };
+      const ownedAt = (t) => inp.ownedValue * Math.pow(1 + inp.appreciation / 100, t / 12);
+      const lettingOut = (inp.rentOutFixed || 0) > 0 || (inp.rentOutPct || 0) > 0;
+
+      /* ---------- step 1: your money ---------- */
+      const StepMoney = () => (
+        <div>
+          <Head id="money" title="What do you earn, spend and have?" sub={`Your salary pays your living costs and every instalment; the bank tests all instalments together against ${inp.dbrCap}% of your income. Your cash pays whatever the loans don't.`} />
+          <div className="grid" style={twoCol}>
+            <Box title="Each month">
+              <Field label="Income the bank recognises" value={inp.income} min={5000} max={250000} step={1000} unit="SAR/mo" onChange={(v) => set("income", v)} />
+              <Field label="Living costs (not rent or loans)" value={inp.livingExpenses} min={2000} max={100000} step={500} unit="SAR/mo" onChange={(v) => set("livingExpenses", v)} />
+              <Field label="Rent you pay today" value={inp.rentNow} min={0} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint={inp.rentNow > 0 ? "paid until you move in; you are compared with renting on" : "0 = you live in a home you own; you are compared with not building"} />
+              <div className="note" style={{ marginTop: 0 }}>Left each month today: <b className="mono" style={{ color: household.savings >= 0 ? K.text : K.neg }}>{fSARm(household.savings)}</b> after living costs, rent and your loans.<Hint text={EXPL.savings} /></div>
+            </Box>
+            <Box title="What you have">
+              <Field label="Cash today" value={inp.cashAvailable} min={0} max={8000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
+              <Field label="Safety cushion to keep" value={inp.cashBuffer} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="a plan that dips below it is flagged; one that goes below zero does not work" help={EXPL.recovery} />
+              <Field label="Property you already own — its value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint={inp.ownedValue > 0 ? `a bank would lend up to ${fM(inp.ownedValue * inp.ownedLtv / 100)} against it (${inp.ownedLtv}%)` : "0 if none"} />
+            </Box>
+          </div>
+          {!renting && inp.ownedValue > 0 && <Box title="The home you live in today — once you move" style={{ marginTop: 14 }} help="You live in a home you own today. When you move into the new one you can keep it, let it, or sell it. Letting: the rent (net of its own costs) arrives every month from the month after move-in and rises with its value. Selling: it is sold at move-in; the price less selling costs, after repaying any mortgage a plan took on it, goes into your cash — and because the not-building side still owns it, its value is taken off your side in both measures.">
+            {lettingOut ? <div className="note" style={{ marginTop: 0 }}>Not used while the new home is let out — you would stay where you are.</div> : <>
+              <Seg label="The home you live in today" value={inp.ownHomePlan || "keep"} onChange={(v) => set("ownHomePlan", v)} options={[["keep", "Keep it"], ["let", "Let it"], ["sell", "Sell it"]]} />
+              <div style={{ marginTop: 12 }}>
+                {(inp.ownHomePlan || "keep") === "keep" && <div className="note" style={{ marginTop: 0 }}>Nothing changes: you own it whether you build or not, so it doesn't move the comparison.</div>}
+                {inp.ownHomePlan === "let" && <Field label="Rent you would get, net of its costs" value={inp.ownHomeYield} min={0} max={8} step={0.25} unit="% of its value a year" onChange={(v) => set("ownHomeYield", v)} hint={`≈ ${fSAR(ownedAt(prj.occupy) * inp.ownHomeYield / 100)} a year from ${fCal(prj.occupy + 1)} (it would be worth ${fM(ownedAt(prj.occupy))} then), rising with its value`} />}
+                {inp.ownHomePlan === "sell" && <Field label="Selling costs" value={inp.ownHomeSellCostPct} min={0} max={10} step={0.5} unit="% of its value" onChange={(v) => set("ownHomeSellCostPct", v)} hint={`sold at move-in (${fCal(prj.occupy)}) for about ${fM(ownedAt(prj.occupy))}, less ${fM(ownedAt(prj.occupy) * inp.ownHomeSellCostPct / 100)}; broker 2.5%, add 5% if you pay the transfer tax. A mortgage a plan took on it is repaid from the sale.`} />}
+              </div>
+            </>}
+          </Box>}
+          <More title="More: growth of income and living costs, your recovery rule, dates">
+            <div className="grid" style={twoCol}>
+              <div>
+                <Field label="Income growth" value={inp.incomeGrowth || 0} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("incomeGrowth", v)} hint={(inp.incomeGrowth || 0) > 0 ? `steps up once a year (${fSAR(inp.income * (1 + inp.incomeGrowth / 100))}/mo from ${fCal(13)}); the bank's limits follow your income` : "0 = your income stays as it is"} />
+                <Field label="Living-cost growth" value={inp.livingGrowth || 0} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("livingGrowth", v)} hint="once a year, the same whether you build or not" />
+              </div>
+              <div>
+                <Field label="Cash back at your cushion within" value={inp.recoveryMonths} min={0} max={60} step={6} unit="months after move-in" onChange={(v) => set("recoveryMonths", v)} hint="your rule: a plan that takes longer is marked slow to recover" />
+                <div style={{ marginBottom: 12 }}>
+                  <label className="lbl" style={{ display: "block", marginBottom: 4 }}>Month 0 of this scenario</label>
+                  <input type="month" value={inp.asOf || ""} onChange={(e) => e.target.value && set("asOf", e.target.value)} />
+                  <div className="note" style={{ marginTop: 3 }}>Every date counts from here. A saved scenario keeps its own month 0; changing it moves the dates only — bring your cash and loans up to date too.</div>
+                </div>
+              </div>
+            </div>
+          </More>
+        </div>
+      );
+
+      /* ---------- step 2: your loans ---------- */
+      const StepLoans = () => {
+        const loans = inp.existingLoans;
+        const upd = (i, k, v) => setLoans(loans.map((l, j) => j === i ? { ...l, [k]: v } : l));
+        const inst = loans.reduce((a, l) => a + (l.balance > 0 ? +l.installment || 0 : 0), 0), bal = loans.reduce((a, l) => a + (+l.balance || 0), 0);
+        const parsed = loanTxt.trim() ? parseLoans(loanTxt) : [];
+        return (
+          <div>
+            <Head id="loans" title="What do you already owe?" sub={`The bank counts these instalments first; what is left of your ${inp.dbrCap}% limit decides how much it can lend. Paying one off, or the bank buying it out in a refinance, frees room.`} />
+            <Box title={`Your loans · ${fSAR(inst)}/mo · ${inp.income > 0 ? (inst / inp.income * 100).toFixed(0) : 0}% of income`} right={<button className="lnk no-print" onClick={() => setLoanMore(!loanMore)}>{loanMore ? "Fewer columns" : "More: age, settle date, permissions"}</button>}>
+              <div className="scroll-x">
+                <table className="tbl">
+                  <thead><tr><th>Loan</th><th>Balance</th><th>Monthly</th><th>Months left</th><th>Rate</th>{loanMore && <><th>Months since it started</th><th>Settle in month</th><th>May be paid off from cash?</th><th>May be refinanced?</th></>}<th className="no-print" style={{ width: 36 }}></th></tr></thead>
+                  <tbody>
+                    {loans.map((l, i) => (
+                      <tr key={l.id || i}>
+                        <td className="l"><input type="text" aria-label="Loan name" value={l.name} onChange={(e) => upd(i, "name", e.target.value)} style={{ width: "100%", minWidth: 120 }} /></td>
+                        <td><NumIn v={l.balance} on={(v) => upd(i, "balance", v)} w={108} label={`${l.name}: balance`} /></td>
+                        <td><NumIn v={l.installment} on={(v) => upd(i, "installment", v)} w={86} label={`${l.name}: monthly instalment`} /></td>
+                        <td><NumIn v={l.monthsLeft} on={(v) => upd(i, "monthsLeft", Math.round(v))} w={56} label={`${l.name}: months left`} /><div style={{ fontSize: 12, color: K.sub }}>ends {fCal(loanEnds(l))}</div></td>
+                        <td>
+                          <span className="flex items-center" style={{ gap: 4, justifyContent: "flex-end" }}><NumIn v={l.rate} on={(v) => upd(i, "rate", v)} w={56} dec label={`${l.name}: rate`} /><select aria-label={`${l.name}: rate type`} value={l.rateType === "flat" ? "flat" : "apr"} onChange={(e) => upd(i, "rateType", e.target.value)} style={{ minHeight: 30, padding: "3px 4px", fontSize: 12 }}><option value="apr">APR</option><option value="flat">flat</option></select></span>
+                          {l.rateType === "flat" && <div style={{ fontSize: 12, color: K.sub }}>≈ {reFlatToApr(l.rate, Math.max(1, Math.round((l.ageMonths || 0) + (l.monthsLeft || 0)))).toFixed(2)}% APR</div>}
+                        </td>
+                        {loanMore && <>
+                          <td><NumIn v={l.ageMonths} nullable on={(v) => upd(i, "ageMonths", v == null ? null : Math.round(v))} w={56} placeholder="—" label={`${l.name}: months since it started`} /></td>
+                          <td><NumIn v={l.settleAt} nullable on={(v) => upd(i, "settleAt", v == null ? null : Math.round(v))} w={56} placeholder="—" label={`${l.name}: settle in month`} />{l.settleAt != null && l.settleAt > 0 && <div style={{ fontSize: 12, color: K.sub }}>{fCal(l.settleAt)}</div>}</td>
+                          <td><input type="checkbox" aria-label={`${l.name}: may be paid off from cash`} checked={l.canSettle !== false} onChange={(e) => upd(i, "canSettle", e.target.checked)} /></td>
+                          <td><input type="checkbox" aria-label={`${l.name}: may be refinanced`} checked={l.canRefi !== false} onChange={(e) => upd(i, "canRefi", e.target.checked)} /></td>
+                        </>}
+                        <td className="no-print"><button aria-label={`Remove ${l.name}`} title="Remove" onClick={() => withUndo(`Removed ${l.name}`, () => setLoans(loans.filter((_, j) => j !== i)))} style={{ ...iconBtn, padding: 6 }}><Trash2 size={16} color={K.neg} /></button></td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: SOFT, fontWeight: 700 }}><td className="l">Total ({loans.length})</td><td>{fSAR(bal)}</td><td>{fSAR(inst)}</td><td></td><td></td>{loanMore && <><td></td><td></td><td></td><td></td></>}<td className="no-print"></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap no-print" style={{ gap: 8, marginTop: 10 }}>
+                <button className="btn small" onClick={() => setLoans([...loans, { id: Date.now(), name: `Loan ${loans.length + 1}`, balance: 100000, installment: 2500, monthsLeft: 48, rate: 6 }])}>+ Add a loan</button>
+                {loans.length > 0 && <button className="btn small" onClick={() => withUndo("Removed all loans", () => setLoans([], true))}>Remove all</button>}
+              </div>
+              {household.warnings.length > 0 && <div style={{ background: SOFT_AMB, borderRadius: 8, padding: "8px 12px", marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>{household.warnings.map((w, k) => <div key={k} className="flex items-start" style={{ gap: 6 }}><AlertTriangle size={14} color={K.brassTx} style={{ flex: "none", marginTop: 3 }} /><span>{w}</span></div>)}</div>}
+              <div className="note">"May be paid off from cash" unticked: no plan pays it off early (keep cheap debt). "May be refinanced" unticked: no bank buy-out includes it. "Settle in month": you clear it from your cash then — whether you build or not. A personal loan can be refinanced once it is {inp.refiMinMonths} months old. A flat rate is converted to the APR it amortises at, over its whole term (months since it started + months left).</div>
+              <More title="Import or paste loans (Qist export, or one per line: name, balance, instalment, months, rate)">
+                <textarea rows={4} value={loanTxt} onChange={(e) => setLoanTxt(e.target.value)} placeholder={'[{"name":"Personal loan","balance":350000,"installment":7900,"monthsLeft":54,"rate":6.5}]\nor\nCar finance; 95000; 2950; 36; 5'} aria-label="Loans to import" />
+                {parsed.length > 0 ? <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 12.5, marginBottom: 4 }}>Found {parsed.length} loan{parsed.length > 1 ? "s" : ""}:</div>
+                  {parsed.map((l, k) => <div key={k} className="mono" style={{ fontSize: 12 }}>{l.name} · {fSAR(l.balance)} · {fSAR(l.installment)}/mo · {l.monthsLeft} months · {l.rate}%</div>)}
+                  <div className="flex flex-wrap" style={{ gap: 8, marginTop: 8 }}>
+                    <button className="btn gold small" onClick={() => withUndo(`Replaced your loans with ${parsed.length} imported`, () => { setLoans(parsed, true); setLoanTxt(""); })}>Replace my loans with these</button>
+                    <button className="btn small" onClick={() => { setLoans([...loans, ...parsed]); setLoanTxt(""); }}>Add them to my loans</button>
+                  </div>
+                </div> : loanTxt.trim() ? <div className="note" style={{ color: K.neg }}>Nothing recognisable yet — check the format (separate columns with tabs or semicolons if your numbers contain commas).</div> : null}
+              </More>
+            </Box>
+            <Box title="When borrowing room opens up" style={{ marginTop: 14 }} help={EXPL.capacity}>
+              <div className="scroll-x"><table className="tbl">
+                <thead><tr>{["From", ...((inp.incomeGrowth || 0) > 0 ? ["Income"] : []), "Instalments running", `Free room in your ${inp.dbrCap}%`, `All mortgages (≤ ${inp.mortgageCap}%)`, `One personal loan (≤ ${inp.perLoanCap}%)`, "Two personal loans"].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                <tbody>{household.capTimeline.map((c) => <tr key={c.t}><td className="l">{capWhy(c)}</td>{(inp.incomeGrowth || 0) > 0 && <td>{fSAR(c.income)}</td>}<td>{fSAR(c.inst)} <span style={{ color: K.sub }}>({(c.inst / c.income * 100).toFixed(0)}%)</span></td><td style={{ color: c.room > 0 ? K.text : K.neg }}>{fSAR(c.room)}/mo</td><td>{fM(c.maxMortgage)}</td><td>{fM(c.maxOnePl)}</td><td>{fM(c.maxTwoPl)}</td></tr>)}</tbody>
+              </table></div>
+              <div className="note">What the free room converts to at your Bank terms (step 4), before any loan-to-value limit. Mortgages and personal loans share the same room — alternatives, not added together. Never more than two personal loans at once (your old ones count); a plan can still borrow earlier by having the bank buy an old loan out.</div>
+            </Box>
+            <More title="The bank's rules: limits, loan-to-value, refinancing, settlement fee">
+              <div className="grid" style={twoCol}>
+                <div>
+                  <Field label="All instalments together may use" value={inp.dbrCap} min={30} max={70} step={1} unit="% of income" onChange={(v) => set("dbrCap", v)} />
+                  <Field label="All mortgages together may use" value={inp.mortgageCap} min={20} max={70} step={1} unit="% of income" onChange={(v) => set("mortgageCap", v)} />
+                  <Field label="One personal loan may use" value={inp.perLoanCap} min={15} max={65} step={1} unit="% of income" onChange={(v) => set("perLoanCap", v)} hint="a second personal loan may use what is left" />
+                  <Field label="Bank's ceiling on one personal loan" value={inp.plCap} min={100000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("plCap", v)} />
+                </div>
+                <div>
+                  <Field label="Loan-to-value when the bank finances the land" value={inp.landLtv} min={30} max={95} step={5} unit="%" onChange={(v) => set("landLtv", v)} />
+                  <Field label="…against the property you own" value={inp.ownedLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("ownedLtv", v)} />
+                  <Field label="…cash-out on the finished home" value={inp.cashoutLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("cashoutLtv", v)} />
+                  <Field label="A personal loan can be refinanced after" value={inp.refiMinMonths} min={0} max={36} step={1} unit="months" onChange={(v) => set("refiMinMonths", v)} />
+                  <Field label="Early-settlement fee" value={inp.settleFeeMonths} min={0} max={3} step={1} unit="months of profit" onChange={(v) => set("settleFeeMonths", v)} hint="SAMA cap: the next 3 months' profit on the declining balance" />
+                </div>
+              </div>
+            </More>
+          </div>
+        );
+      };
+
+      /* ---------- step 3: the home ---------- */
+      const costRows = build
+        ? [["Land", prj.land], [`Transfer tax on the land (${inp.rettPct}%)${prj.rettExempt > 0 ? ", first-home relief applied" : ""}`, prj.rett], [`Broker's fee on the land (${inp.landBrokerPct}%)`, prj.landBroker], ["Construction", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Kitchen, AC, landscape", prj.finish], [`Cost overrun (${inp.overrunPct}%)`, prj.overrun], [`VAT ${inp.vatPct}%`, prj.vat]].filter(([, v], k) => v > 0.5 || ![2, 7].includes(k))
+        : [["Purchase price", prj.price], [`Transfer tax (${inp.rettPct}%)${prj.rettExempt > 0 ? ", first-home relief applied" : ""}`, prj.rett], ["Broker", prj.broker], ["Finishing, furnishing", prj.finish], [`VAT ${inp.vatPct}% on finishing`, prj.vat]];
+      const StepHome = () => (
+        <div>
+          <Head id="home" title={build ? "What will you build, and when?" : "What will you buy, and when?"} sub="All amounts in SAR. Land carries no VAT; construction and finishing do. The home's value grows with the market from the month you buy." />
+          <div className="no-print" style={{ marginBottom: 14 }}><Seg label="Build or buy" value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land and build"], ["buy", "Buy a ready home"]]} /></div>
+          <div className="grid" style={twoCol}>
+            <Box title={build ? "Land and construction" : "The purchase"}>
+              {build ? <>
+                <Field label="Land area" value={inp.landArea} min={150} max={2500} step={25} unit="m²" onChange={(v) => set("landArea", v)} />
+                <Field label="Land price" value={inp.landPrice} min={300} max={15000} step={100} unit="SAR/m²" onChange={(v) => set("landPrice", v)} hint={`land ${fM(prj.land)}${prj.landMonth > 0 ? ` in ${fCal(prj.landMonth)}` : ""}`} />
+                <Field label="Ground floor, as % of the land" value={inp.builtPct} min={0} max={100} step={5} unit="%" onChange={(v) => set("builtPct", v)} hint={inp.builtPct > 0 ? `${Math.round(inp.landArea * inp.builtPct / 100)} m² per floor · 0 = type the total area instead` : "0 = type the total built-up area below"} />
+                {inp.builtPct > 0 ? <Field label="Floors" value={inp.floors} min={1} max={4} step={0.5} unit="floors" onChange={(v) => set("floors", v)} hint={`built-up ${Math.round(prj.builtArea)} m²`} /> : <Field label="Total built-up area" value={inp.builtArea} min={100} max={2500} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
+                <Field label="Construction cost, turnkey" value={inp.buildCost} min={1000} max={7000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`${fM(prj.hard)} before VAT${prj.inflate > 1 ? `, incl. ${((prj.inflate - 1) * 100).toFixed(0)}% price rises to the start` : ""}`} />
+                <Field label="Construction takes" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} />
+                <More title="More: design and permits, contingency, overrun, extras, price rises, value uplift, broker, VAT, transfer tax">
+                  <Field label="Design, permits, supervision" value={inp.softPct} min={0} max={20} step={0.5} unit="% of construction" onChange={(v) => set("softPct", v)} />
+                  <Field label="Contingency" value={inp.contPct} min={0} max={25} step={1} unit="%" onChange={(v) => set("contPct", v)} hint="overruns are the norm — keep at least 5%" />
+                  <Field label="Cost overrun (a stress test)" value={inp.overrunPct || 0} min={0} max={30} step={1} unit="%" onChange={(v) => set("overrunPct", v)} hint="extra cost on construction, design, contingency and extras — it adds no value" />
+                  <Field label="Kitchen, AC, landscape" value={inp.finishExtra} min={0} max={800000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
+                  <Field label="Construction price rises" value={inp.costInflation} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("costInflation", v)} />
+                  <Field label="Value uplift of building it yourself" value={inp.devMarginPct} min={-20} max={40} step={1} unit="%" onChange={(v) => set("devMarginPct", v)} hint="on what you build, not the land: value = land + construction × (1 + uplift)" help={EXPL.value} />
+                  <Field label="Broker's fee on the land" value={inp.landBrokerPct == null ? 2.5 : inp.landBrokerPct} min={0} max={5} step={0.25} unit="%" onChange={(v) => set("landBrokerPct", v)} />
+                  <Field label="VAT" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} />
+                  <Field label="Real-estate transfer tax" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
+                  <Tick checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home relief (the state pays the tax on the first ${fM(inp.rettExemptCap)})`} />
+                </More>
+              </> : <>
+                <Field label="Price" value={inp.propertyPrice} min={300000} max={15000000} step={50000} unit="SAR" onChange={(v) => set("propertyPrice", v)} />
+                <Field label="Finishing, furnishing" value={inp.finishExtra} min={0} max={800000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
+                <More title="More: broker, VAT, transfer tax">
+                  <Field label="Broker" value={inp.brokerPct} min={0} max={5} step={0.5} unit="%" onChange={(v) => set("brokerPct", v)} />
+                  <Field label="VAT on finishing" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} />
+                  <Field label="Real-estate transfer tax" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
+                  <Tick checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home relief (the state pays the tax on the first ${fM(inp.rettExemptCap)})`} />
+                </More>
+              </>}
+            </Box>
+            <div className="grid" style={{ gap: 14, alignContent: "start" }}>
+              <Box title="When">
+                <MonthField label={build ? "Buy the land in" : "Buy in"} value={inp.landMonth} min={0} max={72} onChange={(v) => setInp((s) => ({ ...s, landMonth: v, buildStart: Math.max(s.buildStart, v) }))} hint={`today's price grown ${inp.appreciation}%/yr until then`} />
+                {build && <MonthField label="Start building in" value={curStart} min={0} max={72} onChange={(v) => setInp((s) => ({ ...s, buildStart: Math.max(v, s.landMonth) }))} hint={`you move in ${fCal(prj.occupy)}${prj.inflate > 1 ? ` · construction ${((prj.inflate - 1) * 100).toFixed(0)}% dearer than today` : ""} · not sure? Step 5 tests every start`} />}
+              </Box>
+              <Box title="Living in it — or letting it" help={EXPL.rentOut}>
+                <Seg label="Living in it or letting it" value={lettingOut ? "all" : (inp.partRentAnnual || 0) > 0 ? "part" : "live"} onChange={(v) => setInp((s) => v === "live" ? { ...s, partRentAnnual: 0, rentOutPct: 0, rentOutFixed: 0 } : v === "part" ? { ...s, rentOutPct: 0, rentOutFixed: 0, partRentAnnual: s.partRentAnnual > 0 ? s.partRentAnnual : 60000 } : { ...s, partRentAnnual: 0, rentOutPct: s.rentOutPct > 0 || s.rentOutFixed > 0 ? s.rentOutPct : 5 })} options={[["live", "Live in it"], ["part", "Live in it, let part"], ["all", "Let all of it"]]} />
+                <div style={{ marginTop: 12 }}>
+                  {!lettingOut && (inp.partRentAnnual || 0) > 0 && <Field label="Rent for the part you let (annex, floor)" value={inp.partRentAnnual} min={0} max={400000} step={5000} unit="SAR/yr" onChange={(v) => set("partRentAnnual", v)} hint={`from ${fCal(prj.occupy + 1)}, rising with rent growth (${inp.rentGrowth}%/yr) · net of its own costs`} />}
+                  {lettingOut && <>
+                    <Field label="Rent, as % of the all-in cost" value={inp.rentOutPct || 0} min={0} max={12} step={0.25} unit="%/yr" onChange={(v) => set("rentOutPct", v)} hint={(inp.rentOutFixed || 0) > 0 ? "not used — the fixed rent below is set" : `= ${fSAR(prj.total * (inp.rentOutPct || 0) / 100)} a year from ${fCal(prj.occupy + 1)}`} />
+                    <Field label="…or a fixed rent" value={inp.rentOutFixed || 0} min={0} max={1000000} step={5000} unit="SAR/yr" onChange={(v) => set("rentOutFixed", v)} hint={(inp.rentOutFixed || 0) > 0 ? "overrides the %" : "0 = use the % above"} />
+                  </>}
+                  <Field label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} hint={renting ? "also raises the rent you pay today" : null} />
+                </div>
+              </Box>
+              <Box title="Market and the comparison">
+                <Field label="Home values grow" value={inp.appreciation} min={-5} max={12} step={0.5} unit="%/yr" onChange={(v) => set("appreciation", v)} />
+                <Field label="Your cash earns" value={inp.altReturn} min={0} max={15} step={0.5} unit="%/yr" onChange={(v) => set("altReturn", v)} hint="on both sides: what your cash would earn if you didn't build" />
+                <Field label="Zakat on invested cash" value={inp.cashZakatPct || 0} min={0} max={2.5} step={0.5} unit="%/yr" onChange={(v) => set("cashZakatPct", v)} hint={(inp.cashZakatPct || 0) > 0 ? `cash then grows ${((1 + inp.altReturn / 100) * (1 - inp.cashZakatPct / 100) * 100 - 100).toFixed(2)}% a year, on both sides; a home you live in is exempt` : "0 = not counted"} />
+                <MonthField label="Compare until" value={inp.horizon * 12} min={60} max={360} onChange={(v) => set("horizon", Math.max(5, Math.min(30, Math.round(v / 12))))} hint={`${inp.horizon} years`} />
+                <More title="More: upkeep">
+                  <Field label="Maintenance" value={inp.maintPct} min={0} max={3} step={0.1} unit="% of value a year" onChange={(v) => set("maintPct", v)} />
+                  <Field label="Insurance and fees" value={inp.insurance} min={0} max={20000} step={500} unit="SAR/yr" onChange={(v) => set("insurance", v)} />
+                </More>
+              </Box>
+            </div>
+            <Box title="What it costs, and what it is worth" help={EXPL.cost}>
+              <table className="bridge"><tbody>
+                {costRows.map(([l, v]) => <tr key={l}><td>{l}</td><td className="v">{fSAR(v)}</td></tr>)}
+                <tr className="tot"><td>All-in cost</td><td className="v">{fSAR(prj.total)}</td></tr>
+                <tr><td>Value when you move in ({fCal(prj.occupy)})<Hint text={EXPL.value} /></td><td className="v" style={{ color: prj.value0 >= prj.total ? K.pos : K.neg }}>{fSAR(prj.value0)}</td></tr>
+                {build && prj.builtArea > 0 && <tr><td>Cost per m² built (without the land)</td><td className="v">{fSAR(prj.costPerSqm)}</td></tr>}
+              </tbody></table>
+              <div className="note">{build ? `The land (with tax${prj.landBroker > 0 ? " and broker" : ""}) is paid in ${fCal(prj.landMonth)}; construction${prj.overrun > 0 ? " and the overrun" : ""} evenly from ${fCal(prj.start + 1)} to ${fCal(prj.start + prj.bm)}; the extras in the last month.` : `Everything is paid in ${fCal(prj.landMonth)}.`} Your cash and the loans pay each bill as it falls due — there is no construction mortgage.</div>
+            </Box>
+          </div>
+        </div>
+      );
+
+      /* ---------- step 4: how to pay ---------- */
+      const TERM_ROWS = [["lm", build ? "Land mortgage" : "Purchase mortgage", "lmRate", "lmTenure", "lmFeesPct", 30, 12], ["eq", "Mortgage on the property you own", "eqRate", "eqTenure", "eqFeesPct", 30, 12], ["co", "Cash-out mortgage on the new home", "coRate", "coTenure", "coFeesPct", 30, 12], ["pl", "Personal loans", "plRate", "plTenure", null, 7, 15]];
+      const aprOf = (rk, tk) => reEffRate(inp, inp[rk], Math.max(1, Math.round(inp[tk] * 12)));
+      const TermsBox = () => {
+        const showEq = inp.ownedValue > 0 || inp.plans.some((o) => o.enabled && o.eqWhen !== "none");
+        return (
+          <More title={`Bank terms for every plan and for the tool: ${TERM_ROWS.filter(([k]) => k !== "eq" || showEq).map(([k, , rk, tk]) => `${{ lm: build ? "land" : "purchase", eq: "own property", co: "cash-out", pl: "personal" }[k]} ${inp[rk]}%${inp.rateQuote === "flat" ? " flat" : ""}/${inp[tk]}y`).join(" · ")}`}>
+            <div className="flex items-center flex-wrap" style={{ gap: 10, marginBottom: 10 }}>
+              <Seg label="How your bank quotes rates" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "Rates as APR"], ["flat", "Rates as flat (hamish)"]]} />
+              <Hint text={EXPL.terms} label="Bank terms" />
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 230px), 1fr))", gap: "4px 20px" }}>
+              {TERM_ROWS.filter(([k]) => k !== "eq" || showEq).map(([k, label, rk, tk, fk, maxT, maxR]) => { const apr = aprOf(rk, tk); return (
+                <div key={k} style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, margin: "4px 0 8px" }}>{label}</div>
+                  <Field label="Profit rate" value={inp[rk]} min={0} max={maxR} step={k === "pl" ? 0.25 : 0.05} unit="%" onChange={(v) => set(rk, v)} hint={`${inp.rateQuote === "flat" ? `= ${apr.toFixed(2)}% APR · ` : ""}costs ${reEffYear(apr).toFixed(2)}% a year (vs ${(+netRet.toFixed(2))}% your cash earns)`} />
+                  <Field label="Years" value={inp[tk]} min={1} max={maxT} step={1} unit="yrs" onChange={(v) => set(tk, v)} />
+                  {fk && <Field label="Bank fee" value={inp[fk]} min={0} max={3} step={0.25} unit="% of the loan" onChange={(v) => set(fk, v)} />}
+                </div>); })}
+            </div>
+          </More>
+        );
+      };
+      const RefiPicks = ({ o, i }) => {
+        const r = m.results[i], minAge = inp.refiMinMonths == null ? 12 : inp.refiMinMonths, pick = o.refiPick || {};
+        const loans = inp.existingLoans.filter((l) => l.balance > 0 && l.installment > 0 && l.canRefi !== false);
+        const stepsP = [];
+        if (o.plWhen !== "none") stepsP.push(["pl", `Personal loans ${whenTxt(o.plWhen, o.plMonth, prj)}`, tWhen(o.plWhen, o.plMonth)]);
+        if (o.pl2Use) stepsP.push(["pl2", `Personal loans at move-in (${fCal(prj.occupy)})`, prj.occupy]);
+        const toggle = (key, id, on) => { const cur0 = (pick[key] || []).map(String).filter((x) => x !== id); setPlan(i, "refiPick", { ...pick, [key]: on ? [...cur0, id] : cur0 }); };
+        return (
+          <div style={{ background: SOFT, borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+            {stepsP.map(([key, label, t]) => {
+              const items = loans.map((l) => { const age = l.ageMonths == null ? null : l.ageMonths + t, end = r && r.loansEnd.find((x) => String(x.id) === String(l.id)); return { id: String(l.id), name: l.name, why: l.settleAt != null && l.settleAt > 0 && l.settleAt <= t ? "settled by then (your date)" : end && end.settledAt != null && end.settledAt < t ? "paid off earlier in this plan" : Math.round(l.monthsLeft) < t ? "ended by then" : age != null && age < minAge ? `only ${age} months old then (needs ${minAge})` : "" }; });
+              if (key === "pl2" && o.plWhen !== "none") { const age = t - tWhen(o.plWhen, o.plMonth); items.push({ id: "pl", name: "this plan's earlier personal loan(s)", why: age < minAge ? `only ${age} months old then (needs ${minAge})` : "" }); }
+              return (
+                <div key={key} style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 3 }}>{label} — buy out:</div>
+                  {items.length === 0 ? <div style={{ fontSize: 12.5, color: K.sub }}>no old loan may be refinanced (see "May be refinanced" in step 2)</div>
+                    : items.map((x) => <Tick key={x.id} checked={(pick[key] || []).map(String).includes(x.id)} onChange={(on) => toggle(key, x.id, on)} label={x.name} sub={x.why || null} />)}
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 12, color: K.sub }}>Nothing ticked = no buy-out. A loan that has ended, is too young, or can't be cleared in full by the new loan is not bought out — the timeline says so.</div>
+          </div>
+        );
+      };
+      const fxTxt = (x) => {
+        if (!x) return "working it out…";
+        const planned = (p) => inp.existingLoans.some((l) => l.name === p.name && l.settleAt != null && Math.round(l.settleAt) === p.t);
+        const paid = x.payoffs.filter((p) => !planned(p)), mort = x.lm.amount + x.eq.amount + x.co.amount;
+        const parts = [paid.length ? `pays off ${paid.map((p) => p.name).join(" + ")} (${fM(paid.reduce((a, p) => a + p.cost, 0))})` : "pays nothing off", `mortgage${x.lm.amount + x.eq.amount > 0 && x.co.amount > 0 ? "s" : ""} ${fM(mort)}`];
+        return x.feasible ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.recoveryOk ? "" : " · slow to recover"}` : `${parts.join(" · ")} · cash runs out: ${fM(x.minCash)} in ${fCal(x.minCashT)} ✗`;
+      };
+      const PlanCard = ({ o, i }) => {
+        const r = m.results[i];
+        if (!o.enabled) return (
+          <div className="plan off flex items-center flex-wrap" style={{ borderLeftColor: K.line, gap: 10 }}>
+            <input type="checkbox" checked={false} onChange={(e) => setPlan(i, "enabled", e.target.checked)} aria-label={`Compare plan ${i + 1}`} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: K.sub, letterSpacing: ".06em" }}>PLAN {i + 1}</span>
+            <span style={{ fontSize: 13, color: K.sub, minWidth: 0, flex: 1 }}>{planTitle(o, build)} — not compared</span>
+          </div>
+        );
+        const st = r ? planSteps(r, build) : [];
+        return (
+          <div className="plan" style={{ borderLeftColor: PLAN_FILL[i], boxShadow: editIdx === i ? `0 0 0 2px ${PLAN_FILL[i]}` : "none" }}>
+            <div className="flex items-start" style={{ gap: 10 }}>
+              <input type="checkbox" checked={o.enabled} onChange={(e) => setPlan(i, "enabled", e.target.checked)} aria-label={`Compare plan ${i + 1}`} style={{ marginTop: 3 }} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.35 }}><span style={{ color: PLAN_TEXT[i], fontSize: 12, letterSpacing: ".06em", marginRight: 6 }}>PLAN {i + 1}{r && r === lead ? " · ★ BEST OF YOUR PLANS" : ""}</span>{planTitle(o, build)}</div>
+                <div style={{ fontSize: 12.5, color: K.sub }}>your name: "{o.name}"</div>
+                <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{st.length ? st.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
+                {r && <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
+                  <Status r={r} />
+                  <span>cash at move-in <b className="mono">{fM(cashAtMoveIn(r))}</b></span>
+                  <span>vs {baseLbl} <b className="mono" style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b><Hint text={EXPL.econ} label="vs not building" /> <span style={{ color: K.sub, fontSize: 12 }}>rule 7: {fM(r.advantage)}</span></span>
+                </div>}
+                {r && r.flags.length > 0 && <div style={{ fontSize: 12.5, color: r.feasible ? "#7A4F12" : K.neg, marginTop: 6, lineHeight: 1.45 }}>{calText(r.flags[0])}</div>}
+                {r && <details style={{ marginTop: 6 }}><summary style={{ cursor: "pointer", fontSize: 12.5, color: K.brassTx, fontWeight: 600 }}>In words</summary><div style={{ fontSize: 12.5, color: K.sub, lineHeight: 1.5, marginTop: 4 }}>{describePlan(o, inp, prj, build)}</div></details>}
+              </div>
+              <button className="btn small no-print" onClick={() => setEditIdx(editIdx === i ? -1 : i)} aria-expanded={editIdx === i}>{editIdx === i ? "Done" : "Edit"}</button>
+            </div>
+          </div>
+        );
+      };
+      const PlanEditor = ({ o, i }) => {
+        const r = m.results[i], plT = plTimingOf(o), prepayOn = o.prepayAfter != null && o.prepayAfter !== "";
+        const pol = o.settlePolicy === "forMax" || o.settlePolicy === "none" ? o.settlePolicy : "asNeeded";
+        const plZero = r && (o.plWhen !== "none" && r.pl.amount < 1 ? r.pl : o.pl2Use && r.pl2.amount < 1 ? r.pl2 : null);
+        return (
+          <div className="box no-print" style={{ border: `2px solid ${PLAN_FILL[i]}`, marginTop: -2 }}>
+            <div className="flex justify-between items-center flex-wrap" style={{ gap: 8, marginBottom: 10 }}>
+              <b style={{ fontSize: 14 }}>Edit Plan {i + 1}</b>
+              <select value="" aria-label="Start this plan from a template" onChange={(e) => { const k = e.target.value; if (k) withUndo(`Plan ${i + 1} started from a template`, () => setInp((s) => ({ ...s, plans: s.plans.map((x, j) => j === i ? { enabled: true, ...RE_PLAN_PRESETS[k] } : x) }))); }}>
+                <option value="">Start from a template…</option>
+                {Object.entries(RE_PLAN_PRESETS).map(([k, pr]) => <option key={k} value={k}>{pr.name}</option>)}
+              </select>
+            </div>
+            <label className="lbl" style={{ display: "block", marginBottom: 4 }}>Your name for it</label>
+            <input type="text" value={o.name} onChange={(e) => setPlan(i, "name", e.target.value)} style={{ width: "100%", marginBottom: 12 }} aria-label="Plan name" />
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 250px), 1fr))", gap: "0 18px" }}>
+              <Pick label={`${build ? "Mortgage the land" : "Mortgage the purchase"} (${fCal(prj.landMonth)})`} value={o.lmUse ? "yes" : "no"} onChange={(v) => setPlan(i, "lmUse", v === "yes")} options={[["no", "No — pay in cash"], ["yes", `Yes — up to ${inp.landLtv}% of the price`]]} />
+              <Pick label="Mortgage the property you own" value={o.eqWhen} onChange={(v) => setPlan(i, "eqWhen", v)} options={[["none", "No"], ["start", "Now"], ["land", "When the land is bought"], ["build", "When construction starts"], ["completion", "At move-in"], ["month", "In a month I choose"]]} hint={inp.ownedValue > 0 ? `up to ${fM(inp.ownedValue * inp.ownedLtv / 100)} (${inp.ownedLtv}% of its value)${inp.ownHomePlan === "sell" && !renting ? " · not after you sell it" : ""}` : "set its value in step 1 first"} />
+              {o.eqWhen === "month" && <MonthField label="…in" value={o.eqMonth} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setPlan(i, "eqMonth", v)} />}
+              <Pick label="Personal loans" value={plT} onChange={(v) => { const x = RE_PL_TIMING.find((y) => y[0] === v); if (x) setPlanMany(i, x[2]); }} options={RE_PL_TIMING.filter((x) => x[0] !== "completion" || plT === "completion").map(([k, l]) => [k, l])} help={EXPL.refi} hint={plZero ? `${plZero.label}: nothing — ${plZero.capacity ? plZero.capacity.limitedBy : "no room"}` : `the bank's maximum: one or two loans, each up to ${inp.perLoanCap}% of income; never more than two at once`} />
+              {o.plWhen === "month" && <MonthField label="…in" value={o.plMonth} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setPlan(i, "plMonth", v)} />}
+              <Pick label={`Cash-out mortgage on the new home (${fCal(prj.occupy)})`} value={o.coUse ? "yes" : "no"} onChange={(v) => setPlan(i, "coUse", v === "yes")} options={[["no", "No"], ["yes", `Yes — up to ${inp.cashoutLtv}% of its value`]]} />
+            </div>
+            <div className="note" style={{ marginTop: 0 }}>Every loan is the bank's maximum that month: the smallest of its loan-to-value limit, what is left of your {inp.dbrCap}% (all mortgages together ≤ {inp.mortgageCap}%, each personal loan ≤ {inp.perLoanCap}%) and the bank's ceiling — priced with the Bank terms above.</div>
+
+            <div style={{ marginTop: 16 }}>
+              <div className="lbl" style={{ fontWeight: 700 }}>Old personal loans: pay some off from your cash so a mortgage fits?<Hint text={EXPL.settlePolicy} label="Old personal loans" /></div>
+              <div className="note" style={{ marginTop: 2 }}>Paying an old loan off (from your own cash, before the mortgage is granted) frees room in your {inp.dbrCap}%, so the mortgage can be bigger. What each choice does to this plan:</div>
+              <div className="grid" style={{ gap: 8, marginTop: 8 }} role="radiogroup" aria-label="Old personal loans">
+                {[["asNeeded", "Only as much as the build needs"], ["forMax", "As much as it takes for the biggest mortgage the property allows"], ["none", "Don't pay them off"]].map(([k, l]) => { const x = settleFx && settleFx.find((y) => y.pol === k); const sel = pol === k; return (
+                  <label key={k} className="flex items-start" style={{ gap: 10, border: `1.5px solid ${sel ? K.ink : K.line}`, borderRadius: 9, padding: "9px 12px", cursor: "pointer", background: "#fff" }}>
+                    <input type="radio" name={`settle${i}`} checked={sel} onChange={() => setPlan(i, "settlePolicy", k)} style={{ marginTop: 2 }} />
+                    <span><b style={{ fontSize: 13 }}>{l}</b><span style={{ display: "block", fontSize: 12.5, color: x && x.r && !x.r.feasible ? K.neg : K.sub, lineHeight: 1.45 }}>{x ? fxTxt(x.r) : "working it out…"}</span></span>
+                  </label>); })}
+              </div>
+            </div>
+
+            {(o.plWhen !== "none" || o.pl2Use) && <div style={{ marginTop: 16 }}>
+              <Pick label="Which old loans the bank buys out when you take personal loans" value={o.refiMode || "auto"} onChange={(v) => setPlan(i, "refiMode", v)} help={EXPL.refi} options={[["auto", "Auto (recommended): best value, or most cash if the plan needs it"], ["value", "Best value: what leaves you richest"], ["cash", "Most cash: what puts the most in your hands now"], ["pick", "Choose them myself"]]} />
+              {o.refiMode === "pick" && RefiPicks({ o, i })}
+              {r && r.refiFallback && <div className="note" style={{ marginTop: 0 }}>Auto used "most cash" for this plan: the best-value choice would {r.feasible ? "miss your recovery rule" : "run your cash out"}.</div>}
+            </div>}
+
+            <div style={{ marginTop: 16 }}>
+              <Pick label="Pay the new mortgages off early from your cash?" value={prepayOn ? "after" : "never"} onChange={(v) => setPlan(i, "prepayAfter", v === "never" ? null : 24)} help={EXPL.prepay} options={[["never", "No — they run to their end"], ["after", "Yes, some months after move-in"]]} />
+              {prepayOn && <Field label="Months after move-in" value={+o.prepayAfter} min={0} max={120} step={3} unit="months" onChange={(v) => setPlan(i, "prepayAfter", v)} hint={`${fCal(prj.occupy + Math.round(+o.prepayAfter))} · whole mortgages, dearest first, while your cash${inp.cashBuffer > 0 ? ` above your ${fM(inp.cashBuffer)} cushion` : ""} covers the payoff + ${inp.settleFeeMonths} months' profit${r && r.prepaidTotal > 0 ? ` · this plan pays off ${fM(r.prepaidTotal)}` : r && prepayOn ? " · not enough cash then in this plan" : ""}`} />}
+              {o.lmUse && <Field label="Extra monthly payment on the land mortgage" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setPlan(i, "extraMo", v)} hint="voluntary — it shortens the mortgage; the bank doesn't count it in your limit" />}
+            </div>
+          </div>
+        );
+      };
+      // the tool's own search: every mix of loans for your planned start, every loan at the bank's maximum
+      const OptCard = () => {
+        if (!opt) return <div className="plan" style={{ borderLeftColor: K.ink, fontSize: 13, color: K.sub }}>Let the tool choose: trying every mix of loans for a {fCal(curStart)} start…</div>;
+        const st = opt.planned, b = st.best;
+        const sameIdx = liveIdx.find((k) => { const r = m.results[k]; return Math.abs(r.econAdv - b.econAdv) < 1 && Math.abs(r.lm.amount - b.lm) < 1 && Math.abs(r.eq.amount - b.eq) < 1 && Math.abs(r.pl.amount - b.pl) < 1 && Math.abs(r.co.amount - b.co) < 1 && Math.abs(r.pl2.amount - b.pl2) < 1; });
+        return (
+          <div className="plan" style={{ borderLeftColor: K.ink }}>
+            <div style={{ fontSize: 15, fontWeight: 700 }}><span style={{ fontSize: 12, letterSpacing: ".06em", marginRight: 6, color: K.sub }}>LET THE TOOL CHOOSE</span>The best mix for a {fCal(st.delay)} start{optStale && <span style={{ fontSize: 12, fontWeight: 400, color: K.sub }}> · updating…</span>}</div>
+            <div style={{ fontSize: 12.5, color: K.sub, margin: "2px 0 8px" }}>tried {opt.combos} mixes · {st.nOk} work every month and recover in time<Hint text={EXPL.optimizer} label="Let the tool choose" /></div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>{planTitle(b.cleanPlan || b.plan, build)}</div>
+            <div className="flex flex-wrap" style={{ gap: 6, marginBottom: 8 }}>{b.facilities.filter((f) => f.amount > 0 && f.key !== "rf").map((f) => <span key={f.key} className="chip"><b>{f.label} {fM(f.amount)}</b><span style={{ color: K.sub }}>{fCal(f.startedAt)}</span></span>)}{b.settled > 0 && <span className="chip"><b>Old loans paid off {fM(b.settled)}</b></span>}</div>
+            <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
+              <Status r={b} />
+              <span>lowest bank balance <b className="mono">{fM(b.minCash)}</b></span>
+              <span>vs {baseLbl} <b className="mono" style={{ color: signCol(b.econAdv) }}>{fM(b.econAdv)}</b></span>
+              {sameIdx != null ? <span className="tag" style={{ background: SOFT, color: K.sub }}>same result as {planName(sameIdx)}</span> : <button className="btn gold small no-print" onClick={() => useOptPlan(st)}>Use it as Plan 1</button>}
+            </div>
+          </div>
+        );
+      };
+      const LIMIT_SERIES = [["existing", "Old loans", "#8C877D"], ["lm", build ? "Land mortgage" : "Purchase mortgage", "#2F6DB5"], ["eq", "Mortgage on your property", "#1F9A80"], ["pl", "Personal loans", "#A24FB8"], ["co", "Cash-out", "#6FA3E0"], ["rf", "Refinance", "#B4691F"]];
+      const LimitChart = ({ r, i }) => {
+        const rows = bucketOf(r), last = Math.min(rows.length - 1, r.occupy + 36);
+        const data = rows.filter((x) => x.t <= last).map((x) => { const o = { t: x.t }; LIMIT_SERIES.forEach(([k]) => { o[k] = x.inc > 0 ? x[k] / x.inc * 100 : 0; }); return o; });
+        const present = LIMIT_SERIES.filter(([k]) => data.some((d) => d[k] > 0.05));
+        const top = Math.max(inp.dbrCap + 10, Math.ceil(Math.max(...data.map((d) => present.reduce((a, [k]) => a + d[k], 0))) / 10) * 10 + 10);
+        const today = household.existingInst, free = Math.max(0, inp.income * inp.dbrCap / 100 - today);
+        return (
+          <Box title={`Why can't ${planName(i)} borrow more?`} style={{ marginTop: 14 }} help={EXPL.bucket} right={<span style={{ fontSize: 12.5, color: K.sub }}>instalments as % of income, each month</span>}>
+            <div className="flex flex-wrap" style={{ gap: "4px 14px", fontSize: 12, marginBottom: 6 }}>
+              {present.map(([k, l, c]) => <span key={k} className="flex items-center" style={{ gap: 5 }}><span style={{ width: 11, height: 11, background: c, borderRadius: 2, display: "inline-block" }} />{l}</span>)}
+              <span className="flex items-center" style={{ gap: 5, color: K.neg }}><span style={{ width: 18, borderTop: `2px dashed ${K.neg}`, display: "inline-block" }} />bank limit {inp.dbrCap}% (all loans)</span>
+              <span className="flex items-center" style={{ gap: 5, color: K.brassTx }}><span style={{ width: 18, borderTop: `2px dashed ${K.brass}`, display: "inline-block" }} />{inp.mortgageCap}% (all mortgages)</span>
+            </div>
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke={K.line} vertical={false} />
+                <XAxis dataKey="t" ticks={data.filter((d) => d.t % 12 === 0).map((d) => d.t)} tickFormatter={fCal} tick={axisS} tickLine={false} axisLine={{ stroke: K.line }} />
+                <YAxis domain={[0, top]} ticks={Array.from({ length: Math.floor(top / 10) + 1 }, (_, k) => k * 10)} tick={axisT} tickFormatter={(v) => `${v}%`} tickLine={false} axisLine={false} width={40} />
+                <Tooltip formatter={(v, n) => [`${(+v).toFixed(1)}%`, (LIMIT_SERIES.find((s) => s[0] === n) || [0, n])[1]]} labelFormatter={(t) => fCal(t)} contentStyle={tipStyle} />
+                <ReferenceLine y={inp.dbrCap} stroke={K.neg} strokeDasharray="5 4" />
+                <ReferenceLine y={inp.mortgageCap} stroke={K.brass} strokeDasharray="5 4" />
+                {present.map(([k, , c]) => <Area key={k} type="stepAfter" stackId="b" dataKey={k} stroke={c} fill={c} fillOpacity={0.85} strokeWidth={1} isAnimationActive={false} />)}
+              </AreaChart>
+            </ResponsiveContainer>
+            <div className="note">Today your old loans take {fSAR(today)}/mo ({household.existingDbr.toFixed(0)}% of income), leaving {fSAR(free)}/mo under the {inp.dbrCap}% limit. Space under the red line in a month is borrowing room this plan leaves unused. A voluntary extra payment is not counted. Shown to 3 years after move-in.</div>
+          </Box>
+        );
+      };
+      const StepPay = () => (
+        <div>
+          <Head id="pay" title="How do you want to pay for it?" sub="Tick the plans to compare. Every loan is taken at the bank's maximum at the moment it is taken; the result line under each plan updates as you change things." />
+          {TermsBox()}
+          <div className="grid" style={{ gap: 10, marginTop: 14 }}>
+            {inp.plans.map((o, i) => <React.Fragment key={i}>{PlanCard({ o, i })}{editIdx === i && o.enabled && PlanEditor({ o, i })}</React.Fragment>)}
+            {OptCard()}
+          </div>
+          {editIdx >= 0 && m.results[editIdx] ? LimitChart({ r: m.results[editIdx], i: editIdx }) : focusRes && LimitChart({ r: focusRes, i: focusIdx })}
+        </div>
+      );
+
+      /* ---------- step 5: when ---------- */
+      const StepWhen = () => {
+        const rowsS = optRows.rows, sw = sweep;
+        if (!sw || !focusRes) return <div><Head id="when" title="When can you start?" /><Box>Tick a plan in step 4 first.</Box></div>;
+        const byT = new Map();
+        sw.rows.forEach((x) => byT.set(x.delay, { t: x.delay, plan: x.feasible ? x.econAdv : null }));
+        rowsS.forEach((s) => { const o = byT.get(s.delay) || { t: s.delay }; o.best = s.best.feasible ? s.best.econAdv : null; byT.set(s.delay, o); });
+        const data = [...byT.values()].sort((a, b) => a.t - b.t);
+        const earliest = sw.best, firstAhead = optRows.done ? rowsS.find((s) => s.best.ok && s.best.econAdv >= 0) : null, bestEarliest = optRows.done ? rowsS.find((s) => s.best.ok) : null;
+        const planAtCur = sw.rows.find((x) => x.delay === curStart);
+        return (
+          <div>
+            <Head id="when" title="When can you start?" sub={`Construction starting every 3 months from now to 5 years out. Waiting lets old loans run down (more room, less to pay off), but land grows ${inp.appreciation}%/yr and building ${inp.costInflation}%/yr. Both sides grow from today, so a later start gets no free growth.`} />
+            <div className="flex items-center flex-wrap no-print" style={{ gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 13, color: K.sub }}>The land:</span>
+              <Seg label="When the land is bought" value={landWithBuild ? "with" : "now"} onChange={(v) => setLandWithBuild(v === "with")} options={[["now", `bought in ${fCal(inp.landMonth)} as planned`], ["with", "bought when you start building"]]} />
+              <span style={{ fontSize: 13, color: K.sub }}>Plan shown:</span>
+              <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select>
+            </div>
+            <Box title={`How much better or worse than ${baseLbl} you end up in ${endDate}, by the month you start building`} help={EXPL.econ}>
+              <div className="flex flex-wrap" style={{ gap: "4px 16px", fontSize: 12.5, marginBottom: 6 }}>
+                <span className="flex items-center" style={{ gap: 6 }}><span style={{ width: 18, borderTop: `3px solid ${PLAN_FILL[focusIdx]}`, display: "inline-block" }} />{planName(focusIdx)} as you set it</span>
+                <span className="flex items-center" style={{ gap: 6 }}><span style={{ width: 18, borderTop: `3px dashed ${K.pos}`, display: "inline-block" }} />the best mix for that date{!optRows.done && <span style={{ color: K.sub }}> (working… {rowsS.length}/{optRows.total || "…"})</span>}</span>
+                <span style={{ color: K.sub }}>above zero: building comes out ahead · a gap: that start runs out of cash</span>
+              </div>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid stroke={K.line} vertical={false} />
+                  <XAxis dataKey="t" type="number" domain={[0, "dataMax"]} ticks={data.filter((d) => d.t % 12 === 0).map((d) => d.t)} tickFormatter={fCal} tick={axisS} tickLine={false} axisLine={{ stroke: K.line }} />
+                  <YAxis tick={axisT} tickFormatter={fM} tickLine={false} axisLine={false} width={58} />
+                  <Tooltip formatter={(v, n) => [fM(v), n === "plan" ? `${planName(focusIdx)} as set` : "best mix"]} labelFormatter={(t) => `start ${fCal(t)}`} contentStyle={tipStyle} />
+                  <ReferenceLine y={0} stroke={K.text} />
+                  <Line dataKey="plan" stroke={PLAN_FILL[focusIdx]} strokeWidth={2.5} dot={{ r: 2.5 }} connectNulls={false} isAnimationActive={false} />
+                  <Line dataKey="best" stroke={K.pos} strokeWidth={2} strokeDasharray="6 4" dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} />
+                  {planAtCur && planAtCur.feasible && <ReferenceDot x={curStart} y={planAtCur.econAdv} r={6} fill="#fff" stroke={K.ink} strokeWidth={2} label={{ value: `your plan · ${fCal(curStart)}`, position: "bottom", fontFamily: SANS, fontSize: 12, fill: K.text }} />}
+                </LineChart>
+              </ResponsiveContainer>
+              <div style={{ fontSize: 13.5, lineHeight: 1.55, marginTop: 8 }}>
+                {earliest ? <><b>Earliest start that works for {planName(focusIdx)}:</b> {fCal(earliest.delay)} (move in {fCal(earliest.occupy)}){earliest.delay === curStart ? " — as planned" : ""}. </> : <><b>No start within 5 years works for {planName(focusIdx)}</b> — change the plan, the home or the land timing. </>}
+                {optRows.done ? (firstAhead ? <><b>Building comes out ahead from {fCal(firstAhead.delay)}</b> with the best mix for that date ({fM(firstAhead.best.econAdv)}).</> : <>No start in the next 5 years comes out ahead of {baseLbl}, even with the best mix{bestEarliest ? <> (the earliest workable best mix starts {fCal(bestEarliest.delay)}: {fM(bestEarliest.best.econAdv)})</> : null}.</>) : <span style={{ color: K.sub }}>Finding the best mix for every date…</span>}
+              </div>
+              <div className="flex flex-wrap no-print" style={{ gap: 8, marginTop: 10 }}>
+                {earliest && earliest.delay !== curStart && <button className="btn small" onClick={() => withUndo(`Start moved to ${fCal(earliest.delay)}`, () => setInp((s0) => ({ ...s0, buildStart: earliest.delay, landMonth: landWithBuild ? earliest.delay : Math.min(s0.landMonth, earliest.delay) })))}>Start in {fCal(earliest.delay)}</button>}
+                {firstAhead && <button className="btn gold small" onClick={() => useOptPlan(firstAhead, `Plan 1 now starts ${fCal(firstAhead.delay)} with its best mix`)}>Try {fCal(firstAhead.delay)} with its best mix as Plan 1</button>}
+              </div>
+            </Box>
+            <div className="box" style={{ marginTop: 14, padding: "0 18px" }}>
+              <Dis id="startsTable" title="The best mix for every start date" sub="table" open={!!openDis.startsTable} onToggle={toggleDis}>
+                <div className="scroll-x"><table className="tbl">
+                  <thead><tr>{["Start", "Move in", `vs ${baseLbl}`, "Works?", "Best mix", "Lowest balance", "Peak instalments", "New loans", "Profit + fees", ""].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
+                  <tbody>{rowsS.map((st) => { const b = st.best; return (
+                    <tr key={st.delay} style={{ background: st.delay === curStart ? SOFT : "transparent" }}>
+                      <td className="l">{fCal(st.delay)}{st.delay === curStart ? " · planned" : ""}</td><td className="l">{fCal(st.occupy)}</td>
+                      <td style={{ color: signCol(b.econAdv), fontWeight: 700 }}>{fM(b.econAdv)}</td>
+                      <td style={{ color: b.ok ? K.pos : b.feasible ? "#7A4F12" : K.neg }}>{b.ok ? "yes" : b.feasible ? "slow" : "no"}</td>
+                      <td className="l" style={{ minWidth: 220 }}>{planTitle(b.cleanPlan || b.plan, build)}</td>
+                      <td>{fM(b.minCash)}</td><td>{fSAR(b.peakInst)}/mo</td><td>{fM(b.newDebt)}</td><td>{fM(b.newDebtInterest)}</td>
+                      <td className="no-print"><button className="btn small" onClick={() => useOptPlan(st)}>Use</button></td>
+                    </tr>); })}</tbody>
+                </table></div>
+              </Dis>
+              <Dis id="planTable" title={`${planName(focusIdx)} at every start date`} sub="table" open={!!openDis.planTable} onToggle={toggleDis}>
+                <div className="scroll-x"><table className="tbl">
+                  <thead><tr>{["Start", "Move in", `vs ${baseLbl}`, "Works?", "Cost", "Lowest balance", "Peak instalments", "Land mortgage", "Own-property mortgage", "Personal loans", "Rule 7"].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
+                  <tbody>{sw.rows.map((x) => <tr key={x.delay} style={{ background: x.delay === curStart ? SOFT : "transparent" }}>
+                    <td className="l">{fCal(x.delay)}{x.delay === curStart ? " · planned" : ""}</td><td className="l">{fCal(x.occupy)}</td>
+                    <td style={{ color: signCol(x.econAdv), fontWeight: 700 }}>{fM(x.econAdv)}</td>
+                    <td style={{ color: x.recoveryOk ? K.pos : x.feasible ? "#7A4F12" : K.neg }}>{x.recoveryOk ? "yes" : x.feasible ? "slow" : "no"}</td>
+                    <td>{fM(x.total)}</td><td>{fM(x.minCash)}</td><td>{fSAR(x.peakInst)}/mo</td><td>{fM(x.mortgage)}</td><td>{fM(x.eq)}</td><td>{fM(x.pl)}</td><td>{fM(x.advantage)}</td>
+                  </tr>)}</tbody>
+                </table></div>
+              </Dis>
+            </div>
+          </div>
+        );
+      };
+
+      /* ---------- step 6: your answer ---------- */
+      const homeRows = [
+        ["Works every month?", (r) => r.feasible ? (r.recoveryOk ? "yes" : "yes · slow to recover") : "no — runs out of cash", (r) => r.feasible ? (r.recoveryOk ? K.pos : "#7A4F12") : K.neg, EXPL.executable],
+        [`Cash back at your cushion within ${inp.recoveryMonths} months of move-in?`, (r) => r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} months after`, (r) => r.recoveryOk ? K.pos : K.neg, EXPL.recovery],
+        [`vs ${baseLbl} in ${endDate} — everything grows`, (r) => fM(r.econAdv), (r) => signCol(r.econAdv), EXPL.econ],
+        ["…the same in today's money", (r) => fM(r.econPV), (r) => signCol(r.econPV), EXPL.econ],
+        ["Return on the money building takes", (r) => { const v = econIrr[m.results.indexOf(r)]; return v == null ? "n/a" : `${(v * 100).toFixed(1)}% a year`; }, (r) => { const v = econIrr[m.results.indexOf(r)]; return v == null ? K.sub : v * 100 >= netRet ? K.pos : K.neg; }, EXPL.econIrr],
+        [`Your rule-7 net worth in ${endDate}`, (r) => fM(r.netWorthEnd), null, EXPL.netWorth],
+        [`…vs ${baseLbl} (rule 7)`, (r) => fM(r.advantage), (r) => signCol(r.advantage), EXPL.advantage],
+        ["Cash at move-in (your cash + loans − costs)", (r) => fM(cashAtMoveIn(r)), null, EXPL.cashMoveIn],
+        ["Bank balance at move-in (with salary)", (r) => fM(r.cashAtCompletion), null, EXPL.cashMoveIn],
+        ["Lowest bank balance", (r) => `${fM(r.minCash)} · ${fCal(r.minCashT)}`, (r) => r.minCash < 0 ? K.neg : K.text, EXPL.cashLow],
+        ["Months of costs the low point covers", (r) => r.reserveMonths == null ? "—" : r.reserveMonths.toFixed(1), null, "Lowest bank balance ÷ that month's living costs, rent, instalments and upkeep."],
+        ["Highest monthly instalments", (r) => `${fSAR(r.peakInst)}/mo · ${pct1(r.peakDbr)}`, (r) => r.peakDbr > inp.dbrCap + 0.5 ? K.neg : K.text, EXPL.peakInst],
+        ["New loans taken", (r) => fM(r.newDebtTotal), null, EXPL.newDebt],
+        ["Profit and fees on the new loans", (r) => fM(r.newDebtInterest), () => K.neg, EXPL.newDebtCost],
+        ["Old loans paid off from your cash", (r) => r.settledTotal > 0 ? `${fM(r.settledTotal)} + ${fM(r.settleFees)} fees` : "none", null, EXPL.settled],
+        ["Mortgages paid off early", (r) => r.prepaidTotal > 0 ? `${fM(r.prepaidTotal)} + ${fM(r.prepayFees)} fees` : "none", null, EXPL.prepay],
+        ["Rent received", (r) => r.rentInTotal > 0 ? fM(r.rentInTotal) : "none", null, EXPL.rentOut],
+        [`Debt still owed in ${endDate}`, (r) => fM(r.endDebt), null, "All debt outstanding at the end of the comparison."],
+        ["Debt-free", (r) => r.debtFreeT != null ? fCal(r.debtFreeT) : `after ${endDate}`, null, EXPL.debtFree],
+      ];
+      const PlanPicker = () => <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>for <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select></span>;
+      const timelineOf = (r) => {
+        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, text: calText(e.text) }));
+        rows.push({ t: r.minCashT, o: 1e6, kind: "low", text: `Lowest bank balance: ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
+        if (r.debtFreeT != null) rows.push({ t: r.debtFreeT, o: 1e6 + 1, kind: "end", text: "Debt-free." });
+        rows.push({ t: occ, o: 1e6 + 2, kind: "occ", text: `You move in. Cash at move-in from your own cash and the loans: ${fM(cashAtMoveIn(r))}.` });
+        return rows.sort((a, b) => a.t - b.t || a.o - b.o);
+      };
+      const ruleSevenBars = (r) => {
+        const ms = r.months, Hh = ms.length - 1, end = ms[Hh], occ = occOf(r);
+        const fbC = fundingBridgeRows(r, occ, inp, prj), fbH = fundingBridgeRows(r, Hh, inp, prj);
+        const settle = ms.reduce((a, x) => a + (x.renterSettle || 0), 0), bGrow = ms.reduce((a, x) => a + (x.bRet || 0), 0);
+        return [
+          { label: `If you build (${planName(focusIdx)})`, parts: [{ label: "cash at move-in", v: fbC.total, color: "#5B6773" }, { label: "loans after move-in", v: fbH.total - fbC.total, color: "#7C8894" }, { label: `growth at ${(+netRet.toFixed(2))}%`, v: fbH.ret, color: "#9AA6B2" }, { label: "home value", v: end.value, color: "#2F6DB5" }, { label: "old instalments no longer paid", v: end.oldSavedCum, color: "#3C8A6E" }, { label: "rent received", v: end.rentInCum, color: "#1F9A80" }, { label: "rent no longer paid", v: end.rentSavedCum, color: "#5FA88A" }, { label: "old debt you no longer owe", v: end.oldDebtGap, color: "#86B9A2" }, { label: "instalments on new loans", v: -end.newInstCum, color: "#C0604B" }, { label: "upkeep", v: -end.upkeepCum, color: "#D59A7A" }, { label: "new debt still owed", v: -end.debtNew, color: "#A33D29" }, { label: "the home you sold", v: -end.ownGone, color: "#7A2E20" }].filter((p) => Math.abs(p.v) >= 1) },
+          { label: `If you ${renting ? "keep renting" : "don't build"}`, parts: [{ label: "your own cash", v: r.cashStart, color: "#5B6773" }, { label: `growth at ${(+netRet.toFixed(2))}%`, v: bGrow, color: "#9AA6B2" }, { label: "planned settlements", v: -settle, color: "#C0604B" }].filter((p) => Math.abs(p.v) >= 1) },
+        ];
+      };
+      const econBars = (r) => {
+        const end = r.months[r.months.length - 1];
+        return [
+          { label: `If you build (${planName(focusIdx)})`, parts: [{ label: "household cash", v: end.cash, color: "#5B6773" }, { label: "home value", v: end.value, color: "#2F6DB5" }, { label: "debt still owed", v: -end.debt, color: "#A33D29" }, { label: "the home you sold", v: -end.ownGone, color: "#7A2E20" }].filter((p) => Math.abs(p.v) >= 1) },
+          { label: `If you ${renting ? "keep renting" : "don't build"}`, parts: [{ label: "household cash", v: end.rCash, color: "#5B6773" }, { label: "debt still owed", v: end.econBase - end.rCash, color: "#A33D29" }].filter((p) => Math.abs(p.v) >= 1) },
+        ];
+      };
+      const AnswerCore = ({ one }) => {
+        if (!lead) return <Box>Tick at least one plan in step 4.</Box>;
+        const r = focusRes, i = focusIdx, occ = occOf(r), rc = cashReconcile(r, occ, inp, prj);
+        const ahead = lead.econAdv >= 0, word = renting ? "renting" : "keeping your cash invested", act = build ? "Building" : "Buying";
+        const irr = econIrr[i];
+        return (
+          <>
+            <section className="box" style={{ borderLeft: `6px solid ${bestF ? (ahead ? K.pos : K.neg) : K.neg}` }}>
+              <div className="eyebrow">{one ? "Your answer" : `Step ${stepIdx("answer") + 1} of ${steps.length} · Your answer`}</div>
+              {bestF ? <h1 className="h1" style={{ fontSize: 23 }}>{act} leaves you <span style={{ color: ahead ? K.pos : K.neg }}>{fS(Math.abs(lead.econAdv))} {ahead ? "richer" : "poorer"}</span> in {endDate} than {word}.</h1>
+                : <h1 className="h1" style={{ fontSize: 23 }}>None of your plans works every month — <span style={{ color: K.neg }}>cash runs out</span>.</h1>}
+              <p className="lead" style={{ color: K.text, maxWidth: 820 }}>
+                {bestF ? <>If you {build ? "build" : "buy"}, your best plan is <b>{planName(recIdx)} · {planTitle(lead.plan, build)}</b>{startBest ? <> — {startNow ? <>start as planned in <b>{fCal(curStart)}</b></> : <>wait until <b>{fCal(startBest.delay)}</b></>}{startBest.delay !== curStart || !startNow ? null : null}{sweepRec && sweepRec.rows.find((x) => x.feasible && x.recoveryOk) && sweepRec.rows.find((x) => x.feasible && x.recoveryOk).delay < curStart ? <> (the earliest that works is {fCal(sweepRec.rows.find((x) => x.feasible && x.recoveryOk).delay)})</> : null}</> : null}.</> : <>{calText(lead.flags[0])} Try a plan with more borrowing, a smaller build, a later start (step 5), or more cash.</>}
+                {" "}<span style={{ color: K.sub }}>Everything is counted on both sides: your salary, living costs, every instalment, and the {(+netRet.toFixed(2))}% your cash earns.</span>
+              </p>
+              {i !== recIdx && <div className="note" style={{ marginTop: 0 }}>The figures below are for {planName(i)}, the plan you picked; the sentence above is about the best one.</div>}
+              <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10, marginTop: 12 }}>
+                <Tile label={`Cash at move-in · ${fCal(occ)}`} value={fM(rc.onHand)} sub={<>your cash + loans − costs, no salary · <b>{fM(rc.bank)}</b> in the bank</>} help={EXPL.cashMoveIn} />
+                <Tile label={`Lowest bank balance · ${fCal(r.minCashT)}`} value={fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={r.minCash < 0 ? "runs short — this plan doesn't work" : inp.cashBuffer > 0 ? (r.minCash >= inp.cashBuffer ? `never below your ${fM(inp.cashBuffer)} cushion` : `below your ${fM(inp.cashBuffer)} cushion for ${r.belowBufferMonths} months; back ${r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} months after move-in`}`) : "never runs short"} help={EXPL.cashLow} />
+                <Tile label={`Wealth in ${endDate}`} value={fM(r.econEnd)} sub={<>vs {fM(r.econBaseEnd)} if you {renting ? "keep renting" : "don't build"} · <b style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b></>} help={EXPL.econ} />
+              </div>
+              <div className="note">In today's money: <b style={{ color: signCol(r.econPV) }}>{fM(r.econPV)}</b>. The money building takes earns {irr == null ? "a rate that can't be worked out here" : <b>{(irr * 100).toFixed(1)}% a year</b>}, against {(+netRet.toFixed(2))}% on cash. Your rule-7 measure: {fM(r.netWorthEnd)} vs {fM(r.renterEnd)} → <b style={{ color: signCol(r.advantage) }}>{fM(r.advantage)}</b>.</div>
+            </section>
+            <Box title={`How the ${fM(rc.onHand)} at move-in adds up`} style={{ marginTop: 14 }} right={!one && <PlanPicker />} help={EXPL.cashMoveIn}>
+              <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 8 }}>{planName(i)} · your own cash and the loans only — no salary and no growth (your rule 6)</div>
+              <Waterfall rows={rc.fb.rows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v }))} totalLabel={`Cash at move-in, ${fCal(occ)}`} total={rc.onHand} />
+              <div className="note">Your bank balance that month is <b>{fM(rc.bank)}</b>: these {fM(rc.onHand)} {rc.salary < 0 ? "−" : "+"} {fM(Math.abs(rc.salary))} of salary {rc.salary < 0 ? "short after" : "left after"} living costs and instalments {rc.growth < 0 ? "−" : "+"} {fM(Math.abs(rc.growth))} earned on the balance{rc.salary < 0 ? ". Your salary does not cover everything in some months — that gap comes out of this cash" : ""}.</div>
+            </Box>
+            <Box title={`Wealth in ${endDate}: build vs don't build`} style={{ marginTop: 14 }} right={<span className="no-print"><Seg label="Measure" value={measure} onChange={setMeasure} options={[["econ", "Everything grows"], ["rule7", "Your rule 7"]]} /></span>} help={measure === "econ" ? EXPL.econ : EXPL.netWorth}>
+              <WealthBars bars={measure === "econ" ? econBars(r) : ruleSevenBars(r)} />
+              <div className="note">{measure === "econ" ? `Everything grows: your household cash (salary in; living costs, rent, every instalment, the project and payoffs out; ${(+netRet.toFixed(2))}% growth while positive) + the home − all debt, against the same household not building. This is how plans are ranked.` : "Your rule 7: your own cash and the loans after every cost, grown; instalments on the new loans as a plain cost; old instalments and rent you no longer pay; the home; less the new debt. Salary and living costs are left out."}</div>
+            </Box>
+            <Box title={`What happens, in order · ${planName(i)}`} style={{ marginTop: 14 }}>
+              <div className="ev" style={{ fontWeight: 600 }}><span className="d">{fCal(0)}</span><span>Today: {fM(inp.cashAvailable)} cash; your old loans take {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income).</span></div>
+              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span>{x.text}</span></div>)}
+              <div className="ev" style={{ borderBottom: "none", fontWeight: 600 }}><span className="d">{endDate}</span><span>Wealth {fM(r.econEnd)} vs {fM(r.econBaseEnd)} if you {renting ? "keep renting" : "don't build"}: <span style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</span>.</span></div>
+            </Box>
+          </>
+        );
+      };
+      const whatIfFor = (id) => { const c = wi(id); return c && !c.partial ? c.data : c ? c.data : null; };
+      const StepAnswer = () => {
+        if (!lead) return <div><Head id="answer" title="Your answer" /><Box>Tick at least one plan in step 4.</Box></div>;
+        const r = focusRes, rc = cashReconcile(r, occOf(r), inp, prj);
+        const st = whatIfFor("stress"), be = wi("breakeven"), rb = whatIfFor("ready"), lw = whatIfFor("worth");
+        const beCell = (d, k) => d[k] == null ? ((k === "econ" ? r.econAdv : r.advantage) >= 0 ? "already ahead" : "not within reach") : d.key === "rent" ? `${fM(d[k])} a year` : `${(+d[k].toFixed(2))}%`;
+        return (
+          <div>
+            {AnswerCore({ one: false })}
+            <div className="box" style={{ marginTop: 14, padding: "0 18px" }}>
+              <div className="flex justify-between items-center flex-wrap" style={{ gap: 8, padding: "12px 0 4px" }}><b style={{ fontSize: 14 }}>Look deeper</b><PlanPicker /></div>
+              <Dis id="breakeven" title="What would have to be true for building to win?" sub="break-evens" open={!!openDis.breakeven} onToggle={toggleDis}>
+                {!be ? <div className="note">Working it out…</div> : <>
+                  <div className="scroll-x"><table className="tbl">
+                    <thead><tr><th>Assumption</th><th>Yours</th><th>Draws level — everything grows</th><th>— your rule 7</th></tr></thead>
+                    <tbody>{be.data.map((d) => <tr key={d.key}><td className="l">{d.label}</td><td>{d.key === "rent" ? `${fM(d.current)} a year` : `${d.current}%`}</td><td style={{ fontWeight: 700 }}>{beCell(d, "econ")}</td><td>{beCell(d, "rule7")}</td></tr>)}</tbody>
+                  </table></div>
+                  {be.partial && <div className="note">Working on the rest…</div>}
+                  <div className="note">Each line changes one assumption on its own until {planName(focusIdx)} draws level with {baseLbl}. The rent line is any rent you would receive from move-in (an annex or a floor{lettingOut ? ", or the whole home" : ""}) — or what living there is worth to you.</div>
+                </>}
+              </Dis>
+              <Dis id="stress" title="How fragile is it?" sub="stress tests" open={!!openDis.stress} onToggle={toggleDis}>
+                {!st ? <div className="note">Working it out…</div> : <>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>{st[0].passes ? <>{planName(focusIdx)} survives <b>{st.filter((x) => x.key !== "base" && x.passes).length} of {st.length - 1}</b> shocks without running out of cash.</> : <>{planName(focusIdx)} already runs out of cash as you entered it — the shocks show how much worse it gets.</>}</div>
+                  <div className="scroll-x"><table className="tbl">
+                    <thead><tr><th>If…</th><th>Works?</th><th>Lowest balance</th><th>vs {baseLbl} (everything grows)</th><th>Rule 7</th></tr></thead>
+                    <tbody>{st.map((x) => <tr key={x.key} style={{ background: x.key === "base" ? SOFT : "transparent" }}><td className="l">{x.label}</td><td style={{ color: x.feasible ? (x.recoveryOk ? K.pos : "#7A4F12") : K.neg, fontWeight: 700 }}>{x.feasible ? (x.recoveryOk ? "yes" : "slow") : "runs out"}</td><td style={{ color: x.minCash < 0 ? K.neg : K.text }}>{fM(x.minCash)} · {fCal(x.minCashT)}</td><td style={{ color: signCol(x.econAdv) }}>{fM(x.econAdv)}</td><td>{fM(x.advantage)}</td></tr>)}</tbody>
+                  </table></div>
+                  <div className="note">"Loan rates +2 points" raises the APR of every new loan; your old loans keep their rates. Costs +20% add cost but no value.</div>
+                </>}
+              </Dis>
+              <Dis id="liquid" title="How tight does cash get?" sub="liquidity" open={!!openDis.liquid} onToggle={toggleDis}>
+                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 10 }}>
+                  <Tile label="Cash at move-in (rule 6)" value={fM(rc.onHand)} sub={`your bank balance then: ${fM(rc.bank)}`} />
+                  <Tile label={`Lowest bank balance · ${fCal(r.minCashT)}`} value={fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={r.reserveMonths == null ? null : `covers ${r.reserveMonths.toFixed(1)} months of that month's costs and instalments`} />
+                  <Tile label="Tightest month" value={r.tightest ? fSARm(r.tightest.surplus) : "—"} sub={r.tightest ? `left from salary in ${fCal(r.tightest.t)} · ${r.thinMonths} months leave less than 5% of income` : null} tone={r.tightest && r.tightest.surplus < 0 ? K.neg : K.text} />
+                  <Tile label="Debt-free" value={r.debtFreeT != null ? fCal(r.debtFreeT) : "later"} sub={st ? `survives ${st.filter((x) => x.key !== "base" && x.passes).length} of ${st.length - 1} stress tests` : "stress tests: working…"} />
+                </div>
+              </Dis>
+              <Dis id="worth" title="Is each loan worth it?" sub="loan by loan" open={!!openDis.worth} onToggle={toggleDis}>
+                {!lw ? <div className="note">Working it out…</div> : lw.length === 0 ? <div className="note">This plan takes no new loans.</div> : <>
+                  <div className="scroll-x"><table className="tbl">
+                    <thead><tr><th>Loan</th><th>Amount</th><th>It costs a year</th><th>Worth per 1M borrowed (today's money)</th><th>Without it</th></tr></thead>
+                    <tbody>{lw.map((w) => <tr key={w.key}><td className="l">{w.label}</td><td>{fM(w.amount)}</td><td style={{ color: w.effYear > w.netReturn ? K.neg : K.pos }}>{w.effYear.toFixed(2)}% <span style={{ color: K.sub }}>vs {w.netReturn.toFixed(2)}%</span></td><td style={{ color: signCol(w.perMillionPV), fontWeight: 700 }}>{fM(w.perMillionPV)}</td><td className="l">{!w.without.feasible ? <span style={{ color: K.neg }}>cash runs out — you need it</span> : `works · ${fM(w.without.econAdv)} vs ${baseLbl}`}</td></tr>)}</tbody>
+                  </table></div>
+                  <div className="note">Each loan against the same plan without it (the other loans may then grow to fill the room). A loan that costs more a year than your cash earns loses money unless you need it to pay for the build.</div>
+                </>}
+              </Dis>
+              {build && <Dis id="ready" title="Or buy a ready villa instead?" sub="price that matches building" open={!!openDis.ready} onToggle={toggleDis}>
+                {!rb ? <div className="note">Working it out…</div> : <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
+                  A ready villa worth what your finished home would be ({fM(rb.value)} in {fCal(rb.buyAt)}), bought in {fCal(rb.buyAt)} and paid for the same way, does as well as building with {planName(focusIdx)} up to a price of <b>{rb.price != null ? fM(rb.price) : "— (none: building is ahead even at a very low price)"}</b> when everything grows{rb.price7 != null ? <> ({fM(rb.price7)} on your rule 7)</> : null}. You would move in {fCal(rb.moveIn)} instead of {fCal(rb.buildMoveIn)}.
+                  {rb.atPrice && <div className="note">At that price: {rb.atPrice.feasible ? `cash never runs out (lowest ${fM(rb.atPrice.minCash)})` : `cash runs out (${fM(rb.atPrice.minCash)})`}. Transfer tax and the broker's fee are paid on the price; the villa grows in value like your home would.</div>}
+                </div>}
+              </Dis>}
+              <Dis id="allRows" title="All comparison rows" sub={`${homeRows.length} rows, every plan`} open={!!openDis.allRows} onToggle={toggleDis}>
+                <div className="scroll-x"><table className="tbl">
+                  <thead><tr><th>Measure</th>{liveIdx.map((i) => <th key={i} style={{ borderTop: `4px solid ${PLAN_FILL[i]}` }}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</th>)}</tr></thead>
+                  <tbody>{homeRows.map(([label, fn, col, help]) => <tr key={label}><td className="l" style={{ minWidth: 220 }}>{label}<Hint text={help} label={label} /></td>{liveIdx.map((i) => { const x = m.results[i]; return <td key={i} style={{ color: col ? col(x) : K.text }}>{fn(x)}</td>; })}</tr>)}</tbody>
+                </table></div>
+              </Dis>
+              <Dis id="years" title="Year by year" sub={planName(focusIdx)} open={!!openDis.years} onToggle={toggleDis}>
+                <div className="scroll-x"><table className="tbl">
+                  <thead><tr><th>Year ending</th>{r.years.map((y) => <th key={y.year}>{fCal(Math.min(r.months.length - 1, y.year * 12))}</th>)}</tr></thead>
+                  <tbody>{[["Project spend", "spend"], ["Rent paid", "rentPaid"], ["Old-loan instalments", "existInst"], ["New-loan instalments", (y) => y.lmPay + y.eqPay + y.plPay + y.coPay + y.rfPay], ["Upkeep", "ownerCost"], ["Bank balance (year end)", "cash"], ["Debt owed", "debt"], ["Home value", "value"], ["vs not building (everything grows)", "econAdv"], ["Rule 7 vs not building", "advantage"]].map(([l, k]) => <tr key={l}><td className="l">{l}</td>{r.years.map((y) => { const v = typeof k === "function" ? k(y) : y[k]; return <td key={y.year} style={{ color: v < 0 ? K.neg : K.text }}>{Math.abs(v) < 0.5 ? "–" : fM(v)}</td>; })}</tr>)}</tbody>
+                </table></div>
+              </Dis>
+              <Dis id="sens" title="What moves the answer most" sub="each assumption ±20%" open={!!openDis.sens} onToggle={toggleDis}>
+                <ResponsiveContainer width="100%" height={40 * Math.max(1, tornado.length) + 30}>
+                  <BarChart data={tornado} layout="vertical" margin={{ top: 8, right: 24, left: 0, bottom: 0 }} stackOffset="sign">
+                    <CartesianGrid stroke={K.line} horizontal={false} />
+                    <XAxis type="number" tick={axisT} tickFormatter={fM} tickLine={false} axisLine={false} />
+                    <YAxis type="category" dataKey="label" width={170} tick={{ fontFamily: SANS, fontSize: 12, fill: K.text }} tickLine={false} axisLine={false} />
+                    <Tooltip formatter={(v, n) => [fM(v), n === "lo" ? "the worse of −20% / +20%" : "the better of −20% / +20%"]} contentStyle={tipStyle} />
+                    <ReferenceLine x={0} stroke={K.text} />
+                    <Bar dataKey="lo" stackId="t" fill={K.neg} maxBarSize={18} /><Bar dataKey="hi" stackId="t" fill={K.pos} maxBarSize={18} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="note">Change in the "everything grows" result when one assumption moves 20% up or down; the longest bar is the one to firm up first.</div>
+              </Dis>
+            </div>
+          </div>
+        );
+      };
+
+      /* ---------- rental investment (kept simple here) ---------- */
+      const OptionCard = ({ o, i }) => {
+        const r = m.results[i], ok = r && r.affordable && r.cashOk && r.ltvOk;
+        const flag = r ? (!r.ltvOk ? `${fM(r.fundingGap)} above the ${o.maxLtvPct}% loan-to-value limit` : !r.cashOk ? `needs ${fM(r.cashNeeded)} cash; you have ${fM(inp.cashAvailable)}` : !r.affordable ? `instalment is ${r.dbr.toFixed(0)}% of income (limit ${inp.dbrCap}%)` : null) : null;
+        return (
+          <div className="plan" style={{ borderLeftColor: o.enabled ? PLAN_FILL[i] : K.line }}>
+            <div className="flex items-center justify-between flex-wrap" style={{ gap: 8 }}>
+              <label className="flex items-center" style={{ gap: 8 }}><input type="checkbox" checked={o.enabled} onChange={(e) => setOpt(i, "enabled", e.target.checked)} /><b style={{ color: PLAN_TEXT[i], fontSize: 12, letterSpacing: ".06em" }}>OPTION {i + 1}{r && r === lead ? " · ★ BEST" : ""}</b></label>
+              <select value="" aria-label="Start from a template" onChange={(e) => e.target.value && setInp((s) => ({ ...s, options: s.options.map((x, j) => j === i ? { enabled: true, ...RE_OPTION_PRESETS[e.target.value] } : x) }))}><option value="">Template…</option>{Object.entries(RE_OPTION_PRESETS).map(([k, p]) => <option key={k} value={k}>{p.name}</option>)}</select>
+            </div>
+            <input type="text" value={o.name} onChange={(e) => setOpt(i, "name", e.target.value)} style={{ width: "100%", fontWeight: 700, margin: "8px 0" }} aria-label="Option name" />
+            {o.enabled && <>
+              <div style={{ fontSize: 12.5, color: K.sub, lineHeight: 1.5 }}>{describeOption(o, inp, prj)}</div>
+              {r && <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13, marginTop: 8 }}>
+                <span className="tag" style={{ background: ok ? "#E2EFE9" : SOFT_NEG, color: ok ? K.pos : K.neg }}>{ok ? "✓ Works" : "✗ " + flag}</span>
+                <span>levered return <b className="mono">{pct1(r.irr == null ? null : r.irr * 100)}</b></span>
+                <span>NPV <b className="mono" style={{ color: signCol(r.npv) }}>{fM(r.npv)}</b></span>
+                <span>instalment <b className="mono">{fSAR(r.monthlyPayment)}/mo</b></span>
+              </div>}
+              <More title="Edit this option">
+                <Field label="Own cash" value={o.cashPct} min={0} max={100} step={1} unit="% of cost" onChange={(v) => setOpt(i, "cashPct", v)} hint={`= ${fM(prj.total * o.cashPct / 100)}`} />
+                <Field label="Personal loan" value={o.plAmount} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => setOpt(i, "plAmount", v)} />
+                {o.plAmount > 0 && <><Field label="Personal-loan rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setOpt(i, "plRate", v)} /><Field label="Personal-loan years" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setOpt(i, "plTenure", v)} /></>}
+                <Field label="Mortgage rate" value={o.rate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setOpt(i, "rate", v)} />
+                <Field label="Mortgage years" value={o.tenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setOpt(i, "tenure", v)} />
+                <Field label="Grace period" value={o.graceMonths} min={0} max={36} step={1} unit="months" onChange={(v) => setOpt(i, "graceMonths", v)} />
+                <Pick label="Profit during the grace period" value={o.graceMode} onChange={(v) => setOpt(i, "graceMode", v)} options={[["capitalize", "added to the loan"], ["interestOnly", "paid monthly"]]} />
+                <Field label="Bank fee" value={o.feesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setOpt(i, "feesPct", v)} />
+                <Field label="Bank's loan-to-value limit" value={o.maxLtvPct} min={50} max={100} step={5} unit="%" onChange={(v) => setOpt(i, "maxLtvPct", v)} />
+              </More>
+            </>}
+          </div>
+        );
+      };
+      const StepProperty = () => (
+        <div>
+          <Head id="property" title="The property" sub="What you buy or build to let, and what it costs." />
+          <div className="no-print" style={{ marginBottom: 14 }}><Seg label="Build or buy" value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land and build"], ["buy", "Buy ready"]]} /></div>
+          <div className="grid" style={twoCol}>
+            <Box title={build ? "Land and construction" : "The purchase"}>
+              {build ? <>
+                <Field label="Land area" value={inp.landArea} min={150} max={2500} step={25} unit="m²" onChange={(v) => set("landArea", v)} />
+                <Field label="Land price" value={inp.landPrice} min={300} max={15000} step={100} unit="SAR/m²" onChange={(v) => set("landPrice", v)} />
+                <Field label="Total built-up area" value={inp.builtArea} min={100} max={2500} step={10} unit="m²" onChange={(v) => setMany({ builtArea: v, builtPct: 0 })} />
+                <Field label="Construction cost" value={inp.buildCost} min={1000} max={7000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} />
+                <Field label="Construction takes" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} />
+              </> : <Field label="Price" value={inp.propertyPrice} min={300000} max={15000000} step={50000} unit="SAR" onChange={(v) => set("propertyPrice", v)} />}
+              <Field label="Value growth" value={inp.appreciation} min={-5} max={12} step={0.5} unit="%/yr" onChange={(v) => set("appreciation", v)} />
+              <Field label="Sell after" value={inp.exitYear} min={3} max={30} step={1} unit="yrs" onChange={(v) => set("exitYear", v)} />
+              <Field label="Selling costs" value={inp.sellCostPct} min={0} max={12} step={0.5} unit="%" onChange={(v) => set("sellCostPct", v)} />
+            </Box>
+            <Box title="What it costs"><table className="bridge"><tbody>{costRows.map(([l, v]) => <tr key={l}><td>{l}</td><td className="v">{fSAR(v)}</td></tr>)}<tr className="tot"><td>All-in cost</td><td className="v">{fSAR(prj.total)}</td></tr></tbody></table></Box>
+          </div>
+        </div>
+      );
+      const StepLetting = () => (
+        <div>
+          <Head id="letting" title="Letting, and what the bank sees" />
+          <div className="grid" style={twoCol}>
+            <Box title="Letting">
+              <Field label="Rent" value={inp.rentMo} min={2000} max={60000} step={500} unit="SAR/mo" onChange={(v) => set("rentMo", v)} hint={`gross yield ${pct1(inp.rentMo * 12 / prj.total * 100)} on the all-in cost`} />
+              <Field label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
+              <Field label="Vacancy and collection loss" value={inp.vacancyPct} min={0} max={30} step={1} unit="%" onChange={(v) => set("vacancyPct", v)} />
+              <Field label="Management" value={inp.mgmtPct} min={0} max={15} step={0.5} unit="% of rent" onChange={(v) => set("mgmtPct", v)} />
+              <Field label="Zakat on net rent" value={inp.zakatPct} min={0} max={2.5} step={0.5} unit="%" onChange={(v) => set("zakatPct", v)} />
+            </Box>
+            <Box title="You">
+              <Field label="Income" value={inp.income} min={5000} max={250000} step={1000} unit="SAR/mo" onChange={(v) => set("income", v)} />
+              <Field label="Cash you can commit" value={inp.cashAvailable} min={0} max={8000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
+              <Field label="Instalments may use" value={inp.dbrCap} min={30} max={70} step={1} unit="% of income" onChange={(v) => set("dbrCap", v)} />
+              <Field label="Discount rate (NPV)" value={inp.discountRate} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("discountRate", v)} />
+              <Seg label="How rates are quoted" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "Rates as APR"], ["flat", "Rates as flat"]]} />
+            </Box>
+          </div>
+        </div>
+      );
+      const StepRFin = () => <div><Head id="rfin" title="Four ways to fund it" sub="Own cash first, then a personal loan, then a mortgage for the rest." /><div className="grid" style={{ gap: 10 }}>{inp.options.map((o, i) => <React.Fragment key={i}>{OptionCard({ o, i })}</React.Fragment>)}</div></div>;
+      const rentalRows = [["Works?", (r) => r.affordable && r.cashOk && r.ltvOk ? "yes" : "no"], ["Own cash in", (r) => fM(r.cash)], ["Personal loan", (r) => fM(r.pl)], ["Mortgage", (r) => fM(r.loanCommit)], ["Levered return (IRR)", (r) => pct1(r.irr == null ? null : r.irr * 100)], ["Property's own return", (r) => pct1(r.irrUnlev == null ? null : r.irrUnlev * 100)], [`NPV at ${inp.discountRate}%`, (r) => fM(r.npv)], ["Equity multiple", (r) => r.moic == null ? "—" : r.moic.toFixed(2) + "×"], ["Lowest debt-service cover", (r) => r.dscrMin == null ? "no debt" : r.dscrMin.toFixed(2) + "×"], ["Monthly instalment", (r) => `${fSAR(r.monthlyPayment)}/mo`], ["Profit paid to banks", (r) => fM(r.totalInterest)], ["Net sale proceeds", (r) => fM(r.exitProceeds)]];
+      const StepRRes = () => (
+        <div>
+          <Head id="rres" title="Which capital stack earns the most?" sub={lead ? `${lead.opt.name}: ${pct1(lead.irr == null ? null : lead.irr * 100)} levered return vs ${pct1(lead.irrUnlev == null ? null : lead.irrUnlev * 100)} for the property itself. Verdict: ${m.verdict}.` : "Tick at least one option."} />
+          <Box><div className="scroll-x"><table className="tbl">
+            <thead><tr><th>Measure</th>{liveIdx.map((i) => <th key={i} style={{ borderTop: `4px solid ${PLAN_FILL[i]}` }}>{m.results[i].opt.name}</th>)}</tr></thead>
+            <tbody>{rentalRows.map(([l, fn]) => <tr key={l}><td className="l">{l}</td>{liveIdx.map((i) => <td key={i}>{fn(m.results[i])}</td>)}</tr>)}</tbody>
+          </table></div></Box>
+        </div>
+      );
+
+      /* ---------- scenarios, footer, page ---------- */
+      const ScenPanel = () => (
+        <div className="no-print" style={{ maxWidth: 1480, margin: "12px auto 0", padding: "0 20px" }}>
+          <Box title="Saved scenarios — shared with the current page" right={<span className="flex flex-wrap" style={{ gap: 8 }}><button className="btn small" onClick={doExport}>Export all</button><label className="btn small" style={{ cursor: "pointer" }}>Import<input type="file" accept="application/json" onChange={doImport} style={{ display: "none" }} /></label><button className="btn small" onClick={resetAll}>Start from the defaults</button><button className="btn small" onClick={() => setShowScen(false)}>Close</button></span>}>
+            {savedRows.length === 0 ? <div style={{ fontSize: 13, color: K.sub }}>Nothing saved yet — use Save in the header.</div> : <div className="scroll-x"><table className="tbl">
+              <thead><tr><th>Scenario</th><th>Saved</th><th>Cost</th><th>Result</th><th>Verdict</th><th></th></tr></thead>
+              <tbody>{savedRows.map((s) => <tr key={s.n} style={{ background: s.n === loadedName ? SOFT : "transparent" }}>
+                <td className="l"><b>{s.n}</b>{s.n === loadedName ? " · open" : ""}</td><td className="l">{s.at ? new Date(s.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
+                <td>{s.error ? "—" : fM(s.total)}</td><td style={{ color: s.metric == null ? K.sub : s.metric >= 0 ? K.pos : K.neg }}>{s.error ? "—" : s.metric == null ? "—" : s.home ? `${fM(s.metric)} vs not building` : `${pct1(s.metric)} IRR`}</td>
+                <td style={{ color: s.vColor, fontWeight: 700 }}>{s.verdict || "—"}</td>
+                <td><span className="flex" style={{ gap: 6, justifyContent: "flex-end" }}><button className="btn small" onClick={() => doLoad(s.n)}>Open</button><button className="btn small" aria-label={`Delete ${s.n}`} onClick={() => doDelete(s.n)}><Trash2 size={14} color={K.neg} /></button></span></td>
+              </tr>)}</tbody>
+            </table></div>}
+          </Box>
+        </div>
+      );
+      const StepFooter = () => (
+        <div className="flex items-center justify-between no-print" style={{ gap: 10, marginTop: 22, paddingTop: 14, borderTop: `1px solid ${K.line}` }}>
+          <button className="btn" onClick={() => go(stepI - 1)} disabled={stepI === 0}>← {stepI > 0 ? steps[stepI - 1][1] : "Back"}</button>
+          <span style={{ fontSize: 12.5, color: K.sub }}>Step {stepI + 1} of {steps.length}</span>
+          <button className="btn gold" onClick={() => go(stepI + 1)} disabled={stepI === steps.length - 1}>{stepI < steps.length - 1 ? `Next: ${steps[stepI + 1][1]}` : "Done"} →</button>
+        </div>
+      );
+      const panels = home ? { money: StepMoney, loans: StepLoans, home: StepHome, pay: StepPay, when: StepWhen, answer: StepAnswer } : { property: StepProperty, letting: StepLetting, rfin: StepRFin, rres: StepRRes };
+      const compactSummary = home ? `${fSAR(inp.income)}/mo income · ${fM(inp.cashAvailable)} cash · ${inp.existingLoans.filter((l) => l.balance > 0).length} old loans · ${build ? `${inp.landArea} m² land, ${Math.round(prj.builtArea)} m² build` : "ready home"} · ${fM(prj.total)} all-in` : `${fM(prj.total)} all-in · rent ${fSAR(inp.rentMo)}/mo`;
+
+      return (
+        <div>
+          <header className="hdr">
+            <div className="hdr-in">
+              <div style={{ minWidth: 0, flex: "1 1 260px" }}>
+                <div style={{ fontSize: 12, color: "#C8D3DF" }}><a href="index.html">All models</a> · <a href="realestate.html">current page</a></div>
+                <div className="flex items-center flex-wrap" style={{ gap: 8, marginTop: 2 }}><b style={{ fontSize: 17 }}>Home financing</b><span className="pill">new layout · preview</span></div>
+              </div>
+              <div style={{ fontSize: 13, color: "#ECE4D3" }} title={dirty ? "changes not saved" : "saved"}>{loadedName ? <>“{loadedName}”{dirty && <span style={{ color: "#D9B36A" }} aria-label="unsaved changes"> ● unsaved</span>}</> : <span style={{ color: "#C8D3DF" }}>Working copy <span style={{ color: "#D9B36A" }}>● not saved</span></span>}</div>
+              <div className="flex flex-wrap items-center no-print" style={{ gap: 8 }}>
+                <Seg dark label="What are you deciding" value={inp.mode} onChange={(v) => { set("mode", v); setStep(0); setFocus(-1); setEditIdx(-1); }} options={[["home", "My home"], ["rental", "Rental"]]} />
+                <button className="hbtn gold" onClick={quickSave}>Save</button>
+                <button className="hbtn" onClick={() => setShowScen(!showScen)} aria-expanded={showScen}>Scenarios</button>
+                <button className="hbtn" onClick={() => setPrintAll(true)}>Print / PDF</button>
+              </div>
+            </div>
+          </header>
+          {showScen && ScenPanel()}
+          <nav className="stepper no-print" aria-label="Steps">
+            <div className="stepper-in" ref={stepRow}>
+              {steps.map(([id, label], i) => <button key={id} className={"st" + (i === stepI ? " on" : "") + (i < stepI ? " done" : "")} aria-current={i === stepI ? "step" : undefined} onClick={() => go(i)}><span className="n">{i < stepI ? "✓" : i + 1}</span>{label}</button>)}
+            </div>
+          </nav>
+          <div className="shell">
+            <aside className="rail rail-l" aria-label="Your inputs">{InputsRail()}</aside>
+            <main style={{ minWidth: 0 }}>
+              {banner === "main" && <div className="box no-print flex items-center flex-wrap" style={{ gap: 10, marginBottom: 12, padding: "10px 14px", fontSize: 13, background: SOFT_POS }}><span style={{ flex: "1 1 300px" }}>This preview started from the inputs on the current page. From now on it keeps its own copy; saved scenarios are shared between both pages.</span><button className="btn small" onClick={() => setBanner(null)}>Got it</button></div>}
+              {termsNote && <div className="box no-print flex items-center flex-wrap" style={{ gap: 10, marginBottom: 12, padding: "10px 14px", fontSize: 13, background: SOFT_AMB }}><span style={{ flex: "1 1 300px" }}>{termsNote}</span><button className="btn small" onClick={() => setTermsNote(null)}>Got it</button></div>}
+              <details className="box sum-compact no-print" style={{ marginBottom: 12, padding: "10px 14px" }}><summary style={{ cursor: "pointer", fontSize: 13 }}><b>Your inputs:</b> <span style={{ color: K.sub }}>{compactSummary}</span></summary>{InputsSummary()}</details>
+              {printAll && home ? AnswerCore({ one: true }) : panels[cur]()}
+              {!printAll && StepFooter()}
+            </main>
+            <aside className="rail rail-r" aria-label="What the bank will lend and your plans">{home && BankRail()}{PlansRail()}</aside>
+          </div>
+          {undo && <div className="toast no-print" role="status"><span>{undo.label}.</span><button onClick={() => { undo.restore(); setUndo(null); }}>Undo</button></div>}
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

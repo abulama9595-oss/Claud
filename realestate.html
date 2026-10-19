@@ -314,9 +314,9 @@
       const stepI = Math.min(step, steps.length - 1);
       const cur = steps[stepI][0];
       /* heavy extras: the start sweep follows the debounced inputs; the sensitivity chart and a second sweep only where shown */
-      const sweepRec = useMemo(() => home && recIdx >= 0 ? timingSweepRE(optInp, recIdx, 60, 3, landWithBuild) : null, [optInp, recIdx, home, landWithBuild]);
-      const sweep = useMemo(() => home && focusIdx >= 0 && focusIdx !== recIdx && (cur === "when" || printAll) ? timingSweepRE(optInp, focusIdx, 60, 3, landWithBuild) : null, [optInp, focusIdx, recIdx, home, landWithBuild, cur, printAll]) || sweepRec;
-      const tornado = useMemo(() => focusIdx >= 0 && (cur === "res" || printAll) ? tornadoRE(optInp, focusIdx) : [], [optInp, focusIdx, cur, printAll]);
+      const sweepRec = useMemo(() => home && optInp.mode === "home" && recIdx >= 0 ? timingSweepRE(optInp, recIdx, 60, 3, landWithBuild) : null, [optInp, recIdx, home, landWithBuild]);
+      const sweep = useMemo(() => home && optInp.mode === "home" && focusIdx >= 0 && focusIdx !== recIdx && (cur === "when" || printAll) ? timingSweepRE(optInp, focusIdx, 60, 3, landWithBuild) : null, [optInp, focusIdx, recIdx, home, landWithBuild, cur, printAll]) || sweepRec;
+      const tornado = useMemo(() => focusIdx >= 0 && optInp.mode === inp.mode && (cur === "res" || printAll) ? tornadoRE(optInp, focusIdx) : [], [optInp, focusIdx, cur, printAll, inp.mode]);
       const go = (i) => { setStep(Math.max(0, Math.min(steps.length - 1, i))); const el = document.getElementById("steps"); if (el) window.scrollTo({ top: el.offsetTop - 8, behavior: "smooth" }); };
       // print once the start-date table has finished filling (it is part of the printout)
       useEffect(() => { if (!printAll || (home && (startsStale || optStale))) return; const t = setTimeout(() => { window.print(); setPrintAll(false); }, 150); return () => clearTimeout(t); }, [printAll, startsStale, optStale, home]);
@@ -1293,6 +1293,12 @@
               <button onClick={resetAll} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Start from defaults</button>
               <button onClick={() => setShowRestored(false)} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Dismiss</button>
             </div>}
+            {(() => {
+              // settings that only the new layout (preview) can edit: their effect is in every number here
+              const lettingOut = (inp.rentOutFixed || 0) > 0 || (inp.rentOutPct || 0) > 0;
+              const used = [!lettingOut && (inp.partRentAnnual || 0) > 0 && "rent from part of the new home", !lettingOut && !(inp.rentNow > 0) && inp.ownedValue > 0 && (inp.ownHomePlan === "let" || inp.ownHomePlan === "sell") && `${inp.ownHomePlan === "let" ? "letting" : "selling"} the home you live in today`, (inp.cashZakatPct || 0) > 0 && "zakat on invested cash", inp.existingLoans.some((l) => l.rateType === "flat") && "old loans with flat rates (their rate column shows the flat rate)"].filter(Boolean);
+              return used.length ? <div className="no-print" style={{ background: "#E4ECF6", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>This scenario uses settings only the new layout can change: {used.join("; ")}. Their effect is included in every number on this page — <a href="realestate-preview.html">open the new layout</a> to change them.</div> : null;
+            })()}
             {termsNote && <div className="no-print flex items-center flex-wrap" style={{ gap: 10, background: "#FBEFD9", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>
               <span style={{ flex: "1 1 420px" }}>{termsNote}</span>
               <button onClick={() => setTermsNote(null)} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Got it</button>
