@@ -55,7 +55,7 @@ function audit(label, m, r, bad) {
   for (let t = 0; t <= H; t++) {
     const mo = r.months[t];
     const proceeds = r.facilities.filter((f) => f.startedAt === t && f.amount > 0).reduce((a, f) => a + f.amount - f.fees - (f.refi ? f.refi.payoff : 0), 0);
-    const payoffs = r.payoffs.filter((x) => x.t === t).reduce((a, x) => a + x.cost, 0);
+    const payoffs = r.payoffs.concat(r.prepaid || []).filter((x) => x.t === t).reduce((a, x) => a + x.cost, 0);   // old-loan payoffs and early mortgage payoffs
     const flows = proceeds - payoffs - mo.spend;
     for (const k of ['lm', 'eq', 'pl', 'co', 'rf']) if (!near(mo[k + 'Pay'], fp[k][t])) flag('instalments:' + k, `M${t}: engine ${mo[k + 'Pay']} vs rebuilt ${fp[k][t]}`);
     const newPay = mo.lmPay + mo.eqPay + mo.plPay + mo.coPay + mo.rfPay;

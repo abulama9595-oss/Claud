@@ -124,3 +124,31 @@ test('strategies are ranked and judged by the everything-grows measure', () => {
   for (let k = 1; k < ok.length; k++) assert.ok(ok[k - 1].econAdv >= ok[k].econAdv);
   assert.equal(m.bestFeasible.econAdv > 0, m.verdict === 'OWNING WINS' || m.verdict === 'BUILDING WINS');
 });
+
+// two old personal loans: one cheaper than a new personal loan, one dearer
+const REFI = (mode, pick) => {
+  const plan = { ...E.RE_PLAN_PRESETS.cashPlusPersonal, enabled: true, plWhen: 'build', refiMode: mode, refiPick: pick || null };
+  return E.computeRE({ income: 90000, cashAvailable: 4000000, plRate: 6, rateQuote: 'apr', buildStart: 6, landMonth: 0,
+    existingLoans: [{ id: 1, name: 'Cheap', balance: 400000, installment: 9000, monthsLeft: 50, rate: 2, ageMonths: 30 }, { id: 2, name: 'Dear', balance: 300000, installment: 9500, monthsLeft: 40, rate: 12, ageMonths: 30 }],
+    plans: [plan, { ...plan, enabled: false }, { ...plan, enabled: false }, { ...plan, enabled: false }] }).results[0];
+};
+const bought = (r) => (r.pl.refi ? r.pl.refi.names : []).slice().sort().join('+');
+
+test('refinance: best value keeps a loan cheaper than the new one; most cash takes what releases the most; your pick is followed', () => {
+  const v = REFI('value'), c = REFI('cash');
+  assert.ok(!bought(v).includes('Cheap'), `value mode bought out ${bought(v)}`);
+  assert.ok(c.pl.refi && (c.pl.amount - c.pl.refi.payoff) >= (v.pl.amount - (v.pl.refi ? v.pl.refi.payoff : 0)) - 1, 'most cash releases at least as much cash');
+  assert.equal(bought(REFI('pick', { pl: ['2'] })), 'Dear');
+  assert.equal(bought(REFI('pick', { pl: [] })), '');
+});
+
+test('early mortgage payoff (your option): paid from cash after move-in, with the 3-month fee, and no instalments after', () => {
+  const plan = { ...E.RE_PLAN_PRESETS.landMortgage, enabled: true, prepayAfter: 12 };
+  const m = E.computeRE({ cashAvailable: 9000000, existingLoans: [], plans: [plan, { ...plan, enabled: false }, { ...plan, enabled: false }, { ...plan, enabled: false }] });
+  const r = m.results[0], t = m.prj.occupy + 12, x = r.prepaid[0];
+  assert.ok(x && x.t === t && x.key === 'lm', 'the land mortgage was paid off at move-in + 12');
+  const prev = r.months[t - 1].debtLm, balBefore = prev - (r.months[t].lmPay - prev * r.lm.rate / 1200);   // balance after that month's instalment
+  assert.ok(x.fee > 0 && Math.abs(x.cost - x.fee - balBefore) < 1e-3, `payoff ${x.cost - x.fee} vs balance ${balBefore}`);
+  assert.equal(r.months[t].debtLm, 0);
+  assert.ok(r.months.slice(t + 1).every((mo) => mo.lmPay === 0), 'no instalments after the payoff');
+});
