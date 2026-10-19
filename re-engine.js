@@ -772,6 +772,7 @@ function rePlanSimulate(p, prj, plan) {
     const ms = months.filter((m) => m.year === y); const sum = (k) => ms.reduce((a, m) => a + m[k], 0); const last = ms[ms.length - 1];
     years.push({ year: y, label: y === 0 ? "Y0" : `Y${y}`, spend: sum("spend"), rentPaid: sum("rentPaid"), rentEq: sum("rentEq"), existInst: sum("existInst"), lmPay: sum("lmPay"), eqPay: sum("eqPay"), plPay: sum("plPay"), coPay: sum("coPay"), rfPay: sum("rfPay"), interest: sum("existInterest") + sum("newInt"), ownerCost: sum("ownerCost"),
       cash: last.cash, rCash: last.rCash, debt: last.debt, debtExisting: last.debtExisting, debtLm: last.debtLm, debtEq: last.debtEq, debtPl: last.debtPl, debtCo: last.debtCo, debtRf: last.debtRf, value: last.value, netWorth: last.netWorth, renterNW: last.renterNW, advantage: last.advantage,
+      econNW: last.econNW, econBase: last.econBase, econAdv: last.econAdv, inc: ms.filter((m) => m.t >= 1).reduce((a, m, k, arr) => a + m.inc / arr.length, 0) || p.income,
       instMo: (sum("existInst") + sum("lmPay") + sum("eqPay") + sum("plPay") + sum("coPay") + sum("rfPay")) / (y === 0 ? 1 : 12) });
   }
   const end = months[H];
@@ -789,7 +790,7 @@ function rePlanSimulate(p, prj, plan) {
   events.sort((a, b) => a.t - b.t);
   const facOut = (f) => ({ ...f });
   return { plan, months, years, events, flags, feasible, recoveryOk, end,
-    lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), pl2: facOut(pl2), co: facOut(co), rf: facOut(rf), refiTotal, roomSettled, annualRentOut, rentInTotal: rentInCum, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
+    lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), pl2: facOut(pl2), co: facOut(co), rf: facOut(rf), refiTotal, roomSettled, annualRentOut, rentInTotal: rentInCum, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ id: l.id, name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     cashRestoredT, recoveryMonths, cashAfterWindow: months[after].cash, payoffs, newDebtTotal: facs.reduce((a, f) => a + f.amount, 0),
     settledTotal, settleFees, prepaid, prepaidTotal, prepayFees, refiDiffers, totalInterest, newDebtInterest, peakDbr, peakInst, debtFreeT, breakEvenMonth,
@@ -924,9 +925,9 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
    Treats dbrCap × income as one bucket; every loan is taken at the bank's maximum. Searches every combination of: land
    mortgage yes/no · personal loan(s) at build start yes/no · existing-property mortgage none / at build / now / at land ·
    cash-out at completion yes/no · how far to pay off old personal loans for a mortgage. Personal loans (at build start or at
-   completion) refinance old ones automatically when that releases more cash. Rates and tenures come from
-   strategy 1. For each start: the mix that is executable AND recovers cash within the window, then the highest net
-   worth, then the lowest peak instalment. */
+   completion) buy out old ones by the strategy's refinance rule ("Auto"). Every loan is priced with your Bank terms. For
+   each start: the mix that is executable AND recovers cash within the window, then the highest "everything grows"
+   result, then the lowest peak instalment. */
 function reAutoName(o) {
   const s = [];
   s.push(o.lmUse ? "Land mortgage (max)" : "Land in cash");
@@ -996,7 +997,7 @@ function optimizeRE(inp, opts) {
   };
   const curStart = Math.max(p0.buildStart || 0, p0.landMonth || 0);
   const at = (d) => ({ ...p0, buildStart: d, landMonth: landWithBuild ? d : Math.min(p0.landMonth || 0, d) });
-  if (opts.slice) { const d = opts.delays[0], planned = d === curStart && !landWithBuild; return { part: evalSlice(planned ? p0 : at(d), opts.slice[0], opts.slice[1]).list, combos: combos.length }; }
+  if (opts.slice) { const d = opts.delays[0], planned = opts.planned != null ? !!opts.planned : d === curStart && !landWithBuild; return { part: evalSlice(planned ? p0 : at(d), opts.slice[0], opts.slice[1]).list, combos: combos.length }; }
   if (opts.merge) { const { delay, planned, parts } = opts.merge, q = planned ? p0 : at(delay), p = mergeRE(q); return { start: finishStart([].concat(...parts), delay, planned, reProject(p), p), combos: combos.length }; }
   if (opts.plannedOnly) { const planned = runStart(p0, curStart, true); return { starts: null, planned, earliest: null, richest: null, combos: tried }; }
   if (opts.delays) { const starts = opts.delays.map((d) => (d === curStart && !landWithBuild) ? runStart(p0, d, true) : runStart(at(d), d, false)); return { starts, planned: null, earliest: null, richest: null, combos: tried }; }

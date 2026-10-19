@@ -12,6 +12,7 @@
   <!-- shared palette / formatters / IRR from the flagship engine, then the real-estate engine -->
   <script src="engine.js"></script>
   <script src="re-engine.js"></script>
+  <script src="re-ui.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
@@ -64,7 +65,7 @@
     table.bridge td { padding: 3px 10px 3px 0; border-bottom: 1px dotted #E2DCCD; vertical-align: top; }
     table.bridge td.v { text-align: right; font-family: 'SF Mono', ui-monospace, Menlo, monospace; white-space: nowrap; }
     table.bridge tr.tot td { font-weight: 700; border-top: 1.5px solid #1B2430; border-bottom: none; }
-    table.bridge td.n { color: #64707C; font-size: 11px; }
+    table.bridge .n { color: #64707C; font-size: 11px; }
     .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; align-items: start; }
     @media (max-width: 820px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
     .tbl { width: 100%; border-collapse: collapse; }
@@ -152,9 +153,10 @@
         <div className="adv-body">{children}</div>
       </details>
     );
-    const Badge = ({ ok, text }) => (
-      <div style={{ background: ok ? SOFT_POS : SOFT_NEG, borderRadius: 6, padding: "6px 9px", fontFamily: SANS, fontSize: 11.5, lineHeight: 1.4, color: C.text }}>
-        <span className="tag" style={{ background: ok ? C.pos : C.neg, color: "#fff", marginRight: text ? 6 : 0 }}>{ok ? "✓ Executable" : "✗ Not executable"}</span>{text}
+    // ok = executable and cash back at the buffer in time; slow = executable but the recovery is late
+    const Badge = ({ ok, slow, text }) => (
+      <div style={{ background: ok ? SOFT_POS : slow ? "#FBEFD9" : SOFT_NEG, borderRadius: 6, padding: "6px 9px", fontFamily: SANS, fontSize: 11.5, lineHeight: 1.4, color: C.text }}>
+        <span className="tag" style={{ background: ok ? C.pos : slow ? "#8C5E1A" : C.neg, color: "#fff", marginRight: text ? 6 : 0 }}>{ok ? "✓ Executable" : slow ? "✓ Executable · slow recovery" : "✗ Not executable"}</span>{text}
       </div>
     );
     const Stat = ({ label, value, color, sub, info }) => (
@@ -173,42 +175,7 @@
     const axisS = { fontFamily: SANS, fontSize: 11, fill: C.sub };
     const legendStyle = { fontFamily: SANS, fontSize: 12, color: C.text };
 
-    const fYr = (m) => m == null ? "—" : m < 12 ? `${m} mo` : `${(m / 12).toFixed(1)} yrs`;
-    const T0 = new Date(); T0.setDate(1);
-    const fCal = (t) => { const d = new Date(T0.getFullYear(), T0.getMonth() + Math.round(t || 0), 1); return d.toLocaleString("en-US", { month: "short", year: "numeric" }); };
-    const fMon = (t) => t == null ? "—" : `M${t} · ${fCal(t)}`;
-    const pct1 = (v) => v == null ? "—" : `${v.toFixed(1)}%`;
-    const pct0 = (v) => v == null ? "—" : `${v.toFixed(0)}%`;
-
-    /* short "how it is calculated" notes, shown on hover */
-    const EXPL = {
-      executable: "Cash never goes below zero in any month: income − living − rent − all instalments − project spend + facility proceeds, with cash earning the alternative return.",
-      recovery: "Months after move-in until your cash balance is back at or above your cash buffer. Your rule: within the recovery window (default 24 months).",
-      cashLow: "Lowest month-end cash balance over the horizon, and when it happens.",
-      cashMoveIn: "Your bank balance in the month you move in: your own cash and the loans after all costs, PLUS what your salary saved after living costs and instalments, PLUS the return earned on the balance until then. 'Cash on hand at completion' in the step-by-step leaves the salary and the return out, so it is lower.",
-      cashAfter: "Cash balance at move-in + your recovery window (e.g. 2 years after move-in).",
-      peakInst: "Highest total monthly instalments (existing loans + all new facilities) in any month; shown as % of income against the bank's total cap.",
-      newDebt: "Sum of all new facilities actually drawn (land mortgage, existing-property mortgage, personal loan, cash-out), after the bank's LTV, per-loan and total debt-burden limits.",
-      capacity: "What the bank could lend that month. Your instalment capacity is ONE bucket: 65% of income. What is left of it (65% × income − every instalment running that month) is the room; inside the bucket a mortgage may use up to 55% of income and one personal loan up to 33% (a second personal loan may take what is left). The room is converted to a principal at the facility's rate and tenure, then capped by LTV × asset value and the product ceiling.",
-      bucket: "Instalments running each month as % of income, stacked: existing loans, then each new facility. The dashed lines are the bank's limits: 65% for everything together and 55% for any one mortgage. Free space under the top line is unused borrowing capacity.",
-      optimizer: "For the chosen start the tool tries every mix of: land mortgage yes/no, personal loan(s) at build start yes/no, existing-property mortgage (none / at build start / now / at land purchase), cash-out at completion yes/no, personal loan(s) at completion yes/no, and how far to pay off old personal loans for a mortgage (just enough / for the largest mortgage / never) — up to 192 mixes, every loan always at the bank's maximum, with old personal loans refinanced automatically whenever a personal loan is taken and that releases more cash. Rates and tenures come from Strategy 1. It keeps the mix that is executable and gets cash back to the buffer within the window, then the highest net worth, then the lowest peak instalment.",
-      newDebtCost: "All profit paid on the new facilities over the horizon plus bank fees and early-settlement fees.",
-      totalInterest: "Profit on new facilities + profit still paid on the existing loans + settlement fees.",
-      netWorth: "Your cash on hand at completion (own cash + loans − land, construction, early payoffs, fees — no growth until then) grows at the return-on-cash rate from completion to the horizon; instalments never touch it, your salary pays them. Then: − instalments on the new loans (a plain cost) + old-loan instalments you no longer pay because a loan was paid off or refinanced + rent received if you let the home out + rent you no longer pay − upkeep + the home's value (no selling costs) − any new-loan debt still owed. Salary and living costs are left out.",
-      baseline: "If you don't build: your existing own cash, invested at the return-on-cash rate from the completion month to the horizon — the same growth period as the strategies. Nothing is subtracted — your old loans run the same whether you build or not, so they are left out here; only what a strategy changes about them (paying one off early, a refinance) is counted, on the strategy's side.",
-      rentOut: "If you let the new home out instead of living in it: annual rent = the % of the all-in project cost, or the fixed annual rent if that is above zero. It starts the month after completion, grows with the rent-growth setting (step 1, Advanced), is added to your monthly cash, and is counted in net worth at face value (it does not grow at the return-on-cash rate). No vacancy or management fee.",
-      advantage: "Net worth with this strategy − your own cash grown at the return-on-cash rate. Negative means building leaves you poorer than simply keeping the cash invested.",
-      breakEven: "Time from today until net worth with the strategy first reaches the 'if you don't build' figure (checked only from move-in on).",
-      debtFree: "First month with no debt outstanding (existing loans and all new facilities).",
-      settled: "Principal of old loans you pay off early from your own cash (planned settlements, and payoffs that free room for a mortgage in the bank's debt-burden test) plus the early-settlement fees. A payoff for a mortgage is made just before the mortgage is granted. Loans the bank buys out in a refinance are not included here — they are cleared from the new loan.",
-      refi: "Personal loans and refinancing are one step. When a personal loan is taken, the bank lends its MAXIMUM as one or two loans (each instalment up to 33% of income, together within what is left of your 65% bucket; never more than two personal loans running at once). If buying out old personal loans releases more cash, the bank does it automatically: it clears them directly from the new loan — you put in no cash — and pays you the rest. Only old personal loans at least 12 months old (and allowed in step 1) qualify; early-settlement fees still apply. The tool tries every combination and keeps the one that puts the most cash in your hands. Mortgages are never refinanced.",
-      settlePolicy: "Your rule: a personal loan is paid off early with your own cash only to free room a MORTGAGE needs in the bank's 65% test — never to make room for another personal loan. 'Just enough' pays off personal loans one at a time (the one freeing the most instalment per riyal first) until the mortgage covers the funding gap. 'For the largest mortgage' keeps paying them off — one, two or all — until the mortgage reaches the most the property allows (its LTV), so one big mortgage replaces short personal-loan debt; it applies when the mortgage is sized at the bank's maximum. 'Never' keeps them. The payoff comes from your own cash, before the bank grants the mortgage (a land-purchase mortgage is paid straight to the seller and never reaches you); if you don't have the cash on hand, the payoff — and the extra mortgage it would unlock — doesn't happen. Loans with 'Settle from cash?' unticked in step 1 are never touched; a 'Settle in month' date you set always happens. Mortgages are never paid off early. The optimizer tries all three and keeps the best.",
-      dbrRoom: "Bank total cap (65% of income) minus the instalments running today — the free part of your bucket. Inside it a mortgage may use up to 55% of income and one personal loan up to 33%.",
-      savings: "Income − living expenses − rent − existing instalments, per month, today.",
-      earliest: "Earliest construction start (every 3 months from today, plus your planned start) that is executable and gets cash back to the buffer within your recovery window; if no start passes both, the earliest executable one is shown. The land purchase stays where you set it unless the start comes first, in which case it moves to the start.",
-      cost: "Land (grown at the appreciation rate to the purchase month) + RETT + construction (built-up m² × SAR/m², inflated to the start month) + soft costs + contingency + extras + VAT.",
-      value: "Finished home's market value at completion: (land + construction + soft + extras) × (1 + self-build uplift), grown at the appreciation rate.",
-    };
+    /* calendar (fCal/fMon/fYr), help texts (reExpl), breakdowns, plan sentences and loan import live in re-ui.js */
 
     /* timeline event kinds → label + colour */
     const EV_KIND = {
@@ -228,63 +195,6 @@
       return <div className="ev" style={last ? { borderBottom: "none" } : null}><span className="m">{t}</span><span><span className="tag" style={{ background: k.bg, color: k.fg }}>{k.label}</span></span><span style={{ color: kind === "milestone" ? C.sub : C.text }}>{children}</span></div>;
     };
 
-    /* ---------- "how did you get this number" breakdowns (presentation only; they add up exactly to the engine's cash) ---------- */
-    // cash breakdown between two months: opening balance at the start of month `from`, then every flow from `from` to `upto`
-    function cashBridgeRows(r, upto, inp, prj, from) {
-      from = Math.max(0, Math.min(from || 0, upto));
-      const ms = r.months.filter((x) => x.t >= from && x.t <= upto), sum = (k) => ms.reduce((a, x) => a + (x[k] || 0), 0), n = ms.filter((x) => x.t >= 1).length;
-      const inRange = (t) => t !== null && t !== undefined && t >= from && t <= upto;
-      const rows = [];
-      const add = (label, v, note, sub) => { if (Math.abs(v) >= 0.5 || sub) rows.push({ label, v, note, sub }); };
-      const opening = from === 0 ? r.cashStart : r.months[from - 1].cash;
-      if (from === 0) add("Cash you start with today", opening, fCal(0));
-      else add(`Cash on hand when you buy the land (start of ${fCal(from)})`, opening, "everything before this date, in one line — open below", from > 0 ? cashBridgeRows(r, from - 1, inp, prj, 0) : null);
-      add(`Salary · ${n} months × ${fSAR(inp.income)}`, sum("inc"));
-      add(`Living expenses · ${n} months × ${fSAR(inp.livingExpenses)}`, -sum("liv"));
-      add("Rent paid while building", -sum("rentPaid"));
-      add(`Return earned on your cash at ${inp.altReturn}%/yr (setting in step 2 · set 0% to remove)`, sum("ret"), "on the balance each month");
-      add("Instalments on your old loans (until each is paid off or ends)", -sum("existInst"));
-      r.payoffs.filter((x) => inRange(x.t)).forEach((x) => add(`Paid off early from your cash: ${x.name}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`));
-      const build = inp.acquire === "build";
-      const landPart = inRange(prj.landMonth) ? (build ? prj.land + prj.rett : prj.total) : 0;
-      const spend = sum("spend");
-      add(build ? `Land price + ${inp.rettPct}% transfer tax` : "Purchase price, tax, broker and finishing", -landPart, fCal(prj.landMonth));
-      const lm = r.facilities.find((f) => f.key === "lm");
-      if (lm && inRange(lm.startedAt) && lm.amount > 0) add("  …of which the bank paid the seller (land mortgage)", lm.amount, "never passes through your hands");
-      add("Construction and finishing", -(spend - landPart), `${fCal(prj.start + 1)} → ${fCal(Math.min(upto, prj.start + prj.bm))}`);
-      r.facilities.filter((f) => inRange(f.startedAt) && f.amount > 0 && f.key !== "lm" && f.key !== "rf").forEach((f) => { add(f.refi ? "New personal loan(s), bank's maximum" : `Paid to you: ${f.label.toLowerCase()}`, f.amount, fCal(f.startedAt)); if (f.refi) add(`  …of which the bank used to clear ${f.refi.names.join(" + ")} (refinance)`, -f.refi.payoff, "paid by the bank directly, incl. early-settlement fees"); });
-      const fees = r.facilities.filter((f) => inRange(f.startedAt) && f.key !== "rf").reduce((a, f) => a + f.fees, 0);
-      add("Bank fees on new loans", -fees);
-      const rf = r.facilities.find((f) => f.key === "rf");
-      if (rf && inRange(rf.startedAt) && rf.refi) add(`Refinance: new loans ${fS(rf.amount)} − old loans cleared ${fS(rf.refi.payoff)}`, rf.amount - rf.refi.payoff, fCal(rf.startedAt));
-      add("Instalments on new loans", -(sum("lmPay") + sum("eqPay") + sum("plPay") + sum("coPay") + sum("rfPay")));
-      add("Upkeep after move-in (maintenance, insurance)", -sum("ownerCost"));
-      return { rows, total: r.months[upto].cash };
-    }
-    // project money only: your own cash + every loan, minus what the project and the payoffs cost — no salary, living costs,
-    // instalments or investment return (your salary is assumed to carry living costs and instalments; checked month by month)
-    function fundingBridgeRows(r, upto, inp, prj) {
-      const rows = [], add = (label, v, note) => { if (Math.abs(v) >= 0.5) rows.push({ label, v, note }); };
-      const inRange = (t) => t !== null && t !== undefined && t <= upto;
-      add("Your own cash", r.cashStart, "the cash you have, set in step 1");
-      r.payoffs.filter((x) => inRange(x.t)).forEach((x) => add(`Old loan paid off early: ${x.name}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`));
-      const build = inp.acquire === "build";
-      const landPart = inRange(prj.landMonth) ? (build ? prj.land + prj.rett : prj.total) : 0;
-      const spend = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.spend, 0);
-      add(build ? `Land price + ${inp.rettPct}% transfer tax` : "Purchase price, tax, broker and finishing", -landPart, fCal(prj.landMonth));
-      r.facilities.filter((f) => inRange(f.startedAt) && f.amount > 0 && f.key !== "rf").forEach((f) => { add(f.key === "lm" ? "  …of which the bank paid the seller (land mortgage)" : f.refi ? "New personal loan(s), bank's maximum" : `Loan paid to you: ${f.label.toLowerCase()}`, f.amount, f.key === "lm" ? "never passes through your hands" : fCal(f.startedAt)); if (f.refi) add(`  …of which the bank used to clear ${f.refi.names.join(" + ")} (refinance)`, -f.refi.payoff, "paid by the bank directly, incl. early-settlement fees"); });
-      add("Construction and finishing", -(spend - landPart), `${fCal(prj.start + 1)} → ${fCal(Math.min(upto, prj.start + prj.bm))}`);
-      add("Bank fees on new loans", -r.facilities.filter((f) => inRange(f.startedAt) && f.key !== "rf").reduce((a, f) => a + f.fees, 0));
-      const rf = r.facilities.find((f) => f.key === "rf");
-      if (rf && inRange(rf.startedAt) && rf.refi) add(`Refinance: new loans ${fS(rf.amount)} − old loans cleared ${fS(rf.refi.payoff)}`, rf.amount - rf.refi.payoff, fCal(rf.startedAt));
-      const ret = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + (x.cRet || 0), 0);
-      add(`Growth on this cash at ${inp.altReturn}%/yr`, ret, "on the balance each month while it is above zero · \"Return your cash earns\" setting, step 2");
-      const total = rows.reduce((a, x) => a + x.v, 0);
-      // does the salary really carry living costs + every instalment each month?
-      let worst = Infinity, worstT = 0, short = 0;
-      r.months.filter((x) => x.t >= 1 && x.t <= upto).forEach((x) => { const s = x.inc - x.liv - x.rentPaid - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost; if (s < worst) { worst = s; worstT = x.t; } if (s < 0) short -= s; });
-      return { rows, total, ret, worst: worst === Infinity ? 0 : worst, worstT, short };
-    }
     const BridgeTable = ({ b, totalLabel }) => (
       <table className="bridge"><tbody>
         {b.rows.map((x, k) => <tr key={k}><td style={{ paddingLeft: x.label.startsWith("  ") ? 16 : 0 }}>{x.sub ? <details className="bridge"><summary>{x.label.trim()}</summary><BridgeTable b={x.sub} totalLabel="Cash on hand just before the land purchase" /></details> : <>{x.label.trim()}{x.note ? <div className="n">{x.note}</div> : null}</>}</td><td className="v" style={{ color: x.v < 0 ? C.neg : C.text }}>{x.v < 0 ? "−" : "+"}{fSAR(Math.abs(x.v))}</td></tr>)}
@@ -292,48 +202,9 @@
       </tbody></table>
     );
 
-    /* ---------- plain-English description of a strategy, generated from its settings (presentation only) ---------- */
-    function rateTxt(inp, rate, yrs) { return `${rate}%${inp.rateQuote === "flat" ? " flat" : ""} over ${yrs} yrs`; }
-    const modeTxt = () => "the maximum the bank allows";
-    const whenTxt = (w, mo, prj) => w === "start" ? "at the start" : w === "land" ? `when the land is bought (${fCal(prj.landMonth)})` : w === "build" ? `when construction starts (${fCal(prj.start)})` : w === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(mo)}`;
-    function describePlan(o, inp, prj, build) {
-      const s = [];
-      if (o.lmUse) s.push(`Mortgage the ${build ? "land" : "purchase"} when it is bought (${fCal(prj.landMonth)}) for ${modeTxt(o.lmMode, o.lmAmount)} at ${rateTxt(inp, o.lmRate, o.lmTenure)}`);
-      else s.push(`${build ? "Buy the land" : "Buy"} in cash — no mortgage on it`);
-      if (o.eqWhen !== "none") s.push(`mortgage the property you already own ${whenTxt(o.eqWhen, o.eqMonth, prj)} for ${modeTxt(o.eqMode, o.eqAmount)} at ${rateTxt(inp, o.eqRate, o.eqTenure)}`);
-      if (o.plWhen !== "none") s.push(`take personal loan(s) ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows at ${rateTxt(inp, o.plRate, o.plTenure)}, refinancing old personal loans automatically if that releases more cash`);
-      if (o.pl2Use) s.push(`take personal loan(s) at completion (${fCal(prj.occupy)}) for the maximum the bank allows, refinancing older personal loans automatically if that releases more cash`);
-      if (o.coUse) s.push(`take a cash-out mortgage on the finished home at completion (${fCal(prj.occupy)}) for ${modeTxt(o.coMode, o.coAmount)} at ${rateTxt(inp, o.coRate, o.coTenure)}`);
-      if (build) s.push(`fund the construction (${fCal(prj.start)} → ${fCal(prj.occupy)}) from cash and those proceeds`);
-      const planned = (inp.existingLoans || []).filter((l) => l.balance > 0 && l.settleAt != null && l.settleAt > 0).map((l) => `settle ${l.name} in ${fCal(l.settleAt)} from your cash`);
-      if (planned.length) s.push(planned.join(", "));
-      s.push(o.settlePolicy === "none" ? "keep all other old loans running" : o.settlePolicy === "forMax" ? "pay off as many old personal loans as it takes for the mortgage to reach the most the property allows (from your own cash, before the mortgage is granted)" : "pay off other old personal loans only if a mortgage would not fit in the bank's test otherwise (from your own cash, before the mortgage is granted)");
-      return s.join("; ") + ".";
-    }
-    function describeOption(o, inp, prj) {
-      const cash = prj.total * o.cashPct / 100, pl = Math.max(0, Math.min(o.plAmount, prj.total - cash)), mg = Math.max(0, prj.total - cash - pl);
-      const s = [`${o.cashPct}% of the cost (${fS(cash)}) from your own cash`];
-      if (pl > 0) s.push(`a ${fS(pl)} personal loan at ${rateTxt(inp, o.plRate, o.plTenure)}`);
-      if (mg > 0) s.push(`a ${fS(mg)} mortgage at ${rateTxt(inp, o.rate, o.tenure)} with ${o.graceMonths} months' grace (${o.graceMode === "capitalize" ? "profit added to the loan" : "profit paid monthly"})${o.subsidyCap > 0 && o.subsidyPct > 0 ? `, REDF support on the first ${fS(o.subsidyCap)}` : ""}`);
-      return s.join(", then ") + ".";
-    }
-    const newDebtOf = (r) => r.newDebtTotal || 0;
-    const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
-
     /* ---------- scenarios (localStorage) ---------- */
     const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } };
     const saveStore = (o) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} };
-
-    /* ---------- existing-loan import: JSON array (any sensible keys) or CSV "name, balance, instalment, months, rate" ---------- */
-    function parseLoans(text) {
-      const pick = (o, keys, d) => { for (const k of keys) { const hit = Object.keys(o).find((x) => x.toLowerCase().replace(/[^a-z]/g, "") === k); if (hit != null && o[hit] !== "" && o[hit] != null) return o[hit]; } return d; };
-      const num = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; };
-      const yes = (v) => !(v === false || /^(false|no|n|0)$/i.test(String(v).trim()));   // "false" / "no" / 0 in a JSON file mean no
-      let arr = null;
-      try { const j = JSON.parse(text); arr = Array.isArray(j) ? j : (j.loans || j.items || j.data || null); } catch (e) {}
-      if (arr) return arr.map((o, i) => ({ id: Date.now() + i, name: String(pick(o, ["name", "lender", "bank", "title", "loan"], `Loan ${i + 1}`)), balance: num(pick(o, ["balance", "remaining", "remainingbalance", "outstanding", "principal", "amount"], 0)), installment: num(pick(o, ["installment", "instalment", "monthly", "monthlypayment", "payment", "emi"], 0)), monthsLeft: Math.round(num(pick(o, ["monthsleft", "months", "remainingmonths", "term", "tenure"], 0))), rate: num(pick(o, ["rate", "apr", "interest", "profitrate"], 6)), settleAt: (() => { const v = pick(o, ["settleat", "settlemonth", "settlein"], null); return v == null ? null : Math.round(num(v)); })(), canSettle: yes(pick(o, ["cansettle", "maysettle"], true)), canRefi: yes(pick(o, ["canrefi", "mayrefinance", "canrefinance"], true)), ageMonths: (() => { const v = pick(o, ["agemonths", "age", "monthssincestart", "elapsed", "monthspaid"], null); return v == null ? null : Math.round(num(v)); })() }));
-      return text.split(/\n+/).map((l) => l.trim()).filter((l) => l && !/^name/i.test(l)).map((l, i) => { const c = l.split(/[;\t]/.test(l) ? /[;\t]/ : /,/).map((s) => s.trim()); /* tabs or semicolons win, so "95,000" survives when columns are tab- or semicolon-separated */ return { id: Date.now() + i, name: c[0] || `Loan ${i + 1}`, balance: num(c[1]), installment: num(c[2]), monthsLeft: Math.round(num(c[3])), rate: c[4] != null && c[4] !== "" ? num(c[4]) : 6 }; }).filter((l) => l.balance > 0 || l.installment > 0);
-    }
 
     function LoanTable({ loans, onChange, income, dbrCap }) {
       const [txt, setTxt] = useState("");
@@ -360,21 +231,21 @@
                   </tr>
                 ))}
                 <tr style={{ background: SOFT, fontWeight: 700 }}>
-                  <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>Total ({loans.length})</td><td style={td}>{fSAR(bal)}</td><td style={td}>{fSAR(inst)}</td><td style={td}></td><td style={td}></td><td style={td}></td><td style={td}></td><td style={td} className="no-print"></td>
+                  <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>Total ({loans.length})</td><td style={td}>{fSAR(bal)}</td><td style={td}>{fSAR(inst)}</td>{cols.slice(3).map(([k]) => <td key={k} style={td}></td>)}<td style={td} className="no-print"></td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div className="flex items-center flex-wrap" style={{ gap: 8, marginTop: 10 }}>
             <button className="no-print" onClick={() => onChange([...loans, { id: Date.now(), name: `Loan ${loans.length + 1}`, balance: 100000, installment: 2500, monthsLeft: 48, rate: 6 }])} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "5px 10px" }}>+ Add loan</button>
-            <button className="no-print" onClick={() => onChange([])} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "5px 10px" }}>Clear all</button>
+            <button className="no-print" onClick={() => onChange([], true)} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "5px 10px" }}>Clear all</button>
             <span style={{ flex: 1 }} />
             <span style={{ fontFamily: SANS, fontSize: 12, color: dbr > dbrCap ? C.neg : C.text }}>Instalments use <b>{dbr.toFixed(0)}%</b> of income · room under the {dbrCap}% cap: <b style={{ fontFamily: MONO }}>{fSAR(room)}/mo</b></span>
           </div>
           <Adv title="Import / paste loans (Qist export JSON, or one per line: name, balance, instalment, months, rate — separate with tabs or semicolons if your numbers contain commas)">
             <textarea rows={4} value={txt} onChange={(e) => setTxt(e.target.value)} placeholder={'[{"name":"Al Rajhi personal","balance":350000,"installment":7900,"monthsLeft":54,"rate":6.5}]\nor\nCar finance, 95000, 2950, 36, 5'} />
             <div className="flex flex-wrap" style={{ gap: 8, marginTop: 6 }}>
-              <button onClick={() => { const l = parseLoans(txt); if (l.length) { onChange(l); setTxt(""); } else alert("Nothing recognisable — check the format."); }} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "5px 10px" }}>Replace with these</button>
+              <button onClick={() => { const l = parseLoans(txt); if (l.length) { onChange(l, true); setTxt(""); } else alert("Nothing recognisable — check the format."); }} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "5px 10px" }}>Replace with these</button>
               <button onClick={() => { const l = parseLoans(txt); if (l.length) { onChange([...loans, ...l]); setTxt(""); } else alert("Nothing recognisable — check the format."); }} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "5px 10px" }}>Append</button>
             </div>
           </Adv>
@@ -385,8 +256,11 @@
     /* ---------- the app ---------- */
     function App() {
       const [restored] = useState(() => { try { const j = JSON.parse(localStorage.getItem(CUR_KEY) || "null"); return j && typeof j === "object" ? j : null; } catch (e) { return null; } });
-      const [inp, setInp] = useState(() => mergeRE(restored || {}));
+      const [inp, setInp] = useState(() => ({ ...mergeRE(restored || {}), asOf: reAsOfOf(restored) }));
       const [showRestored, setShowRestored] = useState(!!restored);
+      const [termsNote, setTermsNote] = useState(() => reTermsNotice(restored));   // one-time: older per-strategy bank terms merged
+      reSetAsOf(inp.asOf);                                                           // calendar dates count from the scenario's month 0
+      const EXPL = useMemo(() => reExpl(inp), [inp]);
       useEffect(() => { const id = setTimeout(() => { try { localStorage.setItem(CUR_KEY, JSON.stringify(inp)); } catch (e) {} }, 400); return () => clearTimeout(id); }, [inp]);
       const [step, setStep] = useState(0);
       const [focus, setFocus] = useState(-1);          // -1 = follow the recommendation
@@ -399,10 +273,13 @@
       const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
       const setOpt = (i, k, v) => setInp((s) => ({ ...s, options: s.options.map((o, j) => j === i ? { ...o, [k]: v } : o) }));
       const setPlan = (i, k, v) => setInp((s) => ({ ...s, plans: s.plans.map((o, j) => j === i ? { ...o, [k]: v } : o) }));
+      // replacing the whole loan list clears every strategy's hand-picked buy-outs (the old loans are gone)
+      const setLoans = (l, replaced) => setInp((s) => ({ ...s, existingLoans: l, plans: replaced ? s.plans.map((o) => ({ ...o, refiPick: null })) : s.plans }));
       const applyPreset = (i, key) => setInp((s) => ({ ...s, options: s.options.map((o, j) => j === i ? { enabled: true, ...RE_OPTION_PRESETS[key] } : o) }));
       const applyPlanPreset = (i, key) => setInp((s) => ({ ...s, plans: s.plans.map((o, j) => j === i ? { enabled: true, ...RE_PLAN_PRESETS[key] } : o) }));
 
       const m = useMemo(() => computeRE(inp), [inp]);
+      const econIrr = useMemo(() => m.results.map((r) => r && m.p.mode === "home" ? reEconIRR(r) : null), [m]);   // return on building, per strategy
       const home = inp.mode === "home", build = inp.acquire === "build";
       const { prj, household } = m;
       const liveIdx = m.results.map((r, i) => r ? i : -1).filter((i) => i >= 0);
@@ -410,16 +287,13 @@
       const recIdx = lead ? m.results.indexOf(lead) : -1;
       const focusIdx = focus >= 0 && m.results[focus] ? focus : recIdx;
       const focusRes = focusIdx >= 0 ? m.results[focusIdx] : null;
-      const tornado = useMemo(() => focusIdx >= 0 ? tornadoRE(inp, focusIdx) : [], [inp, focusIdx]);
-      const sweepRec = useMemo(() => home && recIdx >= 0 ? timingSweepRE(inp, recIdx, 60, 3, landWithBuild) : null, [inp, recIdx, home, landWithBuild]);
-      const sweep = useMemo(() => home && focusIdx >= 0 ? (focusIdx === recIdx ? null : timingSweepRE(inp, focusIdx, 60, 3, landWithBuild)) : null, [inp, focusIdx, recIdx, home, landWithBuild]) || sweepRec;
       const nameOf = (r) => home ? r.plan.name : r.opt.name;
       /* optimizer: debounced so slider drags stay smooth (≈1 s for 21 start dates × 192 mixes) */
       const [optInp, setOptInp] = useState(inp);
       useEffect(() => { const id = setTimeout(() => setOptInp(inp), 350); return () => clearTimeout(id); }, [inp]);
-      const opt = useMemo(() => optInp.mode === "home" ? optimizeRE(optInp, { plannedOnly: true, landWithBuild }) : null, [optInp, landWithBuild]);
+      const [opt, setOptPlanned] = useState(null);   // best mix for the planned start, filled a slice of mixes at a time
       const [optRows, setOptRows] = useState({ rows: [], done: false, total: 0 });
-      const optStale = optInp !== inp;
+      const optStale = !opt || opt.src !== inp, startsStale = !optRows.done || optRows.src !== inp;   // results not yet for these inputs
       const curStart = Math.max(inp.buildStart, inp.landMonth);
       const useOptPlan = (st) => {
         setInp((s0) => {
@@ -439,26 +313,53 @@
         : [["home", "The property"], ["you", "Letting & you"], ["fin", "Financing"], ["res", "Results"], ["scen", "Scenarios"]];
       const stepI = Math.min(step, steps.length - 1);
       const cur = steps[stepI][0];
+      /* heavy extras: the start sweep follows the debounced inputs; the sensitivity chart and a second sweep only where shown */
+      const sweepRec = useMemo(() => home && recIdx >= 0 ? timingSweepRE(optInp, recIdx, 60, 3, landWithBuild) : null, [optInp, recIdx, home, landWithBuild]);
+      const sweep = useMemo(() => home && focusIdx >= 0 && focusIdx !== recIdx && (cur === "when" || printAll) ? timingSweepRE(optInp, focusIdx, 60, 3, landWithBuild) : null, [optInp, focusIdx, recIdx, home, landWithBuild, cur, printAll]) || sweepRec;
+      const tornado = useMemo(() => focusIdx >= 0 && (cur === "res" || printAll) ? tornadoRE(optInp, focusIdx) : [], [optInp, focusIdx, cur, printAll]);
       const go = (i) => { setStep(Math.max(0, Math.min(steps.length - 1, i))); const el = document.getElementById("steps"); if (el) window.scrollTo({ top: el.offsetTop - 8, behavior: "smooth" }); };
-      useEffect(() => { if (!printAll) return; const t = setTimeout(() => { window.print(); setPrintAll(false); }, 150); return () => clearTimeout(t); }, [printAll]);
-      const show = (id) => printAll || cur === id;
-      /* per-start optimizer rows: computed one start at a time so the page stays responsive */
+      // print once the start-date table has finished filling (it is part of the printout)
+      useEffect(() => { if (!printAll || (home && (startsStale || optStale))) return; const t = setTimeout(() => { window.print(); setPrintAll(false); }, 150); return () => clearTimeout(t); }, [printAll, startsStale, optStale, home]);
+      /* optimizer: a slice of up to 48 mixes per tick so the page stays responsive — first the planned start, then (on
+         When to start or when printing) every start date */
+      const SLICE = 48;
+      const runSlices = (inp0, d, planned, onDone, isCancelled) => {
+        const n = optimizeRE(inp0, { delays: [d], slice: [0, 0], planned, landWithBuild }).combos, parts = [];
+        let a = 0, id = null;
+        const tick = () => {
+          if (isCancelled()) return;
+          parts.push(optimizeRE(inp0, { delays: [d], slice: [a, Math.min(n, a + SLICE)], planned, landWithBuild }).part); a += SLICE;
+          if (a < n) { id = setTimeout(tick, 0); return; }
+          onDone(optimizeRE(inp0, { merge: { delay: d, planned, parts }, landWithBuild }));
+        };
+        id = setTimeout(tick, 0);
+        return () => clearTimeout(id);
+      };
+      useEffect(() => {
+        if (optInp.mode !== "home") { setOptPlanned(null); return; }
+        let cancelled = false;
+        const stop = runSlices(optInp, Math.max(optInp.buildStart, optInp.landMonth), true, (r) => { if (!cancelled) setOptPlanned({ planned: r.start, combos: r.combos, src: optInp }); }, () => cancelled);
+        return () => { cancelled = true; stop(); };
+      }, [optInp, landWithBuild]);
       const wantStarts = home && (cur === "when" || printAll);
       useEffect(() => {
         if (!wantStarts || optInp.mode !== "home") return;
         const delays = []; for (let d = 0; d <= 60; d += 3) delays.push(d);
         const cs = Math.max(optInp.buildStart, optInp.landMonth); if (!delays.includes(cs)) { delays.push(cs); delays.sort((a, b) => a - b); }
-        let cancelled = false, k = 0, id = null; const rows = [];
-        setOptRows({ rows: [], done: false, total: delays.length });
-        const tick = () => {
+        let cancelled = false, k = 0, stop = () => {}; const rows = [];
+        setOptRows({ rows: [], done: false, total: delays.length, src: optInp });
+        const next = () => {
           if (cancelled) return;
-          const r = optimizeRE(optInp, { delays: [delays[k]], landWithBuild });
-          rows.push(r.starts[0]); k++;
-          setOptRows({ rows: rows.slice(), done: k >= delays.length, total: delays.length, combos: r.combos });
-          if (k < delays.length) id = setTimeout(tick, 0);
+          const d = delays[k];
+          stop = runSlices(optInp, d, d === cs && !landWithBuild, (r) => {
+            if (cancelled) return;
+            rows.push(r.start); k++;
+            setOptRows({ rows: rows.slice(), done: k >= delays.length, total: delays.length, combos: r.combos, src: optInp });
+            if (k < delays.length) next();
+          }, () => cancelled);
         };
-        id = setTimeout(tick, 40);
-        return () => { cancelled = true; clearTimeout(id); };
+        next();
+        return () => { cancelled = true; stop(); };
       }, [optInp, landWithBuild, wantStarts]);
 
       /* chart data */
@@ -467,27 +368,30 @@
         const row = { year: y === 0 ? "Y0" : `Y${y}` };
         liveIdx.forEach((i) => {
           const yr = m.results[i].years[y];
-          if (home) { row[`cash${i}`] = Math.round(yr.cash); row[`debt${i}`] = Math.round(yr.debt); row[`inst${i}`] = Math.round(yr.instMo); row[`nw${i}`] = Math.round(yr.netWorth); }
+          if (home) { row[`cash${i}`] = Math.round(yr.cash); row[`debt${i}`] = Math.round(yr.debt); row[`inst${i}`] = Math.round(yr.instMo); row[`nw${i}`] = Math.round(yr.netWorth); row[`econ${i}`] = Math.round(yr.econAdv); }
           else { row[`nw${i}`] = Math.round(yr.ownerEquity); row[`bal${i}`] = Math.round(yr.bal); row[`out${i}`] = Math.round((yr.payment + yr.rentPaid + yr.ownerCost) / (y === 0 ? 1 : 12)); row[`cf${i}`] = Math.round(yr.cf); }
         });
-        if (focusRes) { const yr = focusRes.years[y]; row.renter = Math.round(home ? yr.renterNW : yr.portfolio); }
+        if (focusRes) { const yr = focusRes.years[y]; row.renter = Math.round(home ? yr.renterNW : yr.portfolio); if (home) row.cap = Math.round(yr.inc * inp.dbrCap / 100); }
         return row;
       });
       const stackData = !home ? liveIdx.map((i) => { const r = m.results[i]; return { name: `Option ${i + 1}`, full: r.opt.name, "Own cash": Math.round(r.cash), "Personal loan": Math.round(r.pl), "Mortgage": Math.round(r.loanCommit) }; }) : [];
       const costRows = build
-        ? [["Land", prj.land], ["RETT on land" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], ["Construction (hard)", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Finishing / kitchen / AC / landscape", prj.finish], [`VAT ${inp.vatPct}% on construction & finishing`, prj.vat]]
+        ? [["Land", prj.land], ["RETT on land" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], [`Broker's fee on the land (${inp.landBrokerPct}%)`, prj.landBroker], ["Construction (hard)", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Finishing / kitchen / AC / landscape", prj.finish], [`Cost overrun (${inp.overrunPct}%)`, prj.overrun], [`VAT ${inp.vatPct}% on construction & finishing${prj.overrun > 0 ? " & overrun" : ""}`, prj.vat]].filter(([l, v], k) => v > 0.5 || ![2, 7].includes(k))
         : [["Purchase price", prj.price], ["RETT" + (prj.rettExempt > 0 ? " (first-home relief applied)" : ""), prj.rett], ["Broker", prj.broker], ["Finishing / furnishing", prj.finish], ["VAT on finishing", prj.vat]];
 
       /* scenario ops */
       const persist = (o) => { setSaved(o); saveStore(o); };
-      const doSave = () => { const n = name.trim() || `Scenario ${Object.keys(saved).length + 1}`; persist({ ...saved, [n]: { inp, savedAt: new Date().toISOString() } }); setName(""); };
-      const quickSave = () => { const n = window.prompt("Name this scenario", Object.keys(saved).find((k) => JSON.stringify(saved[k].inp) === JSON.stringify(inp)) || "My scenario"); if (!n) return; persist({ ...saved, [n.trim()]: { inp, savedAt: new Date().toISOString() } }); };
-      const resetAll = () => { try { localStorage.removeItem(CUR_KEY); } catch (e) {} setInp(mergeRE({})); setShowRestored(false); };
-      const doLoad = (n) => setInp(mergeRE(saved[n].inp));
+      const doSave = () => { const n = name.trim() || `Scenario ${Object.keys(saved).length + 1}`; persist({ ...saved, [n]: { inp, savedAt: new Date().toISOString() } }); setName(""); setLoadedName(n); };
+      const [loadedName, setLoadedName] = useState(null);   // the saved scenario you are working on, if any
+      const quickSave = () => { const n = window.prompt("Name this scenario", loadedName || "My scenario"); if (!n) return; persist({ ...saved, [n.trim()]: { inp, savedAt: new Date().toISOString() } }); setLoadedName(n.trim()); };
+      const resetAll = () => { try { localStorage.removeItem(CUR_KEY); } catch (e) {} setInp({ ...mergeRE({}), asOf: reAsOfOf(null) }); setShowRestored(false); setLoadedName(null); };
+      // a saved scenario keeps its own month 0 (older ones: the month they were saved) and its bank terms are merged once
+      const doLoad = (n) => { const s0 = saved[n]; setTermsNote(reTermsNotice(s0.inp)); setInp({ ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }); setLoadedName(n); };
       const doDelete = (n) => { const o = { ...saved }; delete o[n]; persist(o); };
       const doExport = () => { const blob = new Blob([JSON.stringify({ scenarios: saved, current: inp }, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "realestate-scenarios.json"; a.click(); };
       const doImport = (e) => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => { try { const j = JSON.parse(rd.result); const inc = j.scenarios || (j.inp ? { [f.name]: j } : { [f.name]: { inp: j } }); persist({ ...saved, ...inc }); } catch (err) { alert("Could not read file"); } }; rd.readAsText(f); e.target.value = ""; };
-      const savedRows = Object.entries(saved).map(([n, s]) => { const r = computeRE(s.inp); const b = r.bestFeasible || r.best; return { n, mode: r.p.mode, total: r.prj.total, best: b ? (r.p.mode === "home" ? b.plan.name : b.opt.name) : "—", metric: b ? (r.p.mode === "home" ? fS(b.advantage) : pct1(b.irr == null ? null : b.irr * 100)) : "—", pmt: b ? (r.p.mode === "home" ? b.peakInst : b.monthlyPayment) : 0, verdict: r.verdict, vColor: r.vColor }; });
+      // recomputed only when the saved list changes (not on every keystroke)
+      const savedRows = useMemo(() => Object.entries(saved).map(([n, s]) => { const r = computeRE(s.inp); const b = r.bestFeasible || r.best; return { n, mode: r.p.mode, total: r.prj.total, best: b ? (r.p.mode === "home" ? b.plan.name : b.opt.name) : "—", metric: b ? (r.p.mode === "home" ? fS(b.econAdv) : pct1(b.irr == null ? null : b.irr * 100)) : "—", pmt: b ? (r.p.mode === "home" ? b.peakInst : b.monthlyPayment) : 0, verdict: r.verdict, vColor: r.vColor }; }), [saved]);
 
       /* comparison rows — `key` rows show by default */
       const homeRows = [
@@ -501,6 +405,7 @@
         ["Rent from letting the new home (total to the horizon)", (r) => r.annualRentOut > 0 ? `${fS(r.rentInTotal)} (${fSAR(r.annualRentOut)}/yr from ${fCal(r.occupy + 1)})` : "not let out", null, false, true, EXPL.rentOut],
         ["New debt taken (all facilities)", (r) => fS(r.newDebtTotal), null, false, true, EXPL.newDebt],
         ["Old loans paid off from your cash", (r) => r.settledTotal > 0 ? `${fS(r.settledTotal)} (+${fS(r.settleFees)} fees)` : "none", null, false, false, EXPL.settled],
+        ["Mortgages paid off early (your option)", (r) => r.prepaidTotal > 0 ? `${fS(r.prepaidTotal)} (+${fS(r.prepayFees)} fees) ${r.prepaid.map((x) => fCal(x.t)).filter((v, k, a) => a.indexOf(v) === k).join(", ")}` : r.plan.prepayAfter != null && r.plan.prepayAfter !== "" ? "not enough cash above your cushion" : "not chosen", null, false, false, EXPL.prepay],
         ["Cash low point", (r) => `${fS(r.minCash)} ${fMon(r.minCashT)}`, (r) => r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text, true, true, EXPL.cashLow],
         ["Bank balance at move-in (incl. salary savings)", (r) => fS(r.cashAtCompletion), null, false, true, EXPL.cashMoveIn],
         [`Cash ${inp.recoveryMonths} months after move-in`, (r) => fS(r.cashAfterWindow), (r) => r.cashAfterWindow >= inp.cashBuffer ? C.pos : C.neg, false, true, EXPL.cashAfter],
@@ -511,10 +416,16 @@
         ["Total profit paid (incl. existing loans)", (r) => fS(r.totalInterest), () => C.neg, false, false, EXPL.totalInterest],
         [`Debt still owed at Y${inp.horizon}`, (r) => fS(r.endDebt), null, false, false, "All debt outstanding at the horizon."],
         [`Cash at Y${inp.horizon}`, (r) => fS(r.cashEnd), null, false, false, "Cash balance at the horizon."],
-        [`Net worth at Y${inp.horizon}`, (r) => fS(r.netWorthEnd), () => C.text, true, true, EXPL.netWorth],
-        [renting ? "Renter's net worth (same income, kept renting)" : "Net worth if you don't build (own cash invested)", (r) => fS(r.renterEnd), null, false, false, EXPL.baseline],
-        [`Wealth advantage vs ${baseLbl}`, (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, true, true, EXPL.advantage],
-        [`Break-even vs ${baseLbl}`, (r) => r.breakEvenMonth != null ? fYr(r.breakEvenMonth) : `> ${inp.horizon} yrs`, null, false, false, EXPL.breakEven],
+        [`Everything grows: you vs ${baseLbl} at Y${inp.horizon}`, (r) => fS(r.econAdv), (r) => r.econAdv >= 0 ? C.pos : C.neg, true, true, EXPL.econ],
+        ["…the same in today's money", (r) => fS(r.econPV), (r) => r.econPV >= 0 ? C.pos : C.neg, false, true, EXPL.econ],
+        ["Return on building (yearly)", (r) => { const v = econIrr[m.results.indexOf(r)]; return v == null ? "n/a" : pct1(v * 100); }, (r) => { const v = econIrr[m.results.indexOf(r)]; return v == null ? C.sub : v * 100 >= inp.altReturn ? C.pos : C.neg; }, false, true, EXPL.econIrr],
+        [`Everything grows: your cash + home − debt at Y${inp.horizon}`, (r) => fS(r.econEnd), null, false, false, EXPL.econ],
+        [`…if you don't build: cash − old debt`, (r) => fS(r.econBaseEnd), null, false, false, EXPL.econ],
+        [`Break-even vs ${baseLbl} (everything grows)`, (r) => r.econBreakEven != null ? fYr(r.econBreakEven) : `> ${inp.horizon} yrs`, null, false, false, EXPL.breakEven],
+        [`Rule-7 net worth at Y${inp.horizon}`, (r) => fS(r.netWorthEnd), () => C.text, false, true, EXPL.netWorth],
+        [renting ? "Rule 7 — renter's net worth (same income, kept renting)" : "Rule 7 — if you don't build (own cash invested)", (r) => fS(r.renterEnd), null, false, false, EXPL.baseline],
+        [`Rule-7 advantage vs ${baseLbl}`, (r) => fS(r.advantage), (r) => r.advantage >= 0 ? C.pos : C.neg, false, true, EXPL.advantage],
+        [`Break-even vs ${baseLbl} (rule 7)`, (r) => r.breakEvenMonth != null ? fYr(r.breakEvenMonth) : `> ${inp.horizon} yrs`, null, false, false, EXPL.breakEven],
         ["Debt-free", (r) => r.debtFreeT != null ? fMon(r.debtFreeT) : `> Y${inp.horizon}`, null, false, true, EXPL.debtFree],
       ];
       const rentalRows = [
@@ -554,12 +465,69 @@
         </Panel>
       );
 
+      /* ---------- bank terms: one set per loan type, used by every strategy and by the optimizer ---------- */
+      const TERM_ROWS = [["lm", build ? "Land mortgage" : "Purchase mortgage", "lmRate", "lmTenure", "lmFeesPct", 30, 12], ["eq", "Mortgage on the property you own", "eqRate", "eqTenure", "eqFeesPct", 30, 12], ["co", "Cash-out mortgage on the finished home", "coRate", "coTenure", "coFeesPct", 30, 12], ["pl", "Personal loans (refinancing included)", "plRate", "plTenure", null, 7, 15]];
+      const aprOf = (rk, tk) => reEffRate(inp, inp[rk], Math.max(1, Math.round(inp[tk] * 12)));
+      const termsTxt = (k) => { const [, , rk, tk, fk] = TERM_ROWS.find((x) => x[0] === k); return `${inp[rk]}%${inp.rateQuote === "flat" ? ` flat (≈${aprOf(rk, tk).toFixed(2)}% APR)` : ""} over ${inp[tk]} yrs${fk ? `, ${inp[fk]}% fees` : ""}`; };
+      const TermsLine = ({ k }) => <Note>Priced with your Bank terms: {termsTxt(k)} — change them on the Bank terms card above.</Note>;
+      const TermsCard = () => {
+        const showEq = inp.ownedValue > 0 || inp.plans.some((o) => o.enabled && o.eqWhen !== "none");
+        return (
+          <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+            <div className="flex items-center justify-between flex-wrap" style={{ gap: 10, marginBottom: 6 }}>
+              <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.brass }}>Bank terms · one set for every strategy and the optimizer <Hint text={EXPL.terms} /></div>
+              <div className="no-print" style={{ minWidth: 260 }}><Select value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "Rates entered as APR (reducing balance)"], ["flat", "Rates entered as flat 'hamish' % (KSA bank quotes)"]]} /></div>
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: "6px 18px" }}>
+              {TERM_ROWS.filter(([k]) => k !== "eq" || showEq).map(([k, label, rk, tk, fk, maxT, maxR]) => { const apr = aprOf(rk, tk); return (
+                <div key={k} style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 12, fontWeight: 700, color: C.text, margin: "6px 0 8px" }}>{label}</div>
+                  <Slider label="Profit rate" value={inp[rk]} min={0} max={maxR} step={k === "pl" ? 0.25 : 0.05} unit="%" onChange={(v) => set(rk, v)} hint={`${inp.rateQuote === "flat" ? `flat → ${apr.toFixed(2)}% APR · ` : ""}effective ${reEffYear(apr).toFixed(2)}% a year`} />
+                  <Slider label="Tenure" value={inp[tk]} min={1} max={maxT} step={1} unit="yrs" onChange={(v) => set(tk, v)} />
+                  {fk && <Slider label="Bank fees (upfront)" value={inp[fk]} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => set(fk, v)} />}
+                </div>); })}
+            </div>
+            <Note>A flat rate is converted to the APR the loan really amortises at; the effective yearly rate adds monthly compounding — that is the figure to compare with the {inp.altReturn}% your cash earns.</Note>
+          </div>
+        );
+      };
+
       /* ---------- strategy card (home) ---------- */
+      // decision settings only, so a strategy that still carries old per-strategy rates counts as the same plan
+      const PLAN_KEYS = ["lmUse", "eqWhen", "plWhen", "coUse", "pl2Use", "settlePolicy", "extraMo", "refiMode", "prepayAfter", "plSplit"];
+      const samePlan = (a, b) => !!a && !!b && PLAN_KEYS.every((k) => (a[k] == null ? null : a[k]) === (b[k] == null ? null : b[k])) && (a.eqWhen !== "month" || a.eqMonth === b.eqMonth) && (a.plWhen !== "month" || a.plMonth === b.plMonth);
+      const tWhen = (w, mo) => w === "start" ? 0 : w === "land" ? prj.landMonth : w === "build" ? prj.start : w === "completion" ? prj.occupy : Math.max(0, Math.round(mo || 0));
+      // "Choose loans": one checkbox per old loan the bank may buy out, for each personal-loan step of the strategy
+      const RefiPicks = ({ o, i }) => {
+        const r = m.results[i], minAge = inp.refiMinMonths == null ? 12 : inp.refiMinMonths, pick = o.refiPick || {};
+        const loans = inp.existingLoans.filter((l) => l.balance > 0 && l.installment > 0 && l.canRefi !== false);
+        const stepsP = [];
+        if (o.plWhen !== "none") stepsP.push(["pl", `Personal loan(s) ${whenTxt(o.plWhen, o.plMonth, prj)}`, tWhen(o.plWhen, o.plMonth)]);
+        if (o.pl2Use) stepsP.push(["pl2", `Personal loan(s) at completion (${fCal(prj.occupy)})`, prj.occupy]);
+        const toggle = (key, id, on) => { const cur = (pick[key] || []).map(String).filter((x) => x !== id); setPlan(i, "refiPick", { ...pick, [key]: on ? [...cur, id] : cur }); };
+        return (
+          <div style={{ background: SOFT, borderRadius: 7, padding: "8px 10px", marginBottom: 10 }}>
+            {stepsP.map(([key, label, t]) => {
+              const items = loans.map((l) => { const age = l.ageMonths == null ? null : l.ageMonths + t, end = r && r.loansEnd.find((x) => String(x.id) === String(l.id)); return { id: String(l.id), name: l.name, why: l.settleAt != null && l.settleAt > 0 && l.settleAt <= t ? "settled by then (your date)" : end && end.settledAt != null && end.settledAt < t ? "paid off earlier in this strategy" : Math.round(l.monthsLeft) < t ? "ended by then" : age != null && age < minAge ? `only ${age} months old then (needs ${minAge})` : "" }; });
+              if (key === "pl2" && o.plWhen !== "none") { const age = t - tWhen(o.plWhen, o.plMonth); items.push({ id: "pl", name: "this strategy's earlier personal loan(s)", why: age < minAge ? `only ${age} months old then (needs ${minAge})` : "" }); }
+              return (
+                <div key={key} style={{ marginBottom: 6 }}>
+                  <div style={{ fontFamily: SANS, fontSize: 11.5, fontWeight: 600, color: C.text, marginBottom: 3 }}>{label} — buy out:</div>
+                  {items.length === 0 ? <div style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>no old loan may be refinanced (see "May refinance?" in step 1)</div>
+                    : items.map((x) => <label key={x.id} className="flex items-center" style={{ gap: 6, fontFamily: SANS, fontSize: 12, color: x.why ? C.sub : C.text, cursor: "pointer", marginBottom: 2 }}><input type="checkbox" checked={(pick[key] || []).map(String).includes(x.id)} onChange={(e) => toggle(key, x.id, e.target.checked)} /> {x.name}{x.why ? <span style={{ fontSize: 11 }}> · {x.why}</span> : null}</label>)}
+                </div>
+              );
+            })}
+            <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, lineHeight: 1.4 }}>Nothing ticked = no buy-out. A loan that has ended, is too young or can't be cleared in full by the new loan is not bought out — the timeline says so.</div>
+          </div>
+        );
+      };
       const PlanCard = ({ o, i }) => {
         const r = m.results[i], col = OPT_COLORS[i], edit = !!editing[i];
         const plW = o.plWhen;
         const isRec = r && r === lead;
-        const ModeSel = () => <Note>Amount: always the bank's maximum that month — the smallest of the LTV limit, the instalment room left in your {inp.dbrCap}% bucket (mortgages ≤ {inp.mortgageCap}%, each personal loan ≤ {inp.perLoanCap}%) and the product ceiling.</Note>;
+        const prepayOn = o.prepayAfter != null && o.prepayAfter !== "";
+        const ModeSel = () => <Note>Amount: always the bank's maximum that month — the smallest of the LTV limit, the instalment room left in your {inp.dbrCap}% bucket (all mortgages together ≤ {inp.mortgageCap}%, each personal loan ≤ {inp.perLoanCap}%) and the product ceiling.</Note>;
         return (
           <div className="print-section" style={{ background: C.paper, borderLeft: `1px solid ${o.enabled ? col : C.line}`, borderRight: `1px solid ${o.enabled ? col : C.line}`, borderBottom: `1px solid ${o.enabled ? col : C.line}`, borderTop: `4px solid ${col}`, borderRadius: 10, padding: "14px 16px", opacity: o.enabled ? 1 : 0.6, minWidth: 0 }}>
             <div className="flex items-center justify-between" style={{ gap: 8, marginBottom: 8 }}>
@@ -576,16 +544,16 @@
             <input type="text" value={o.name} onChange={(e) => setPlan(i, "name", e.target.value)} style={{ width: "100%", fontWeight: 700, marginBottom: 8 }} />
             <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5, marginBottom: 10 }}>{describePlan(o, inp, prj, build)}</div>
             {r && <>
-              <div style={{ marginBottom: 10 }}><Badge ok={r.feasible && r.recoveryOk} text={r.flags[0] || (r.feasible ? `cash back at buffer ${r.recoveryMonths === 0 ? "at move-in" : r.recoveryMonths + " months after move-in"}` : null)} /></div>
+              <div style={{ marginBottom: 10 }}><Badge ok={r.feasible && r.recoveryOk} slow={r.feasible && !r.recoveryOk} text={r.flags[0] || (r.feasible ? `cash back at buffer ${r.recoveryMonths === 0 ? "at move-in" : r.recoveryMonths + " months after move-in"}` : null)} /></div>
               <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "10px 12px", marginBottom: 12 }}>
                 <Stat label="Cash low point" value={fS(r.minCash)} sub={fCal(r.minCashT)} color={r.minCash < 0 ? C.neg : r.minCash < inp.cashBuffer ? C.brass : C.text} info={EXPL.cashLow} />
                 <Stat label="Peak instalments" value={`${fSAR(r.peakInst)}/mo`} sub={`${r.peakDbr.toFixed(0)}% of income`} color={r.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text} info={EXPL.peakInst} />
                 <Stat label="New debt taken" value={fS(newDebtOf(r))} sub={`profit + fees ${fS(r.newDebtInterest)}`} info={EXPL.newDebt} />
-                <Stat label={`Net worth Y${inp.horizon}`} value={fS(r.netWorthEnd)} sub={`${fS(r.advantage)} vs ${baseLbl}`} color={r.advantage >= 0 ? C.pos : C.neg} info={EXPL.netWorth} />
+                <Stat label={`vs ${baseLbl} · Y${inp.horizon}`} value={fS(r.econAdv)} sub={`everything grows · rule 7: ${fS(r.advantage)}`} color={r.econAdv >= 0 ? C.pos : C.neg} info={EXPL.econ} />
               </div>
               <div style={{ fontFamily: MONO, fontSize: 11, background: SOFT, borderRadius: 7, padding: "6px 10px", marginBottom: 10, lineHeight: 1.7 }}>
                 <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, textTransform: "uppercase", letterSpacing: "0.04em" }}>Facilities · taken / bank maximum that month <Hint text={EXPL.capacity} /></div>
-                {r.facilities.filter((f) => f.capacity).map((f) => <Mini key={f.key} k={`${f.label} · ${fCal(f.capacity.t)}`} v={`${fS(f.amount)} / ${fS(f.capacity.cap)}`} color={f.amount < 1 ? C.neg : C.text} />)}
+                {r.facilities.filter((f) => f.capacity).map((f) => <Mini key={f.key} k={`${f.label} · ${fCal(f.capacity.t)}`} v={`${fS(f.amount)} / ${fS(f.capacity.cap)}${f.prepaidAt != null ? ` · paid off ${fCal(f.prepaidAt)}` : ""}`} color={f.amount < 1 ? C.neg : C.text} />)}
                 {!r.facilities.some((f) => f.capacity) && <div style={{ color: C.sub, fontFamily: SANS }}>no new facility in this strategy</div>}
               </div>
             </>}
@@ -595,50 +563,42 @@
                 <div style={{ fontFamily: MONO, fontSize: 11.5, background: SOFT, borderRadius: 7, padding: "8px 10px", marginBottom: 12, lineHeight: 1.7 }}>
                   {r.facilities.filter((f) => f.startedAt !== null && f.amount > 0).map((f) => <Mini key={f.key} k={`${f.label} ${fMon(f.startedAt)}`} v={`${fS(f.amount)} · ${fSAR(f.pmt)}/mo`} />)}
                   {r.settledTotal > 0 && <Mini k="Old loans settled" v={`${fS(r.settledTotal)} + ${fS(r.settleFees)} fees`} />}
+                  {r.prepaidTotal > 0 && <Mini k="Mortgages paid off early" v={`${fS(r.prepaidTotal)} + ${fS(r.prepayFees)} fees`} />}
                   <Mini k="Cash back at buffer" v={r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} mo after move-in`} color={r.recoveryOk ? C.pos : C.neg} />
                   {r.flags.slice(1).map((f, k) => <div key={k} style={{ color: C.brass, fontFamily: SANS, fontSize: 11, lineHeight: 1.4, marginTop: 4 }}>▲ {f}</div>)}
                 </div>
               )}
               <div className="subhead">Mortgage on the new land (taken when the land is bought, {fCal(prj.landMonth)})</div>
               <Select value={o.lmUse ? "yes" : "no"} onChange={(v) => setPlan(i, "lmUse", v === "yes")} options={[["no", "Not used — land bought in cash"], ["yes", `Mortgage the land · up to ${inp.landLtv}% of its price`]]} />
-              {o.lmUse && <>
-                <ModeSel />
-                <Slider label="Profit rate" value={o.lmRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "lmRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.lmRate, o.lmTenure * 12).toFixed(2)}% APR` : "reducing balance"} />
-                <Slider label="Tenure" value={o.lmTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "lmTenure", v)} />
-                <Adv title="Fees & prepayment">
-                  <Slider label="Bank fees (upfront)" value={o.lmFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "lmFeesPct", v)} />
-                  <Slider label="Extra prepayment on this mortgage" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setPlan(i, "extraMo", v)} />
-                </Adv>
-              </>}
+              {o.lmUse && <><ModeSel /><TermsLine k="lm" /></>}
               <div className="subhead">Mortgage on the property I already own</div>
               <Select value={o.eqWhen} onChange={(v) => setPlan(i, "eqWhen", v)} options={[["none", "Not used"], ["start", "At the start (now)"], ["land", "When the land is bought"], ["build", "When construction starts"], ["completion", "At completion"], ["month", "In a month I choose"]]} hint={inp.ownedValue > 0 ? `you own a ${fS(inp.ownedValue)} property → up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} (step 1)` : "set the property's value in step 1 first"} />
               {o.eqWhen === "month" && <Slider label="Month" value={o.eqMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "eqMonth", v)} hint={`${fCal(o.eqMonth)} · construction completes ${fCal(prj.occupy)}`} />}
-              {o.eqWhen !== "none" && <>
-                <ModeSel />
-                <Slider label="Profit rate" value={o.eqRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "eqRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.eqRate, o.eqTenure * 12).toFixed(2)}% APR` : "reducing balance"} />
-                <Slider label="Tenure" value={o.eqTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "eqTenure", v)} />
-                <Adv title="Fees"><Slider label="Bank fees (upfront)" value={o.eqFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "eqFeesPct", v)} /></Adv>
-              </>}
+              {o.eqWhen !== "none" && <><ModeSel /><TermsLine k="eq" /></>}
               <div className="subhead">Personal loan(s) — refinancing included</div>
               <Select value={plW} onChange={(v) => setPlan(i, "plWhen", v)} options={[["none", "Not used"], ["start", "At the start (now)"], ["land", "When the land is bought"], ["build", "When construction starts"], ["completion", "At completion"], ["month", "In a month I choose"]]} />
               {plW === "month" && <Slider label="Month" value={o.plMonth} min={0} max={inp.horizon * 12} step={1} unit="" onChange={(v) => setPlan(i, "plMonth", v)} hint={`${fCal(o.plMonth)} · construction completes ${fCal(prj.occupy)}`} />}
               {plW !== "none" && <>
-                <Note>The bank lends its maximum as one or two personal loans (each up to {inp.perLoanCap}% of income, within your {inp.dbrCap}% bucket, never more than two running at once). If an old personal loan is at least {inp.refiMinMonths} months old and buying it out releases more cash, the bank refinances it automatically — it clears the old loan directly and pays you the rest. <Hint text={EXPL.refi} /></Note>
-                <Slider label="Rate" value={o.plRate} min={0} max={15} step={0.25} unit="%" onChange={(v) => setPlan(i, "plRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.plRate, o.plTenure * 12).toFixed(2)}% APR` : ""} />
-                <Slider label="Tenure" value={o.plTenure} min={1} max={7} step={1} unit="yrs" onChange={(v) => setPlan(i, "plTenure", v)} />
+                <Note>The bank lends its maximum as one or two personal loans (each up to {inp.perLoanCap}% of income, within your {inp.dbrCap}% bucket, never more than two running at once). It can also buy out old personal loans that are at least {inp.refiMinMonths} months old — it clears them directly and pays you the rest. Which ones: see "Which old loans the bank buys out" below. <Hint text={EXPL.refi} /></Note>
+                <TermsLine k="pl" />
               </>}
               <div className="subhead">At completion ({fCal(prj.occupy)}) — recover cash: cash-out mortgage and/or personal loan(s)</div>
               <Select label="Cash-out mortgage on the finished home" value={o.coUse ? "yes" : "no"} onChange={(v) => setPlan(i, "coUse", v === "yes")} options={[["no", "Not used"], ["yes", `Mortgage the finished home · up to ${inp.cashoutLtv}% of its value`]]} />
-              {o.coUse && <>
-                <ModeSel />
-                <Slider label="Profit rate" value={o.coRate} min={0} max={12} step={0.05} unit="%" onChange={(v) => setPlan(i, "coRate", v)} hint={inp.rateQuote === "flat" ? `flat → ≈${reFlatToApr(o.coRate, o.coTenure * 12).toFixed(2)}% APR` : "reducing balance"} />
-                <Slider label="Tenure" value={o.coTenure} min={1} max={30} step={1} unit="yrs" onChange={(v) => setPlan(i, "coTenure", v)} />
-                <Adv title="Fees"><Slider label="Bank fees (upfront)" value={o.coFeesPct} min={0} max={3} step={0.25} unit="% of loan" onChange={(v) => setPlan(i, "coFeesPct", v)} /></Adv>
+              {o.coUse && <><ModeSel /><TermsLine k="co" /></>}
+              <Select label="Personal loan(s) at completion" value={o.pl2Use ? "yes" : "no"} onChange={(v) => setPlan(i, "pl2Use", v === "yes")} options={[["no", "Not used"], ["yes", "Yes — the bank's maximum, buying out old personal loans by the rule below"]]} />
+              {o.pl2Use && <Note>Same terms as all personal loans. Taken after the cash-out mortgage, in whatever room is left of your {inp.dbrCap}% bucket. It can buy out your old loans and the personal loan taken earlier in this strategy once that one is {inp.refiMinMonths} months old; never more than two personal loans running at once. <Hint text={EXPL.refi} /></Note>}
+              {(plW !== "none" || o.pl2Use) && <>
+                <div className="subhead">Which old loans the bank buys out <Hint text={EXPL.refi} /></div>
+                <Select value={o.refiMode || "auto"} onChange={(v) => setPlan(i, "refiMode", v)} options={[["auto", "Auto (recommended) — best value; most cash if the plan needs it"], ["value", "Best value — what leaves you richest"], ["cash", "Most cash — what puts the most in your hands now"], ["pick", "Choose loans — exactly the ones I tick"]]} />
+                {o.refiMode === "pick" && RefiPicks({ o, i })}
+                {r && r.refiFallback && <Note>Auto switched to "most cash" for this strategy: buying out the loans that give the best value would run your cash out or miss your {inp.recoveryMonths}-month recovery window.</Note>}
               </>}
-              <Select label="Personal loan(s) at completion" value={o.pl2Use ? "yes" : "no"} onChange={(v) => setPlan(i, "pl2Use", v === "yes")} options={[["no", "Not used"], ["yes", "Yes — the bank's maximum, refinancing older personal loans if that releases more cash"]]} />
-              {o.pl2Use && <Note>Same rate and tenure as the personal loan above. Taken after the cash-out mortgage, in whatever room is left of your {inp.dbrCap}% bucket. It can refinance your old loans and the personal loan taken earlier in this strategy once that one is {inp.refiMinMonths} months old; never more than two personal loans running at once. <Hint text={EXPL.refi} /></Note>}
               <div className="subhead">Old personal loans — pay off early with cash? <Hint text={EXPL.settlePolicy} /></div>
               <Select value={o.settlePolicy === "none" || o.settlePolicy === "forMax" ? o.settlePolicy : "asNeeded"} onChange={(v) => setPlan(i, "settlePolicy", v)} options={[["asNeeded", "For a mortgage — just enough for it to cover the shortfall"], ["forMax", "For a mortgage — as many as it takes for the largest mortgage the property allows"], ["none", "Never — keep them; new loans get whatever room is left"]]} hint="which loans may be touched, and fixed settlement dates, are set per loan in step 1" />
+              <div className="subhead">Paying the new mortgages off early (optional) <Hint text={EXPL.prepay} /></div>
+              <Select value={prepayOn ? "after" : "never"} onChange={(v) => setPlan(i, "prepayAfter", v === "never" ? null : 24)} options={[["never", "Never — the mortgages run to their end"], ["after", "From my cash, some months after move-in"]]} />
+              {prepayOn && <Slider label="Months after move-in" value={+o.prepayAfter} min={0} max={120} step={3} unit="months" onChange={(v) => setPlan(i, "prepayAfter", v)} hint={`${fCal(prj.occupy + Math.round(+o.prepayAfter))} · whole mortgages, most expensive first, while your cash${inp.cashBuffer > 0 ? ` above your ${fS(inp.cashBuffer)} safety cushion` : ""} covers the payoff + ${inp.settleFeeMonths} months' profit`} />}
+              {o.lmUse && <Slider label="Extra monthly payment on the land mortgage" value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setPlan(i, "extraMo", v)} hint="voluntary — shortens the mortgage; not an instalment in the bank's debt-burden test" />}
             </div>}
           </div>
         );
@@ -708,10 +668,11 @@
       /* ---------- answer card ---------- */
       const blockers = [];
       if (home) {
-        if (bestF) { bestF.flags.forEach((f) => blockers.push({ warn: true, text: f })); if (best && best !== bestF) blockers.push({ warn: false, text: best.feasible ? `${best.plan.name} would leave you ${fS(best.advantage - bestF.advantage)} richer but does not get your cash back to the ${fS(inp.cashBuffer)} buffer within ${inp.recoveryMonths} months of move-in.` : `${best.plan.name} would leave you ${fS(best.advantage - bestF.advantage)} richer but cannot be executed: ${best.flags[0]}` }); }
+        if (bestF) { bestF.flags.forEach((f) => blockers.push({ warn: true, text: f })); if (best && best !== bestF) blockers.push({ warn: false, text: best.feasible ? `${best.plan.name} would leave you ${fS(best.econAdv - bestF.econAdv)} richer (everything grows) but does not get your cash back to the ${fS(inp.cashBuffer)} buffer within ${inp.recoveryMonths} months of move-in.` : `${best.plan.name} would leave you ${fS(best.econAdv - bestF.econAdv)} richer (everything grows) but cannot be executed: ${best.flags[0]}` }); }
         else liveIdx.forEach((i) => { const r = m.results[i]; blockers.push({ warn: true, text: `Strategy ${i + 1} (${r.plan.name}): ${r.flags[0] || "not executable"}` }); });
         if (household.dbrRoom <= 0) blockers.push({ warn: true, text: `Your existing instalments (${fSAR(household.existingInst)}/mo) already fill the bank's ${inp.dbrCap}% debt-burden cap — a new loan only fits if an old one is paid off or refinanced (the strategies try both), or once a loan ends.` });
-        if (bestF && !bestF.recoveryOk && bestF.feasible) blockers.push({ warn: true, text: `No executable strategy gets cash back to your ${fS(inp.cashBuffer)} buffer within ${inp.recoveryMonths} months of move-in; the recommendation is the executable one with the highest net worth.` });
+        if (bestF && !bestF.recoveryOk && bestF.feasible) blockers.push({ warn: true, text: `No executable strategy gets cash back to your ${fS(inp.cashBuffer)} buffer within ${inp.recoveryMonths} months of move-in; the recommendation is the executable one with the best "everything grows" result.` });
+        household.warnings.forEach((w) => blockers.push({ warn: false, text: `Check your loan list — ${w}` }));
         if (household.savings < 0) blockers.push({ warn: true, text: `You spend ${fSAR(-household.savings)}/mo more than you earn (income − living − rent − instalments).` });
         if (sweepRec && !sweepRec.best) blockers.push({ warn: true, text: "No construction start within the next 5 years makes the recommended strategy executable." });
       } else if (lead) {
@@ -728,19 +689,20 @@
           <div style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: C.brass, marginBottom: 6 }}>The answer · <span style={{ color: m.vColor }}>{m.verdict}</span></div>
           {!lead ? <div style={{ fontFamily: SANS, fontSize: 15, color: C.text }}>Enable at least one {home ? "strategy" : "option"} in step 3.</div> : home ? <>
             <div style={{ fontFamily: SANS, fontSize: 17, fontWeight: 700, color: C.text, lineHeight: 1.35, letterSpacing: "-0.01em" }}>
-              {bestF ? <>Finance it with <span style={{ borderBottom: `3px solid ${OPT_COLORS[recIdx]}` }}>{bestF.plan.name}</span>{startBest ? <>, and {startNow ? <>start as planned in <b>{fCal(Math.max(inp.buildStart, inp.landMonth))}</b></> : <>wait until <b>{fCal(startBest.delay)}</b> to start building</>}</> : null}.</>
+              {bestF ? <>{bestF.econAdv > 0 ? "Finance it with " : `${renting ? "Renting" : build ? "Not building" : "Not buying"} leaves you better off. If you ${build ? "build" : "buy"} anyway, finance it with `}<span style={{ borderBottom: `3px solid ${OPT_COLORS[recIdx]}` }}>{bestF.plan.name}</span>{startBest ? <>, and {startNow ? <>start as planned in <b>{fCal(Math.max(inp.buildStart, inp.landMonth))}</b></> : <>wait until <b>{fCal(startBest.delay)}</b> {build ? "to start building" : "to buy"}</>}</> : null}.</>
                    : <>None of the enabled strategies works with {fS(inp.cashAvailable)} of cash and {fSAR(household.dbrRoom)}/mo of debt-burden room.</>}
             </div>
-            {opt && opt.planned.best.ok && (!bestF || opt.planned.best.netWorth > bestF.netWorthEnd + 1000 || !bestF.recoveryOk) && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, marginTop: 8, lineHeight: 1.5, background: SOFT_POS, borderRadius: 7, padding: "8px 12px" }}>
-              <b>Better fill of your {inp.dbrCap}% bucket:</b> {opt.planned.best.name} — cash low {fS(opt.planned.best.minCash)}, net worth {fS(opt.planned.best.netWorth)} ({fS(opt.planned.best.netWorth - (bestF ? bestF.netWorthEnd : 0))} more). <button className="no-print" onClick={() => useOptPlan(opt.planned)} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "3px 10px", marginLeft: 6 }}>Use as Strategy 1</button> <Hint text={EXPL.optimizer} />
-            </div>}
-            {bestF && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(bestF.plan, inp, prj, build)} Net worth at year {inp.horizon}: <b>{fS(bestF.netWorthEnd)}</b>, which is <b style={{ color: bestF.advantage >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.advantage))} {bestF.advantage >= 0 ? "more" : "less"} than {baseLbl}</b>{renting ? " the same home" : " (your own cash invested instead)"}.{startBest && !startNow ? ` Starting ${fCal(startBest.delay)} means moving in ${fCal(startBest.occupy)}.` : ""}</div>}
+            {(() => { const ob = opt && opt.planned.best, d = ob && bestF ? ob.econAdv - bestF.econAdv : 0; if (!ob || !ob.ok || (bestF && bestF.recoveryOk && d <= 1000) || (bestF && samePlan(bestF.plan, ob.cleanPlan))) return null; return <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, marginTop: 8, lineHeight: 1.5, background: SOFT_POS, borderRadius: 7, padding: "8px 12px" }}>
+              <b>Better fill of your {inp.dbrCap}% bucket:</b> {ob.name} — cash low {fS(ob.minCash)}, {fDiff(ob.econAdv)} {baseLbl} when everything grows{bestF ? (d > 1000 ? ` (${fS(d)} better than ${bestF.plan.name})` : `, and unlike ${bestF.plan.name} it gets your cash back to your buffer within ${inp.recoveryMonths} months`) : ""}. <button className="no-print" onClick={() => useOptPlan(opt.planned)} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "3px 10px", marginLeft: 6 }}>Use as Strategy 1</button> <Hint text={EXPL.optimizer} /> <OptStatus />
+            </div>; })()}
+            {bestF && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 6, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(bestF.plan, inp, prj, build)} With everything growing at {inp.altReturn}% a year, your cash + home − debt at year {inp.horizon} is <b>{fS(bestF.econEnd)}</b> against <b>{fS(bestF.econBaseEnd)}</b> {renting ? "renting the same home" : build ? "not building" : "not buying"} — <b style={{ color: bestF.econAdv >= 0 ? C.pos : C.neg }}>{fS(Math.abs(bestF.econAdv))} {bestF.econAdv >= 0 ? "more" : "less"}</b> ({fS(Math.abs(bestF.econPV))} in today's money). Your rule-7 measure: {fDiff(bestF.advantage)} {baseLbl}.{startBest && !startNow ? ` Starting ${fCal(startBest.delay)} means moving in ${fCal(startBest.occupy)}.` : ""}</div>}
             {bestF && <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginTop: 14 }}>
               <Kpi label="Cash low point" value={fS(bestF.minCash)} sub={`${fCal(bestF.minCashT)} · buffer ${fS(inp.cashBuffer)}`} accent={bestF.minCash < 0 ? C.neg : bestF.minCash < inp.cashBuffer ? C.brass : C.pos} info={EXPL.cashLow} />
               <Kpi label="Cash back at buffer" value={bestF.recoveryMonths == null ? "never" : bestF.recoveryMonths === 0 ? "at move-in" : `${bestF.recoveryMonths} mo`} sub={`${fS(bestF.cashAfterWindow)} cash ${inp.recoveryMonths} mo after move-in`} accent={bestF.recoveryOk ? C.pos : C.neg} info={EXPL.recovery} />
               <Kpi label="Peak monthly instalments" value={`${fSAR(bestF.peakInst)}`} sub={`${bestF.peakDbr.toFixed(0)}% of income · bank cap ${inp.dbrCap}%`} accent={bestF.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text} info={EXPL.peakInst} />
               <Kpi label="New debt taken" value={fS(newDebtOf(bestF))} sub={`costs ${fS(bestF.newDebtInterest)} in profit & fees`} accent={C.text} info={EXPL.newDebt} />
-              <Kpi label={`Net worth at Y${inp.horizon}`} value={fS(bestF.netWorthEnd)} sub={`${fS(bestF.advantage)} vs ${baseLbl}`} accent={bestF.advantage >= 0 ? C.pos : C.neg} info={EXPL.netWorth} />
+              <Kpi label={`vs ${baseLbl} · everything grows`} value={fS(bestF.econAdv)} sub={`${fS(bestF.econPV)} in today's money · return on building ${econIrr[recIdx] == null ? "n/a" : pct1(econIrr[recIdx] * 100)}`} accent={bestF.econAdv >= 0 ? C.pos : C.neg} info={EXPL.econ} />
+              <Kpi label={`Rule-7 net worth at Y${inp.horizon}`} value={fS(bestF.netWorthEnd)} sub={`${fS(bestF.advantage)} vs ${baseLbl}`} accent={bestF.advantage >= 0 ? C.pos : C.neg} info={EXPL.netWorth} />
               {startBest && <Kpi label="Earliest workable start" value={fCal(startBest.delay)} sub={`move in ${fCal(startBest.occupy)} · cost ${fS(startBest.total)}`} accent={C.brass} info={EXPL.earliest} />}
             </div>}
           </> : <>
@@ -762,6 +724,7 @@
             <span>Value at completion <b style={{ fontFamily: MONO, color: C.text }}>{fS(prj.value0)}</b><Hint text={EXPL.value} /></span>
             {home && <span>Debt-burden room today <b style={{ fontFamily: MONO, color: household.dbrRoom > 0 ? C.text : C.neg }}>{fSAR(household.dbrRoom)}/mo</b><Hint text={EXPL.dbrRoom} /></span>}
             {home && <span>Monthly savings today <b style={{ fontFamily: MONO, color: household.savings >= 0 ? C.text : C.neg }}>{fSAR(household.savings)}</b><Hint text={EXPL.savings} /></span>}
+            <span>Month 0 = <b style={{ color: C.text }}>{fCal(0)}</b></span>
           </div>
         </div>
       );
@@ -780,30 +743,38 @@
                 <Slider label="Cash you have today" value={inp.cashAvailable} min={0} max={6000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
                 <Slider label="Cash buffer you want to keep" value={inp.cashBuffer} min={0} max={1000000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="dipping below is flagged; going negative makes a strategy non-executable" />
                 <Slider label="Property you already own — market value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint={inp.ownedValue > 0 ? `banks would lend up to ${fS(inp.ownedValue * inp.ownedLtv / 100)} against it` : "0 if none"} />
-                <Adv title="Advanced: bank rules, rent growth, rate quoting">
+                <Adv title="Advanced: bank rules, growth of income, living costs and rent, dates">
                   <Slider label="Total debt-burden cap (bank)" value={inp.dbrCap} min={30} max={70} step={5} unit="% of income" onChange={(v) => set("dbrCap", v)} hint="all instalments together (existing + new)" />
                   <Slider label="Cap for mortgages inside the bucket" value={inp.mortgageCap} min={20} max={70} step={1} unit="% of income" onChange={(v) => set("mortgageCap", v)} hint="land purchase, existing property or cash-out: their instalments may not exceed this" />
                   <Slider label="Cap per personal loan" value={inp.perLoanCap} min={20} max={65} step={1} unit="% of income" onChange={(v) => set("perLoanCap", v)} hint="a second personal loan may use what is left of the bucket" />
                   <Slider label="LTV when the bank finances the land purchase (cash-raising mortgages use the 70% below)" value={inp.landLtv} min={30} max={95} step={5} unit="% of price" onChange={(v) => set("landLtv", v)} />
                   <Slider label="Cash-recovery window after move-in" value={inp.recoveryMonths} min={0} max={60} step={6} unit="months" onChange={(v) => set("recoveryMonths", v)} hint="your rule: cash must be back at the buffer within this long after moving in" />
                   <Slider label="Rent growth" value={inp.rentGrowth} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("rentGrowth", v)} />
+                  <Slider label="Income growth" value={inp.incomeGrowth || 0} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("incomeGrowth", v)} hint={(inp.incomeGrowth || 0) > 0 ? `steps up once a year (${fSAR(inp.income * (1 + inp.incomeGrowth / 100))}/mo from ${fCal(13)}); the bank's limits follow your income` : "0 = your income stays as it is"} />
+                  <Slider label="Living-cost growth" value={inp.livingGrowth || 0} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("livingGrowth", v)} hint="steps up once a year, on both sides of the comparison" />
                   <Slider label="LTV banks lend against your existing property" value={inp.ownedLtv} min={30} max={90} step={5} unit="%" onChange={(v) => set("ownedLtv", v)} />
                   <Slider label="Cash-out LTV on the finished home" value={inp.cashoutLtv} min={40} max={90} step={5} unit="% of value" onChange={(v) => set("cashoutLtv", v)} hint="mortgage raised against an owned, completed home" />
                   <Slider label="Bank ceiling on one personal loan" value={inp.plCap} min={100000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("plCap", v)} />
                   <Slider label="A personal loan can be refinanced after" value={inp.refiMinMonths} min={0} max={36} step={1} unit="months" onChange={(v) => set("refiMinMonths", v)} hint="bank buy-out rule; mortgages are never refinanced" />
-                  <Slider label="Early-settlement fee" value={inp.settleFeeMonths} min={0} max={3} step={1} unit="months' profit" onChange={(v) => set("settleFeeMonths", v)} hint="SAMA cap: the next 3 months' term cost" />
-                  <Select label="Rates of NEW facilities are entered as" value={inp.rateQuote} onChange={(v) => set("rateQuote", v)} options={[["apr", "APR — reducing balance"], ["flat", "Flat 'hamish' % per year (KSA bank quotes)"]]} />
+                  <Slider label="Early-settlement fee" value={inp.settleFeeMonths} min={0} max={3} step={1} unit="months' profit" onChange={(v) => set("settleFeeMonths", v)} hint="SAMA cap: the next 3 months' profit on the declining balance" />
+                  <div style={{ marginBottom: 10 }}>
+                    <span className="lbl">Month 0 of this scenario</span>
+                    <input type="month" value={inp.asOf || ""} onChange={(e) => e.target.value && set("asOf", e.target.value)} />
+                    <div style={{ fontFamily: SANS, fontSize: 11, color: C.sub, marginTop: 3 }}>Every date counts from here. A saved scenario keeps its own month 0 (an older one: the month it was saved). Changing it moves the dates only — bring your cash and loans up to date too.</div>
+                  </div>
+                  <Note>Loan rates, tenures, fees and how rates are quoted (flat or APR): Financing → Bank terms.</Note>
                 </Adv>
               </Card>
               <Card n="B" title="Existing loans (as the bank sees them)">
-                <LoanTable loans={inp.existingLoans} onChange={(l) => set("existingLoans", l)} income={inp.income} dbrCap={inp.dbrCap} />
-                <Note>"Settle from cash?" unticked: no strategy pays this loan off early (good for cheap debt). "May refinance?" unticked: no bank buy-out may include it. "Settle in month" pays it off from your cash on that date, in every strategy. "Months since it started" matters for refinancing: a personal loan can only be bought out once it is {inp.refiMinMonths} months old. Mortgages are never paid off early or refinanced.</Note>
+                <LoanTable loans={inp.existingLoans} onChange={setLoans} income={inp.income} dbrCap={inp.dbrCap} />
+                {household.warnings.length > 0 && <div style={{ background: "#FBEFD9", borderRadius: 7, padding: "8px 12px", marginTop: 10, fontFamily: SANS, fontSize: 12, color: C.text, lineHeight: 1.5 }}>{household.warnings.map((w, k) => <div key={k} className="flex items-start" style={{ gap: 6 }}><AlertTriangle size={13} color={C.brass} style={{ flex: "none", marginTop: 3 }} /><span>{w}</span></div>)}</div>}
+                <Note>"Settle from cash?" unticked: no strategy pays this loan off early (good for cheap debt). "May refinance?" unticked: no bank buy-out may include it. "Settle in month" pays it off from your cash on that date, in every strategy — and in the "if you don't build" case too, so it is not counted as an effect of building. "Months since it started" matters for refinancing: a personal loan can only be bought out once it is {inp.refiMinMonths} months old. New mortgages are never refinanced; paying them off early is an option in each strategy (Financing).</Note>
                 <div className="subhead">How much the bank can lend you, and when <Hint text={EXPL.capacity} /></div>
                 <div className="scroll-x"><table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
-                  <thead><tr>{["From", "Instalments running", "Free room in the " + inp.dbrCap + "% bucket", "Mortgage (≤ " + inp.mortgageCap + "%)", "One personal loan (≤ " + inp.perLoanCap + "%)", "Two personal loans"].map((h, k) => <th key={h} style={{ ...th, textAlign: k === 0 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
-                  <tbody>{household.capTimeline.map((c) => <tr key={c.t}><td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{c.t === 0 ? "today" : fCal(c.t)}</td><td style={td}>{fSAR(c.inst)} <span style={{ color: C.sub }}>({(c.inst / inp.income * 100).toFixed(0)}%)</span></td><td style={{ ...td, color: c.room > 0 ? C.text : C.neg }}>{fSAR(c.room)}/mo</td><td style={td}>{fS(c.maxMortgage)}</td><td style={td}>{fS(c.maxOnePl)}</td><td style={td}>{fS(c.maxTwoPl)}</td></tr>)}</tbody>
+                  <thead><tr>{["From", ...((inp.incomeGrowth || 0) > 0 ? ["Income"] : []), "Instalments running", "Free room in the " + inp.dbrCap + "% bucket", "All mortgages (≤ " + inp.mortgageCap + "%)", "One personal loan (≤ " + inp.perLoanCap + "%)", "Two personal loans"].map((h, k) => <th key={h} style={{ ...th, textAlign: k === 0 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
+                  <tbody>{household.capTimeline.map((c) => <tr key={c.t}><td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{c.t === 0 ? "today" : fCal(c.t)}</td>{(inp.incomeGrowth || 0) > 0 && <td style={td}>{fSAR(c.income)}</td>}<td style={td}>{fSAR(c.inst)} <span style={{ color: C.sub }}>({(c.inst / c.income * 100).toFixed(0)}%)</span></td><td style={{ ...td, color: c.room > 0 ? C.text : C.neg }}>{fSAR(c.room)}/mo</td><td style={td}>{fS(c.maxMortgage)}</td><td style={td}>{fS(c.maxOnePl)}</td><td style={td}>{fS(c.maxTwoPl)}</td></tr>)}</tbody>
                 </table></div>
-                <Note>Principal the room converts to: mortgages at Strategy 1's land-mortgage rate and tenure, personal loans at its personal-loan rate and tenure — before any LTV limit. Mortgage and personal loans share the same bucket, so these are alternatives, not additive. Personal loans: never more than two running at once — your existing loans count — and each stops at the bank's ceiling per loan; a strategy can still borrow earlier by having the bank buy out an old loan (refinance). Rows appear each time an existing loan is settled or ends.</Note>
+                <Note>Principal the room converts to at your Bank terms (land-mortgage terms for mortgages, personal-loan terms for personal loans) — before any LTV limit. Mortgages and personal loans share the same bucket, so these are alternatives, not additive. Personal loans: never more than two running at once — your existing loans count — and each stops at the bank's ceiling per loan; a strategy can still borrow earlier by having the bank buy out an old loan (refinance). Rows appear each time an existing loan is settled or ends{(inp.incomeGrowth || 0) > 0 ? ", or your income steps up" : ""}.</Note>
               </Card>
             </> : <>
               <Card n="A" title="Letting">
@@ -843,12 +814,14 @@
                 {inp.builtPct === 0 && <Slider label="Total built-up area" value={inp.builtArea} min={150} max={2000} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
                 <Slider label="Construction cost (turnkey)" value={inp.buildCost} min={1200} max={6000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`structure + finishing ${fS(prj.hard)} before VAT`} />
                 <Slider label="Construction duration" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} hint={home ? "you keep paying rent until you move in" : "no rental income until complete"} />
-                <Adv title="Advanced: design & permits, contingency, extras, inflation, value uplift, VAT & RETT">
+                <Adv title="Advanced: design & permits, contingency, overrun, extras, inflation, value uplift, broker, VAT & RETT">
                   <Slider label="Design, permits & supervision" value={inp.softPct} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("softPct", v)} />
                   <Slider label="Contingency" value={inp.contPct} min={0} max={25} step={1} unit="%" onChange={(v) => set("contPct", v)} hint="overruns are the norm — keep ≥ 5%" />
+                  <Slider label="Cost overrun (stress test)" value={inp.overrunPct || 0} min={0} max={30} step={1} unit="%" onChange={(v) => set("overrunPct", v)} hint={(inp.overrunPct || 0) > 0 ? `+${fSAR(prj.overrun)} + VAT over the build, on top of the contingency · adds cost, not value` : "extra cost on construction, soft costs, contingency and extras — it adds no value"} />
                   <Slider label="Extras: kitchen, AC, landscape" value={inp.finishExtra} min={0} max={600000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
                   <Slider label="Construction-cost inflation" value={inp.costInflation} min={0} max={10} step={0.5} unit="%/yr" onChange={(v) => set("costInflation", v)} />
-                  <Slider label="Value uplift of self-build" value={inp.devMarginPct} min={-10} max={30} step={1} unit="%" onChange={(v) => set("devMarginPct", v)} hint="finished home's market value vs. land + construction cost" />
+                  <Slider label="Value uplift of self-build" value={inp.devMarginPct} min={-10} max={30} step={1} unit="%" onChange={(v) => set("devMarginPct", v)} hint="on what you build, not the land: value = land + (construction + soft costs + extras) × (1 + uplift)" />
+                  <Slider label="Broker's fee on the land" value={inp.landBrokerPct == null ? 2.5 : inp.landBrokerPct} min={0} max={5} step={0.25} unit="% of price" onChange={(v) => set("landBrokerPct", v)} hint={`${fSAR(prj.landBroker)}, paid with the land · adds no value; not in the transfer tax or the bank's LTV`} />
                   <Slider label="VAT" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} />
                   <Slider label="RETT" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
                   {home && <Check checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home RETT relief (state bears RETT on the first ${fS(inp.rettExemptCap)})`} />}
@@ -898,7 +871,7 @@
                   {build && <tr><td style={{ ...td, textAlign: "left", fontFamily: SANS, color: C.sub, paddingLeft: 0 }}>Cost per m² built (excl. land)</td><td style={{ ...td, paddingRight: 0 }}>{fSAR(prj.costPerSqm)}</td></tr>}
                 </tbody>
               </table>
-              <Note>Spend timing: {build ? `land + RETT in ${fCal(prj.landMonth)}, construction evenly over ${prj.bm} months (${fCal(prj.start + 1)} → ${fCal(prj.start + prj.bm)}), extras in the last month (${fCal(prj.start + prj.bm)}); you move in ${fCal(prj.occupy)}.` : `everything in ${fCal(prj.landMonth)}.`} {home ? "Your own cash and the loans' proceeds pay each bill as it falls due — there is no construction mortgage." : "The mortgage is drawn only after your cash and any personal loan are spent."}</Note>
+              <Note>Spend timing: {build ? `land + RETT${prj.landBroker > 0 ? " + broker" : ""} in ${fCal(prj.landMonth)}, construction${prj.overrun > 0 ? " and overrun" : ""} evenly over ${prj.bm} months (${fCal(prj.start + 1)} → ${fCal(prj.start + prj.bm)}), extras in the last month (${fCal(prj.start + prj.bm)}); you move in ${fCal(prj.occupy)}.` : `everything in ${fCal(prj.landMonth)}.`} {home ? "Your own cash and the loans' proceeds pay each bill as it falls due — there is no construction mortgage." : "The mortgage is drawn only after your cash and any personal loan are spent."}</Note>
             </Card>
           </div>
         </div>
@@ -908,7 +881,8 @@
       const BUCKET_COLORS = { Existing: "#9A958B", "Land mortgage": "#2F6DB5", "Own-property mortgage": "#1F9A80", "Personal loan(s)": "#A24FB8", "Cash-out": "#6FA3E0" };
       const BucketChart = ({ b, height = 250 }) => {
         const last = Math.min(b.bucket.length - 1, b.occupy + 36);
-        const data = b.bucket.filter((x) => x.t <= last).map((x) => ({ t: x.t, Existing: x.existing / inp.income * 100, "Land mortgage": x.lm / inp.income * 100, "Own-property mortgage": x.eq / inp.income * 100, "Personal loan(s)": x.pl / inp.income * 100, "Cash-out": x.co / inp.income * 100 }));
+        // each month's instalments as % of THAT month's income (your income may grow)
+        const data = b.bucket.filter((x) => x.t <= last).map((x) => ({ t: x.t, Existing: x.existing / x.inc * 100, "Land mortgage": x.lm / x.inc * 100, "Own-property mortgage": x.eq / x.inc * 100, "Personal loan(s)": x.pl / x.inc * 100, "Cash-out": x.co / x.inc * 100 }));
         return (
           <Panel title={<span>Your {inp.dbrCap}% bucket, month by month · instalments as % of income <Hint text={EXPL.bucket} /></span>}>
             <ResponsiveContainer width="100%" height={height}>
@@ -919,19 +893,19 @@
                 <Tooltip formatter={(v, n) => [`${v.toFixed(1)}%`, n]} labelFormatter={(t) => `${fMon(t)}`} contentStyle={tipStyle} />
                 <Legend wrapperStyle={legendStyle} />
                 <ReferenceLine y={inp.dbrCap} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% — everything together`, fontFamily: SANS, fontSize: 11, fill: C.neg, position: "insideTopRight" }} />
-                <ReferenceLine y={inp.mortgageCap} stroke={C.brass} strokeDasharray="4 4" label={{ value: `${inp.mortgageCap}% — one mortgage`, fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideBottomRight" }} />
+                <ReferenceLine y={inp.mortgageCap} stroke={C.brass} strokeDasharray="4 4" label={{ value: `${inp.mortgageCap}% — all mortgages together`, fontFamily: SANS, fontSize: 11, fill: C.brass, position: "insideBottomRight" }} />
                 {Object.entries(BUCKET_COLORS).map(([k, col]) => <Area key={k} type="stepAfter" stackId="b" dataKey={k} stroke={col} fill={col} fillOpacity={0.8} strokeWidth={1} isAnimationActive={false} />)}
               </AreaChart>
             </ResponsiveContainer>
-            <Note>Free space under the red line is borrowing capacity you are not using that month. Shown to 3 years after move-in.</Note>
+            <Note>Free space under the red line is borrowing capacity you are not using that month. Shown to 3 years after move-in. A voluntary extra payment is not an instalment and is left out.</Note>
           </Panel>
         );
       };
-      const OptStatus = () => optStale ? <span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>updating…</span> : null;
+      const OptStatus = ({ stale }) => (stale == null ? optStale : stale) ? <span style={{ fontFamily: SANS, fontSize: 11, color: C.sub }}>updating…</span> : null;
       const OptPlanned = () => {
-        if (!opt) return null;
+        if (!opt) return <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, padding: "16px 18px", marginBottom: 14, fontFamily: SANS, fontSize: 12.5, color: C.sub }}>Finding the best fill of your {inp.dbrCap}% bucket for your planned start…</div>;
         const st = opt.planned, b = st.best;
-        const same = inp.plans[0] && JSON.stringify({ ...inp.plans[0], name: "", enabled: true }) === JSON.stringify({ ...(b.cleanPlan || b.plan), name: "", enabled: true });
+        const same = samePlan(inp.plans[0], b.cleanPlan || b.plan);
         return (
           <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderLeft: `6px solid ${b.ok ? C.pos : b.feasible ? C.brass : C.neg}`, borderRadius: 10, padding: "16px 18px", marginBottom: 14 }}>
             <div className="flex items-center justify-between flex-wrap" style={{ gap: 8 }}>
@@ -940,13 +914,14 @@
             </div>
             <div style={{ fontFamily: SANS, fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.35, marginTop: 6 }}>{b.name}</div>
             <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub, marginTop: 4, lineHeight: 1.5, maxWidth: 900 }}>{describePlan(b.plan, inp, prj, build)}</div>
-            <div style={{ margin: "10px 0" }}><Badge ok={b.ok} text={b.flags[0] || (b.feasible ? `cash back at buffer ${b.recoveryMonths === 0 ? "at move-in" : b.recoveryMonths + " months after move-in"}` : null)} /></div>
+            <div style={{ margin: "10px 0" }}><Badge ok={b.ok} slow={b.feasible && !b.ok} text={b.flags[0] || (b.feasible ? `cash back at buffer ${b.recoveryMonths === 0 ? "at move-in" : b.recoveryMonths + " months after move-in"}` : null)} /></div>
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px 14px" }}>
               <Stat label="Cash low point" value={fS(b.minCash)} sub={fCal(b.minCashT)} color={b.minCash < 0 ? C.neg : b.minCash < inp.cashBuffer ? C.brass : C.text} info={EXPL.cashLow} />
               <Stat label={`Cash ${inp.recoveryMonths} mo after move-in`} value={fS(b.cashAfterWindow)} sub={`buffer ${fS(inp.cashBuffer)}`} color={b.cashAfterWindow >= inp.cashBuffer ? C.pos : C.neg} info={EXPL.cashAfter} />
               <Stat label="Peak instalments" value={`${fSAR(b.peakInst)}/mo`} sub={`${b.peakDbr.toFixed(0)}% of income · cap ${inp.dbrCap}%`} color={b.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text} info={EXPL.peakInst} />
               <Stat label="New debt taken" value={fS(b.newDebt)} sub={`profit + fees ${fS(b.newDebtInterest)}`} info={EXPL.newDebt} />
-              <Stat label={`Net worth Y${inp.horizon}`} value={fS(b.netWorth)} sub={`${fS(b.advantage)} vs ${baseLbl}`} color={b.advantage >= 0 ? C.pos : C.neg} info={EXPL.netWorth} />
+              <Stat label={`vs ${baseLbl} · everything grows`} value={fS(b.econAdv)} sub={`${fS(b.econPV)} in today's money`} color={b.econAdv >= 0 ? C.pos : C.neg} info={EXPL.econ} />
+              <Stat label={`Rule-7 net worth Y${inp.horizon}`} value={fS(b.netWorth)} sub={`${fS(b.advantage)} vs ${baseLbl}`} color={b.advantage >= 0 ? C.pos : C.neg} info={EXPL.netWorth} />
             </div>
             <div style={{ fontFamily: MONO, fontSize: 11.5, background: SOFT, borderRadius: 7, padding: "8px 10px", margin: "12px 0 10px", lineHeight: 1.7 }}>
               <div style={{ fontFamily: SANS, fontSize: 10.5, color: C.sub, textTransform: "uppercase", letterSpacing: "0.04em" }}>Facilities · taken / bank maximum that month <Hint text={EXPL.capacity} /></div>
@@ -955,28 +930,27 @@
               {!b.facilities.some((f) => f.capacity) && <div style={{ color: C.sub, fontFamily: SANS }}>no new facility needed — the project is funded from cash</div>}
             </div>
             {st.refiBest && !(b.pl2 > 0) && <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5, background: "#FBEFD9", borderRadius: 7, padding: "8px 12px", marginBottom: 10 }}>
-              <b>Personal loan at completion</b> <Hint text={EXPL.refi} /> — best option: {st.refiBest.name}. It would put <b>{fS(st.refiBest.pl2Net)}</b> in your hands at move-in{st.refiBest.pl2Refi.length ? ` after the bank clears ${st.refiBest.pl2Refi.join(" + ")}` : ""} (cash then {fS(st.refiBest.cashAtCompletion)} instead of {fS(b.cashAtCompletion)}), and cost <b style={{ color: C.neg }}>{fS(Math.max(0, b.netWorth - st.refiBest.netWorth))}</b> of net worth by Y{inp.horizon}. {b.ok ? "Not needed to meet your cash-recovery rule here." : "It is the way to meet your cash-recovery rule."}
+              <b>Personal loan at completion</b> <Hint text={EXPL.refi} /> — best option: {st.refiBest.name}. It would put <b>{fS(st.refiBest.pl2Net)}</b> in your hands at move-in{st.refiBest.pl2Refi.length ? ` after the bank clears ${st.refiBest.pl2Refi.join(" + ")}` : ""} (cash then {fS(st.refiBest.cashAtCompletion)} instead of {fS(b.cashAtCompletion)}), and leave you <b style={{ color: C.neg }}>{fS(Math.max(0, b.econAdv - st.refiBest.econAdv))}</b> poorer by Y{inp.horizon} when everything grows. {b.ok ? "Not needed to meet your cash-recovery rule here." : "It is the way to meet your cash-recovery rule."}
             </div>}
             <div className="flex items-center flex-wrap" style={{ gap: 10 }}>
               <button className="no-print" disabled={same} onClick={() => useOptPlan(st)} style={{ ...btn(same ? "transparent" : C.brass, same ? C.sub : C.ink, same ? C.line : C.brass), fontSize: 12, padding: "6px 12px" }}>{same ? "This is Strategy 1" : "Use as Strategy 1"}</button>
-              {st.alts.length > 0 && <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>Next best: {st.alts.map((a, k) => <span key={k}>{k > 0 ? " · " : ""}{a.name} ({fS(a.netWorth)}{a.ok ? "" : a.feasible ? ", slow recovery" : ", not executable"})</span>)}</span>}
+              {st.alts.length > 0 && <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>Next best: {st.alts.map((a, k) => <span key={k}>{k > 0 ? " · " : ""}{a.name} ({fDiff(a.econAdv)} {baseLbl}{a.ok ? "" : a.feasible ? ", slow recovery" : ", not executable"})</span>)}</span>}
             </div>
           </div>
         );
       };
       const OptStarts = () => {
-        if (!opt) return null;
         const rowsS = optRows.rows;
         const e = optRows.done ? (rowsS.find((x) => x.best.ok) || null) : null;
         return (
           <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
             <div className="flex items-center justify-between flex-wrap" style={{ gap: 8, padding: "10px 14px", borderBottom: `1px solid ${C.line}` }}>
-              <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.brass }}>Best mix for every start date <Hint text={EXPL.optimizer} /> <OptStatus /></span>
-              <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>{!optRows.done ? `working… ${rowsS.length} of ${optRows.total} start dates` : e ? <>★ earliest start passing both tests: <b style={{ color: C.text }}>{fCal(e.delay)}</b></> : "no start passes both tests"}</span>
+              <span style={{ fontFamily: SANS, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.brass }}>Best mix for every start date <Hint text={EXPL.optimizer} /> <OptStatus stale={optRows.done && startsStale} /></span>
+              <span style={{ fontFamily: SANS, fontSize: 11.5, color: C.sub }}>{!optRows.done ? `working… ${rowsS.length} of ${optRows.total || "…"} start dates` : e ? <>★ earliest start passing both tests: <b style={{ color: C.text }}>{fCal(e.delay)}</b></> : "no start passes both tests"}</span>
             </div>
             <div className="scroll-x">
               <table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
-                <thead><tr>{["Start", "Move in", "Best mix", "Executable", `Cash back (≤ ${inp.recoveryMonths} mo)`, "Cash low", "Peak DBR", "Land mortgage", "Own-property mortgage", "Personal loan(s) incl. refinance", "Cash-out", "New debt", "Profit + fees", `Net worth @ Y${inp.horizon}`, ""].map((h, i) => <th key={h || "x"} style={{ ...th, textAlign: i < 3 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
+                <thead><tr>{["Start", "Move in", "Best mix", "Executable", `Cash back (≤ ${inp.recoveryMonths} mo)`, "Cash low", "Peak DBR", "Land mortgage", "Own-property mortgage", "Personal loan(s) incl. refinance", "Cash-out", "New debt", "Profit + fees", `vs ${baseLbl} · everything grows`, `Rule-7 net worth @ Y${inp.horizon}`, ""].map((h, i) => <th key={h || "x"} style={{ ...th, textAlign: i < 3 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
                 <tbody>{rowsS.map((st) => { const b = st.best, isE = e && e.delay === st.delay, isCur = st.delay === curStart; return (
                   <tr key={st.delay} style={{ background: isE ? "#F6EFE1" : "transparent", fontWeight: isE ? 700 : 400, borderLeft: isE ? `4px solid ${C.brass}` : "4px solid transparent" }}>
                     <td style={{ ...td, textAlign: "left", fontFamily: SANS, whiteSpace: "nowrap" }}>{isE && <span style={{ color: C.brass }}>★ </span>}{fCal(st.delay)} <span style={{ color: C.sub, fontFamily: MONO, fontSize: 11 }}>M{st.delay}</span>{isCur && <span className="tag" style={{ background: SOFT, color: C.sub, marginLeft: 6 }}>planned</span>}</td>
@@ -992,12 +966,13 @@
                     <td style={td}>{b.co > 0 ? fS(b.co) : "–"}</td>
                     <td style={td}>{fS(b.newDebt)}</td>
                     <td style={{ ...td, color: C.neg }}>{fS(b.newDebtInterest)}</td>
+                    <td style={{ ...td, color: b.econAdv >= 0 ? C.pos : C.neg }}>{fS(b.econAdv)}</td>
                     <td style={td}>{fS(b.netWorth)}</td>
                     <td style={{ ...td, textAlign: "right" }} className="no-print"><button onClick={() => useOptPlan(st)} style={{ ...btn("transparent", C.brass, C.line), fontSize: 11, padding: "3px 8px" }}>Use</button></td>
                   </tr>); })}</tbody>
               </table>
             </div>
-            <Note><span style={{ padding: "0 14px 10px", display: "block" }}>Each row is the best of {optRows.combos || opt.combos} mixes for that start (rates and tenures from Strategy 1). "Taken / bank max" shows how much of each facility's ceiling is used. Later starts can look richer here mostly because of how the comparison is measured: both sides grow your cash only from completion, so a later completion means fewer years of growth, and by then old loans have ended so the bank lends more. It is not a sign that waiting itself creates wealth; weigh it against the years spent in your current home. "Use" copies the row's mix into Strategy 1 and moves the start.</span></Note>
+            <Note><span style={{ padding: "0 14px 10px", display: "block" }}>Each row is the best of {optRows.combos || (opt && opt.combos) || "all"} mixes for that start, priced with your Bank terms and ranked by the "everything grows" measure. "Taken / bank max" shows how much of each facility's ceiling is used. Both sides grow from today, so waiting earns no free growth; a later start can still score better when old loans have ended by then (more room in the bucket, fewer payoffs). Weigh that against what waiting costs: higher land and building prices and the years spent in your current home. "Use" copies the row's mix into Strategy 1 and moves the start.</span></Note>
           </div>
         );
       };
@@ -1005,8 +980,9 @@
       const StepFin = () => (
         <div>
           <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "fin") + 1} · Financing`} title={home ? `Fill your ${inp.dbrCap}% bucket the best way` : "Four ways to fund it"}
-            sub={home ? `Your instalment capacity is one bucket — ${inp.dbrCap}% of income, with mortgages allowed up to ${inp.mortgageCap}% and each personal loan up to ${inp.perLoanCap}% inside it. Settling an old loan frees room; every new facility uses it. The optimizer below tries every way of filling the bucket for your planned start; the four strategy cards underneath are a sandbox to shape your own sequences (the optimizer borrows its rates and tenures from Strategy 1).`
+            sub={home ? `Your instalment capacity is one bucket — ${inp.dbrCap}% of income, with all mortgages together allowed up to ${inp.mortgageCap}% and each personal loan up to ${inp.perLoanCap}% inside it. Settling an old loan frees room; every new facility uses it. Set your bank's terms first; the optimizer then tries every way of filling the bucket for your planned start, and the four strategy cards underneath are a sandbox to shape your own sequences — all priced with the same terms.`
                       : "Each option is a capital stack: own cash first, then a personal loan (unsecured, short, repaid from month 1), and a mortgage for the remainder — drawn in stages during construction with profit accruing in the grace period."} />
+          {home && TermsCard()}
           {home && <OptPlanned />}
           {home && opt && <div style={{ marginBottom: 16 }}>{BucketChart({ b: opt.planned.best })}</div>}
           {home && <div className="subhead" style={{ fontSize: 13, margin: "18px 0 10px" }}>Or compare your own sequences</div>}
@@ -1023,7 +999,7 @@
       const StepRes = () => (
         <div>
           <SectionHeader eyebrow={`Step ${steps.findIndex((s) => s[0] === "res") + 1} · Results`} title={home ? "Which sequence works, and which leaves you wealthiest?" : "Which capital stack earns the most?"}
-            sub={home ? `Ranked by net worth at year ${inp.horizon}: your cash on hand at completion grown at ${inp.altReturn}%/yr − new-loan instalments (a cost) + old-loan instalments saved + rent received + home value − debt still owed, against your own cash simply invested at ${inp.altReturn}%/yr. Salary and living costs are left out. A strategy whose cash goes negative is not executable, however good its end result looks.`
+            sub={home ? `Ranked by the "everything grows" measure: from today, both sides grow at ${inp.altReturn}%/yr — your household cash (salary in; living costs, rent, every instalment and payoff out) + the home's value − all debt, against the same household not building. Your rule-7 net worth (cash on hand from your own cash and the loans, grown; instalments as a plain cost; no salary) is shown next to it. A strategy whose cash goes negative is not executable, however good its end result looks.`
                       : "Ranked by levered IRR on the cash you actually put in. Unlevered IRR is the property's own return and is the same for every stack; the difference is what the debt adds or destroys."} />
           {/* comparison table */}
           <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
@@ -1067,8 +1043,9 @@
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16, padding: "6px 0" }}>
               {home ? <>
                 {LineChartBox({ title: "Total debt outstanding · SAR", keyPrefix: "debt", height: 240, note: "old loans + property mortgages + personal loan" })}
-                {LineChartBox({ title: "Monthly instalments, all debt · SAR/mo (annual average)", keyPrefix: "inst", height: 240, extra: <ReferenceLine y={inp.income * inp.dbrCap / 100} stroke={C.neg} strokeDasharray="4 4" label={{ value: `${inp.dbrCap}% of income`, fontFamily: SANS, fontSize: 11, fill: C.sub, position: "insideTopRight" }} /> })}
-                {LineChartBox({ title: `Net worth · grown cash − instalments + rent + home − debt`, keyPrefix: "nw", height: 240, extra: <Line dataKey="renter" name={renting ? "Keep renting" : "Don't build"} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
+                {LineChartBox({ title: "Monthly instalments, all debt · SAR/mo (annual average)", keyPrefix: "inst", height: 240, extra: <Line dataKey="cap" name={`${inp.dbrCap}% of income`} stroke={C.neg} strokeWidth={1.5} strokeDasharray="4 4" dot={false} type="stepAfter" /> })}
+                {LineChartBox({ title: `Everything grows · you minus ${baseLbl} · SAR`, keyPrefix: "econ", height: 240, note: "Above zero: building has left you richer by then (cash + home − debt, everything growing from today on both sides)." })}
+                {LineChartBox({ title: `Rule-7 net worth · grown cash − instalments + rent + home − debt`, keyPrefix: "nw", height: 240, extra: <Line dataKey="renter" name={renting ? "Keep renting" : "Don't build"} stroke={C.sub} strokeWidth={2} strokeDasharray="5 4" dot={false} /> })}
               </> : <>
                 {LineChartBox({ title: "Monthly instalments + upkeep · SAR/mo (annual average)", keyPrefix: "out", height: 240 })}
                 <Panel title="Annual cash flow after debt service · SAR">
@@ -1112,29 +1089,50 @@
                 </details></EvRow>) });
                   return rows.sort((a, b) => a.t - b.t || a.o - b.o).map((x) => x.el);
                 })()}
-                <EvRow t={`Y${inp.horizon}`} kind="end" last><details className="bridge"><summary>Net worth <b>{fS(focusRes.netWorthEnd)}</b> vs <b>{fS(focusRes.renterEnd)}</b> if you {renting ? "kept renting" : "don't build"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up (own cash and loans only, no salary)</span></summary>
+                <EvRow t={`Y${inp.horizon}`} kind="end"><details className="bridge"><summary>Everything grows: cash + home − debt <b>{fS(focusRes.econEnd)}</b> vs <b>{fS(focusRes.econBaseEnd)}</b> if you {renting ? "kept renting" : "don't build"} → <b style={{ color: focusRes.econAdv >= 0 ? C.pos : C.neg }}>{fS(focusRes.econAdv)}</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up (salary and every cost included — how strategies are ranked)</span></summary>
+                  {(() => {
+                    const H = focusRes.months.length - 1, end = focusRes.months[H], irr = econIrr[focusIdx];
+                    const line = (label, v, note) => Math.abs(v) < 0.5 ? null : <tr key={label}><td>{label}{note ? <div className="n">{note}</div> : null}</td><td className="v" style={{ color: v < 0 ? C.neg : C.text }}>{v < 0 ? "−" : "+"}{fSAR(Math.abs(v))}</td></tr>;
+                    return <table className="bridge"><tbody>
+                      {line(`Your household cash at Y${inp.horizon}`, end.cash, `salary in; living costs, rent, every instalment, the project, payoffs and fees out; ${inp.altReturn}%/yr growth from today while the balance is positive`)}
+                      {line(`Home value at Y${inp.horizon}`, end.value, "no selling costs")}
+                      {line(`All debt still owed at Y${inp.horizon} (old and new loans)`, -end.debt)}
+                      <tr className="tot"><td>Cash + home − debt</td><td className="v">{fSAR(end.econNW)}</td></tr>
+                      <tr><td colSpan={2} style={{ paddingTop: 10, fontWeight: 600 }}>If you {renting ? "keep renting" : "don't build"}</td></tr>
+                      {line(`Household cash at Y${inp.horizon}`, end.rCash, `same salary, living costs and old loans${renting ? ", rent all the way" : ""}; the same ${inp.altReturn}%/yr growth from today`)}
+                      {line("Old-loan debt still owed", end.econBase - end.rCash)}
+                      <tr className="tot"><td>Cash − debt</td><td className="v">{fSAR(end.econBase)}</td></tr>
+                      <tr className="tot"><td>Difference</td><td className="v" style={{ color: end.econAdv >= 0 ? C.pos : C.neg }}>{end.econAdv < 0 ? "−" : "+"}{fSAR(Math.abs(end.econAdv))}</td></tr>
+                      <tr><td>…in today's money<div className="n">discounted at the {inp.altReturn}% your cash earns</div></td><td className="v" style={{ color: focusRes.econPV >= 0 ? C.pos : C.neg }}>{focusRes.econPV < 0 ? "−" : "+"}{fSAR(Math.abs(focusRes.econPV))}</td></tr>
+                      <tr><td>Return on building (yearly)<div className="n">{irr == null ? "not defined here: the extra money building takes and gives back never changes sign" : `the money building takes earns this, against ${inp.altReturn}% on cash`}</div></td><td className="v">{irr == null ? "n/a" : pct1(irr * 100)}</td></tr>
+                    </tbody></table>; })()}
+                </details></EvRow>
+                <EvRow t={`Y${inp.horizon}`} kind="end" last><details className="bridge"><summary>Rule-7 net worth <b>{fS(focusRes.netWorthEnd)}</b> vs <b>{fS(focusRes.renterEnd)}</b> if you {renting ? "kept renting" : "don't build"} → <b style={{ color: focusRes.advantage >= 0 ? C.pos : C.neg }}>{fS(focusRes.advantage)}</b> <span style={{ color: C.sub, fontSize: 11.5 }}>· how this adds up (own cash and loans only, no salary)</span></summary>
                   {(() => {
                     const H = focusRes.months.length - 1, end = focusRes.months[H], occ = Math.min(H, focusRes.occupy), ms = focusRes.months;
                     const fbC = fundingBridgeRows(focusRes, occ, inp, prj), fbH = fundingBridgeRows(focusRes, H, inp, prj);
-                    const after = (fbH.total - fbH.ret) - (fbC.total - fbC.ret);            // loans taken / paid off after completion
-                    const growth = end.ccash - fbC.total - after;                              // growth from completion to the horizon
+                    const after = fbH.total - fbC.total;                                       // loans taken / paid off after completion (no growth)
+                    const settle = ms.reduce((a, x) => a + (x.renterSettle || 0), 0), bGrow = ms.reduce((a, x) => a + (x.bRet || 0), 0);
                     const line = (label, v, note) => Math.abs(v) < 0.5 ? null : <tr key={label}><td>{label}{note ? <div className="n">{note}</div> : null}</td><td className="v" style={{ color: v < 0 ? C.neg : C.text }}>{v < 0 ? "−" : "+"}{fSAR(Math.abs(v))}</td></tr>;
                     return <table className="bridge"><tbody>
-                      <tr><td><details className="bridge"><summary>Cash on hand at completion ({fCal(occ)}) — own cash and loans</summary><BridgeTable b={fbC} totalLabel={`Left from your cash and the loans, ${fCal(occ)}`} /></details></td><td className="v" style={{ color: fbC.total < 0 ? C.neg : C.text }}>{fbC.total < 0 ? "−" : "+"}{fSAR(Math.abs(fbC.total))}</td></tr>
-                      {line("Loans taken or paid off after completion", after)}
-                      {line(`Growth at ${inp.altReturn}%/yr on this cash from completion to Y${inp.horizon}`, growth, "instalments never touch this cash — your salary pays them")}
+                      <tr><td><details className="bridge"><summary>Cash on hand at completion ({fCal(occ)}) — own cash and loans, no growth</summary><BridgeTable b={fbC} totalLabel={`Left from your cash and the loans, ${fCal(occ)}`} /></details></td><td className="v" style={{ color: fbC.total < 0 ? C.neg : C.text }}>{fbC.total < 0 ? "−" : "+"}{fSAR(Math.abs(fbC.total))}</td></tr>
+                      {line(`Growth at ${inp.altReturn}%/yr on this cash from today to completion`, fbC.ret, "both sides grow from today, while the balance is positive")}
+                      {line("Loans taken or paid off after completion", after, "e.g. a mortgage you pay off early")}
+                      {line(`Growth at ${inp.altReturn}%/yr from completion to Y${inp.horizon}`, fbH.ret - fbC.ret, "instalments never touch this cash — your salary pays them")}
                       <tr><td style={{ fontWeight: 600 }}>Cash on hand at Y{inp.horizon}</td><td className="v" style={{ fontWeight: 600 }}>{fSAR(end.ccash)}</td></tr>
                       {line("Instalments on the new loans, up to the end of the comparison", -end.newInstCum, "a plain cost — paid from your salary, counted here because it is what the loans really cost")}
-                      {line("Old-loan instalments you no longer pay", end.oldSavedCum, "loans paid off or refinanced in this strategy — the payoff is in the completion cash above, so the instalments it saves are credited")}
+                      {line("Old-loan instalments you no longer pay", end.oldSavedCum, "loans paid off or refinanced in this strategy — the payoff is in the cash above, so the instalments it saves are credited")}
                       {line(`Rent received from letting the home (${fSAR(focusRes.annualRentOut)}/yr from ${fCal(occ + 1)})`, end.rentInCum, "at face value")}
                       {line("Rent you no longer pay after moving in", end.rentSavedCum)}
                       {line("Upkeep after move-in (maintenance, insurance)", -end.upkeepCum)}
                       {line(`Home value at Y${inp.horizon}`, end.value, `${fS(prj.value0)} at completion, growing ${inp.appreciation}%/yr · no selling costs`)}
                       {line(`New-loan debt still owed at Y${inp.horizon}`, -end.debtNew)}
+                      {line("Old-loan balance you no longer owe (the not-building side still does)", end.oldDebtGap, "only when the comparison ends before your old loans would")}
                       <tr className="tot"><td>Net worth, Y{inp.horizon}</td><td className="v">{fSAR(end.netWorth)}</td></tr>
                       <tr><td colSpan={2} style={{ paddingTop: 10, fontWeight: 600 }}>If you don't build</td></tr>
                       {line("Your own cash", focusRes.cashStart, "existing cash, not attached to any strategy")}
-                      {line(`Growth at ${inp.altReturn}%/yr from ${fCal(occ + 1)} to Y${inp.horizon}`, end.renterNW - focusRes.cashStart, "same growth period as your cash above · nothing subtracted — your old loans exist either way")}
+                      {line("Old loans settled on the dates you set", -settle, "they happen whether you build or not")}
+                      {line(`Growth at ${inp.altReturn}%/yr from today to Y${inp.horizon}`, bGrow, "same growth period as your cash above · nothing else subtracted — your old loans run either way")}
                       <tr className="tot"><td>Net worth if you don't build</td><td className="v">{fSAR(end.renterNW)}</td></tr>
                       <tr className="tot"><td>Difference</td><td className="v" style={{ color: end.advantage >= 0 ? C.pos : C.neg }}>{end.advantage < 0 ? "−" : "+"}{fSAR(Math.abs(end.advantage))}</td></tr>
                     </tbody></table>; })()}
@@ -1151,7 +1149,8 @@
                       ["Existing-loan instalments", "existInst", "neg"], ["Land-mortgage instalments", "lmPay", "neg"], ["Existing-property mortgage instalments", "eqPay", "neg"], ["Personal-loan instalments", "plPay", "neg"], ["Cash-out instalments", "coPay", "neg"], ["Refinance instalments", "rfPay", "neg"], ["  of which profit (all debt)", "interest", "sub"],
                       ["Maintenance & insurance", "ownerCost", "neg"],
                       ["Cash balance (year-end)", "cash", "head"], ["Debt outstanding (year-end)", "debt", "plain"], ["  land mortgage", "debtLm", "sub"], ["  existing-property mortgage", "debtEq", "sub"], ["  personal loan", "debtPl", "sub"], ["  cash-out", "debtCo", "sub"], ["  refinance", "debtRf", "sub"], ["  existing loans", "debtExisting", "sub"],
-                      ["Home value", "value", "plain"], ["Net worth", "netWorth", "head"], [renting ? "Renter's net worth" : "Net worth if you don't build", "renterNW", "plain"], [`Advantage vs ${baseLbl}`, "advantage", "head"],
+                      ["Home value", "value", "plain"], ["Everything grows: cash + home − debt", "econNW", "plain"], [renting ? "  …renting: cash − old debt" : "  …not building: cash − old debt", "econBase", "sub"], [`Everything grows: vs ${baseLbl}`, "econAdv", "head"],
+                      ["Rule-7 net worth", "netWorth", "plain"], [renting ? "  rule 7 — renter" : "  rule 7 — if you don't build", "renterNW", "sub"], [`Rule-7 advantage vs ${baseLbl}`, "advantage", "head"],
                     ] : [
                       ["Project spend", "spend", "neg"], ["  of which from own cash / personal loan", "eq", "sub"],
                       ["Rent collected (net of vacancy & mgmt)", "rentIn", "head"], ["Maintenance & insurance", "opex", "neg"], ["Net operating income", "noi", "head"],
@@ -1160,7 +1159,7 @@
                     ]).map(([label, key, kind]) => (
                       <tr key={key} style={{ background: kind === "head" ? SOFT : "transparent" }}>
                         <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: kind === "head" ? 700 : 400, color: kind === "sub" ? C.sub : C.text, paddingLeft: label.startsWith("  ") ? 26 : 14 }}>{label.trim()}</td>
-                        {focusRes.years.map((y) => { const v = y[key]; const neg = v < 0; return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: kind === "ratio" ? (v != null && v < 1.2 ? C.neg : C.text) : neg && (kind === "head" || kind === "plain") ? C.neg : kind === "neg" || kind === "sub" ? C.sub : C.text }}>{kind === "ratio" ? (v == null ? "—" : v.toFixed(2)) : kind === "neg" || (kind === "sub" && !["debtLm", "debtEq", "debtPl", "debtCo", "debtRf", "debtExisting"].includes(key)) ? (Math.abs(v) < 0.5 ? "–" : `(${fS(Math.abs(v))})`) : (Math.abs(v) < 0.5 && kind === "sub" ? "–" : fS(v))}</td>; })}
+                        {focusRes.years.map((y) => { const v = y[key]; const neg = v < 0; return <td key={y.year} style={{ ...td, fontWeight: kind === "head" ? 700 : 400, color: kind === "ratio" ? (v != null && v < 1.2 ? C.neg : C.text) : neg && (kind === "head" || kind === "plain") ? C.neg : kind === "neg" || kind === "sub" ? C.sub : C.text }}>{kind === "ratio" ? (v == null ? "—" : v.toFixed(2)) : kind === "neg" || (kind === "sub" && !["debtLm", "debtEq", "debtPl", "debtCo", "debtRf", "debtExisting", "econBase", "renterNW"].includes(key)) ? (Math.abs(v) < 0.5 ? "–" : `(${fS(Math.abs(v))})`) : (Math.abs(v) < 0.5 && kind === "sub" ? "–" : fS(v))}</td>; })}
                       </tr>
                     ))}
                   </tbody>
@@ -1168,7 +1167,7 @@
               </div>
             </Adv>
             <Adv title={`What moves the answer — sensitivity of ${nameOf(focusRes)}`}>
-              <Note>Each driver flexed ±20% on its own. Bars show the change in {home ? `wealth advantage vs ${baseLbl} (SAR)` : "levered IRR (percentage points)"}; the longest bar is the assumption to firm up first.</Note>
+              <Note>Each driver flexed ±20% on its own. Bars show the change in {home ? `the "everything grows" result vs ${baseLbl} (SAR)` : "levered IRR (percentage points)"}; the longest bar is the assumption to firm up first.</Note>
               <ResponsiveContainer width="100%" height={40 * Math.max(1, tornado.length) + 30}>
                 <BarChart data={tornado} layout="vertical" margin={{ top: 8, right: 24, left: 0, bottom: 0 }} stackOffset="sign">
                   <CartesianGrid stroke={C.line} horizontal={false} />
@@ -1198,13 +1197,13 @@
             <div className="print-section" style={{ background: sb ? SOFT_POS : SOFT_NEG, border: `1px solid ${C.line}`, borderRadius: 10, padding: "14px 18px", marginBottom: 14, fontFamily: SANS, fontSize: 14, color: C.text, lineHeight: 1.5 }}>
               {sb ? <>
                 <b>{sb.delay === curStart ? `Start as planned in ${fCal(sb.delay)}` : sb.delay < curStart ? `You could start earlier, in ${fCal(sb.delay)}` : `Earliest workable start: ${fCal(sb.delay)}`}</b> — move in {fCal(sb.occupy)}, cash never below {fS(sb.minCash)} and back at your buffer {sb.recoveryMonths === 0 ? "at move-in" : `${sb.recoveryMonths} months after move-in`}, peak instalments {fSAR(sb.peakInst)}/mo ({sb.peakDbr.toFixed(0)}% of income), project cost {fS(sb.total)}.
-                {sb.delay !== curStart && <button className="no-print" onClick={() => { set("buildStart", sb.delay); if (landWithBuild) set("landMonth", sb.delay); }} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "4px 10px", marginLeft: 10 }}>Use this start</button>}
+                {sb.delay !== curStart && <button className="no-print" onClick={() => setInp((s0) => ({ ...s0, buildStart: sb.delay, landMonth: landWithBuild ? sb.delay : Math.min(s0.landMonth, sb.delay) }))} style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "4px 10px", marginLeft: 10 }}>Use this start</button>}
               </> : <>No start date within 5 years makes this strategy executable — change the strategy (step 3), the project (step 2) or the land timing.</>}
             </div>
             <div className="print-section" style={{ background: C.paper, border: `1px solid ${C.line}`, borderRadius: 10, overflow: "hidden" }}>
               <div className="scroll-x">
                 <table className="tbl" style={{ fontFamily: MONO, fontSize: 12 }}>
-                  <thead><tr>{["Start", "Move in", "Project cost", "Executable", `Cash back at buffer (≤ ${inp.recoveryMonths} mo)`, "Cash low point", "Peak instalments", "Peak DBR", "Land mortgage", "Existing-property mortgage", "Personal loan", "Old loans settled", "Profit + fees on new debt", `Net worth @ Y${inp.horizon}`].map((h, i) => <th key={h} style={{ ...th, textAlign: i < 2 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
+                  <thead><tr>{["Start", "Move in", "Project cost", "Executable", `Cash back at buffer (≤ ${inp.recoveryMonths} mo)`, "Cash low point", "Peak instalments", "Peak DBR", "Land mortgage", "Existing-property mortgage", "Personal loan", "Old loans settled", "Profit + fees on new debt", `vs ${baseLbl} · everything grows`, `Rule-7 net worth @ Y${inp.horizon}`].map((h, i) => <th key={h} style={{ ...th, textAlign: i < 2 ? "left" : "right", whiteSpace: "normal" }}>{h}</th>)}</tr></thead>
                   <tbody>{sweep.rows.map((r) => { const isB = sb && sb.delay === r.delay; const isCur = r.delay === curStart; return (
                     <tr key={r.delay} style={{ background: isB ? "#F6EFE1" : "transparent", fontWeight: isB ? 700 : 400, borderLeft: isB ? `4px solid ${C.brass}` : "4px solid transparent" }}>
                       <td style={{ ...td, textAlign: "left", fontFamily: SANS }}>{isB && <span style={{ color: C.brass }}>★ </span>}{fCal(r.delay)} <span style={{ color: C.sub, fontFamily: MONO, fontSize: 11 }}>M{r.delay}</span>{isCur && <span className="tag" style={{ background: SOFT, color: C.sub, marginLeft: 6 }}>current</span>}</td>
@@ -1217,6 +1216,7 @@
                       <td style={{ ...td, color: r.peakDbr > inp.dbrCap + 0.5 ? C.neg : C.text }}>{pct1(r.peakDbr)}</td>
                       <td style={td}>{fS(r.mortgage)}</td><td style={td}>{fS(r.eq)}</td><td style={td}>{fS(r.pl)}</td><td style={td}>{fS(r.settled)}</td>
                       <td style={{ ...td, color: C.neg }}>{fS(r.newDebtInterest)}</td>
+                      <td style={{ ...td, color: r.econAdv >= 0 ? C.pos : C.neg }}>{fS(r.econAdv)}</td>
                       <td style={td}>{fS(r.netWorth)}</td>
                     </tr>); })}</tbody>
                 </table>
@@ -1241,7 +1241,7 @@
             {savedRows.length === 0 ? <div style={{ fontFamily: SANS, fontSize: 12.5, color: C.sub }}>No saved scenarios yet.</div> : (
               <div className="scroll-x">
                 <table className="tbl" style={{ fontFamily: MONO, fontSize: 12.5 }}>
-                  <thead><tr><th style={{ ...th, textAlign: "left" }}>Scenario</th><th style={th}>Mode</th><th style={th}>Project cost</th><th style={{ ...th, textAlign: "left" }}>Best executable</th><th style={th}>Advantage / IRR</th><th style={th}>Peak instalments</th><th style={th}>Verdict</th><th style={th} className="no-print"></th></tr></thead>
+                  <thead><tr><th style={{ ...th, textAlign: "left" }}>Scenario</th><th style={th}>Mode</th><th style={th}>Project cost</th><th style={{ ...th, textAlign: "left" }}>Best executable</th><th style={th}>vs not building (everything grows) / IRR</th><th style={th}>Peak instalments</th><th style={th}>Verdict</th><th style={th} className="no-print"></th></tr></thead>
                   <tbody>{savedRows.map((s) => (
                     <tr key={s.n}>
                       <td style={{ ...td, textAlign: "left", fontFamily: SANS, fontWeight: 600 }}>{s.n}</td>
@@ -1279,7 +1279,7 @@
                 <div className="no-print flex flex-wrap items-center" style={{ gap: 10 }}>
                   <Toggle dark value={inp.mode} onChange={(v) => { set("mode", v); setStep(0); setFocus(-1); }} options={[["home", "My own home"], ["rental", "Rental investment"]]} />
                   <button onClick={quickSave} title="Save everything on this page under a name you can reload later" style={{ ...btn(C.brass, C.ink), fontSize: 11.5, padding: "6px 10px" }}><Save size={13} /> Save scenario</button>
-                  {Object.keys(saved).length > 0 && <select value="" onChange={(e) => { if (e.target.value) { setInp(mergeRE(saved[e.target.value].inp)); setShowRestored(false); } }} style={{ fontSize: 11.5, padding: "5px 8px", maxWidth: 180 }} title="Load a saved scenario"><option value="">Load scenario…</option>{Object.keys(saved).map((k) => <option key={k} value={k}>{k}</option>)}</select>}
+                  {Object.keys(saved).length > 0 && <select value="" onChange={(e) => { if (e.target.value) { doLoad(e.target.value); setShowRestored(false); } }} style={{ fontSize: 11.5, padding: "5px 8px", maxWidth: 180 }} title="Load a saved scenario"><option value="">Load scenario…</option>{Object.keys(saved).map((k) => <option key={k} value={k}>{k}</option>)}</select>}
                   <button onClick={() => setPrintAll(true)} style={{ ...btn("transparent", C.invSub, C.lineDk), fontSize: 11.5, padding: "6px 10px" }}>Print / PDF</button>
                 </div>
               </div>
@@ -1292,6 +1292,10 @@
               <span style={{ flex: 1 }} />
               <button onClick={resetAll} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Start from defaults</button>
               <button onClick={() => setShowRestored(false)} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Dismiss</button>
+            </div>}
+            {termsNote && <div className="no-print flex items-center flex-wrap" style={{ gap: 10, background: "#FBEFD9", border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontFamily: SANS, fontSize: 12.5, color: C.text, lineHeight: 1.5 }}>
+              <span style={{ flex: "1 1 420px" }}>{termsNote}</span>
+              <button onClick={() => setTermsNote(null)} style={{ ...btn("transparent", C.sub, C.line), fontSize: 11.5, padding: "4px 9px" }}>Got it</button>
             </div>}
             {Answer()}
           </div>
