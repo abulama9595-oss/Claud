@@ -103,3 +103,40 @@ test('an existing loan quoted flat is the same loan at its APR (term = months pa
   const once = E.mergeRE({ existingLoans: [flat] }), twice = E.mergeRE(once);
   assert.strictEqual(twice.existingLoans[0].rate, once.existingLoans[0].rate, 'merging again does not convert twice');
 });
+
+test('extra plans (the tool\'s pick) run after yours, are marked, and compete in the ranking', () => {
+  const inp = { ...FAMILY, horizon: 15 };
+  const a = E.computeRE(inp);
+  const pick = { ...E.RE_PLAN_DEFAULTS, name: 'tool', plWhen: 'build', pl2Use: true, eqWhen: 'build' };
+  const b = E.computeRE(inp, { extraPlans: [pick] });
+  assert.strictEqual(b.results.length, a.results.length + 1);
+  const t = b.results[b.results.length - 1];
+  assert.ok(t.tool && !a.results.some((r) => r && r.tool));
+  a.results.forEach((r, i) => { if (r) assert.strictEqual(Math.round(b.results[i].econAdv), Math.round(r.econAdv)); });
+  const ranked = b.results.filter(Boolean).sort((x, y) => (y.feasible && y.recoveryOk) - (x.feasible && x.recoveryOk) || y.feasible - x.feasible || y.econAdv - x.econAdv)[0];
+  assert.strictEqual(b.bestFeasible === ranked || !ranked.feasible, true);
+  assert.strictEqual(key(E.computeRE(inp, {})), key(a), 'no extra plans: unchanged');
+});
+
+test('a personal-loan step keeps the options it weighed, and the chosen one is the loan taken', () => {
+  let checked = 0;
+  for (const { label, inp } of scenarios(E, 60)) {
+    const m = E.computeRE(inp);
+    m.results.forEach((r, i) => {
+      if (!r) return;
+      for (const f of [r.pl, r.pl2]) {
+        if (!f.refiOptions || !f.refiOptions.length) continue;
+        const ch = f.refiOptions.filter((o) => o.chosen);
+        if (f.amount > 0) {
+          assert.strictEqual(ch.length, 1, `${label} S${i + 1} ${f.key}: one chosen option`);
+          assert.ok(Math.abs(ch[0].amount - f.amount) < 1e-6, `${label} S${i + 1} ${f.key}: amount`);
+          assert.ok(Math.abs(ch[0].payoff - (f.refi ? f.refi.payoff : 0)) < 1e-6, `${label} S${i + 1} ${f.key}: cleared`);
+          assert.deepStrictEqual(ch[0].names.join('|'), f.refi ? f.refi.names.join('|') : '', `${label} S${i + 1} ${f.key}: which loans`);
+          checked++;
+        }
+        assert.ok(['value', 'cash', 'pick'].includes(f.refiBasis));
+      }
+    });
+  }
+  assert.ok(checked > 10, `exercised ${checked} personal-loan steps`);
+});
