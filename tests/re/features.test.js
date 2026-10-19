@@ -140,3 +140,57 @@ test('a personal-loan step keeps the options it weighed, and the chosen one is t
   }
   assert.ok(checked > 10, `exercised ${checked} personal-loan steps`);
 });
+
+test('cash at move-in: the rule-6 figure, tested against your line', () => {
+  let below = 0;
+  for (const { label, inp } of scenarios(E, 40)) {
+    const m = E.computeRE(inp), p = E.mergeRE(inp);
+    m.results.forEach((r, i) => {
+      if (!r) return;
+      const occ = Math.min(r.months.length - 1, r.occupy);
+      assert.ok(near(r.onHandAtMoveIn, E.fundingBridgeRows(r, occ, p, m.prj).total), `${label} S${i + 1}: the "cash at move-in" figure`);
+      assert.strictEqual(r.moveInOk, r.onHandAtMoveIn >= (p.minCashMoveIn || 0) - 0.5, `${label} S${i + 1}`);
+      if (!r.moveInOk) below++;
+    });
+  }
+  assert.ok(below > 0, 'some plans fall below the line');
+});
+
+test('the recommendation meets the most of your rules (recovery, cash at move-in); with the line off, the earlier choice returns', () => {
+  const met = (r) => (r.recoveryOk ? 1 : 0) + (r.moveInOk ? 1 : 0);
+  let bites = 0;
+  for (const { label, inp } of scenarios(E, 60)) {
+    const m = E.computeRE(inp), live = m.results.filter(Boolean), b = m.bestFeasible;
+    if (!b) { assert.ok(!live.some((r) => r.feasible), label); continue; }
+    for (const r of live.filter((x) => x.feasible)) assert.ok(met(r) < met(b) || (met(r) === met(b) && r.econAdv <= b.econAdv), `${label}: ${r.plan.name} outranks the recommendation`);
+    // the line far below anything: the earlier rule (recovers in time first, then the best result)
+    const off = E.computeRE({ ...inp, minCashMoveIn: -1e12 }), old = off.results.filter(Boolean), by = (a, c) => c.econAdv - a.econAdv;
+    const exp = old.filter((r) => r.feasible && r.recoveryOk).sort(by)[0] || old.filter((r) => r.feasible).sort(by)[0] || null;
+    assert.strictEqual(off.bestFeasible, exp, label + ': line off');
+    if (m.results.indexOf(b) !== off.results.indexOf(off.bestFeasible)) bites++;
+  }
+  assert.ok(bites > 0, 'the rule changes some recommendations');
+});
+
+test('Auto refinance falls back to the most cash only when that meets more of your rules', () => {
+  const score = (x) => (x.feasible ? 1 : 0) + (x.feasible && x.recoveryOk ? 1 : 0) + (x.feasible && x.moveInOk ? 1 : 0);
+  let byMoveIn = 0;
+  for (const { label, inp } of scenarios(E, 120)) {
+    E.computeRE(inp).results.forEach((r, i) => {
+      if (!r || !r.refiFallback) return;
+      const w = r.refiFallbackWhy;
+      assert.ok(score(r) > score(w), `${label} S${i + 1}`);
+      if (w.feasible && w.recoveryOk && !w.moveInOk) { byMoveIn++; assert.ok(r.moveInOk, `${label} S${i + 1}: the fallback meets the line`); }
+    });
+  }
+  assert.ok(byMoveIn > 0, 'some fallbacks are for the move-in line');
+});
+
+test("the tool's pick meets your rules whenever some mix does", () => {
+  for (const { label, inp } of scenarios(E, 10)) {
+    const st = E.optimizeRE(inp, { plannedOnly: true }).planned, b = st.best;
+    if (st.nOk > 0) assert.ok(b.ok && b.feasible && b.recoveryOk && b.moveInOk, label);
+    assert.strictEqual(b.ok, b.feasible && b.recoveryOk && b.moveInOk, label);
+    if (b.moveInOk) assert.ok(b.onHand >= (E.mergeRE(inp).minCashMoveIn || 0) - 0.5, label);
+  }
+});
