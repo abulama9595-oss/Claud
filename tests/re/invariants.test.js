@@ -24,9 +24,11 @@ test('bank limits hold and every loan is taken at the bank maximum', () => {
         const mo = r.months[t];
         const running = facs.filter((f) => f.startedAt < t && (f.settledAt == null || f.settledAt > t));
         if (!running.length) continue;
-        const inst = mo.existInst + mo.lmPay + mo.eqPay + mo.plPay + mo.coPay + mo.rfPay;
+        // the bank tests scheduled instalments (a voluntary extra payment is not one)
+        const inst = mo.existInst + mo.lmPay + mo.eqPay + mo.plPay + mo.coPay + mo.rfPay - mo.extraPay;
         if (inst > mo.inc * p.dbrCap / 100 + TOL) flag('65% bucket', `${label} M${t}: ${inst} > ${mo.inc * p.dbrCap / 100}`);
-        for (const k of ['lm', 'eq', 'co']) if (mo[k + 'Pay'] > mo.inc * p.mortgageCap / 100 + TOL) flag('mortgage cap', `${label} M${t} ${k}: ${mo[k + 'Pay']}`);
+        const mort = mo.lmPay + mo.eqPay + mo.coPay - mo.extraPay;   // all mortgages together
+        if (mort > mo.inc * p.mortgageCap / 100 + TOL) flag('mortgage cap (all mortgages together)', `${label} M${t}: ${mort} > ${mo.inc * p.mortgageCap / 100}`);
       }
     });
   }

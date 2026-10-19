@@ -65,3 +65,19 @@ test('home value: the self-build uplift applies to construction only; overruns a
   const spend = (prj) => prj.schedule.reduce((x, y) => x + (y || 0), 0);
   assert.ok(Math.abs(spend(b) - b.total) < 1e-6, 'every riyal of cost is in the spend schedule');
 });
+
+test('all mortgages together stay within the mortgage cap', () => {
+  const plan = { ...E.RE_PLAN_PRESETS.landPlusOwned, enabled: true, settlePolicy: 'none' };
+  const m = E.computeRE({ income: 80000, existingLoans: [], ownedValue: 9000000, landArea: 800, landPrice: 5000, plans: [plan, { ...plan, enabled: false }, { ...plan, enabled: false }, { ...plan, enabled: false }] });
+  const r = m.results[0], peak = Math.max(...r.months.map((x) => x.lmPay + x.eqPay + x.coPay - x.extraPay));
+  assert.ok(r.lm.amount > 0 && r.eq.amount > 0, 'both mortgages were taken');
+  assert.ok(peak <= 80000 * m.p.mortgageCap / 100 + 1e-6, `mortgages ${peak} > ${80000 * m.p.mortgageCap / 100}`);
+});
+
+test('income and living costs grow in yearly steps, and the bank limits follow income', () => {
+  const m = E.computeRE({ incomeGrowth: 10, livingGrowth: 5 }), r = m.results.find(Boolean);
+  assert.equal(r.months[12].inc, m.p.income);
+  assert.ok(Math.abs(r.months[13].inc - m.p.income * 1.1) < 1e-6 && Math.abs(r.months[25].liv - m.p.livingExpenses * 1.05 ** 2) < 1e-6);
+  const rows = m.household.capTimeline;
+  assert.ok(rows.some((x) => x.income > m.p.income), 'the capacity timeline shows the higher income');
+});
