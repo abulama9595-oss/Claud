@@ -5,15 +5,26 @@ const { loadEngine, scenarios } = require('./helpers.js');
 const E = loadEngine();
 const TOL = 1e-3;
 
-// existing loans on their own schedule (what the not-building side pays), instalment floored at the clearing annuity
+// existing loans on their own schedule (what the not-building side pays), instalment floored at the clearing annuity;
+// the not-building side also makes the planned settlements (balance + next 3 months' profit on the declining balance)
 function renterSchedule(p, H) {
-  const inst = new Array(H + 1).fill(0), debt = new Array(H + 1).fill(0);
+  const inst = new Array(H + 1).fill(0), debt = new Array(H + 1).fill(0), settle = new Array(H + 1).fill(0);
   for (const l of p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0)) {
-    const left = Math.max(1, Math.round(l.monthsLeft)), pay0 = Math.max(l.installment, E.rePmt(l.balance, l.rate, left));
+    const left0 = Math.max(1, Math.round(l.monthsLeft)), pay0 = Math.max(l.installment, E.rePmt(l.balance, l.rate, left0));
+    const s = l.settleAt != null && l.settleAt > 0 ? Math.round(l.settleAt) : null;
     let bal = l.balance;
-    for (let t = 0; t <= H; t++) { if (t >= 1 && bal > 0.5) { const i = bal * l.rate / 1200; const pm = Math.min(bal + i, pay0); bal -= pm - i; inst[t] += pm; } debt[t] += Math.max(0, bal); }
+    for (let t = 0; t <= H; t++) {
+      if (t >= 1 && bal > 0.5) {
+        if (t === s) {
+          const left = Math.max(0, left0 - (t - 1)); let b = bal, fee = 0;
+          for (let k = 0; k < Math.min(Math.max(0, p.settleFeeMonths), left) && b > 0.5; k++) { const i = b * l.rate / 1200; fee += i; b -= Math.min(b + i, pay0) - i; }
+          settle[t] += bal + fee; bal = 0;
+        } else { const i = bal * l.rate / 1200; const pm = Math.min(bal + i, pay0); bal -= pm - i; inst[t] += pm; }
+      }
+      debt[t] += Math.max(0, bal);
+    }
   }
-  return { inst, debt };
+  return { inst, debt, settle };
 }
 
 // each new facility's instalments rebuilt from its amount, rate and instalment
@@ -40,7 +51,7 @@ function audit(label, m, r, bad) {
   const near = (a, b) => Math.abs(a - b) <= TOL * Math.max(1, Math.abs(b) / 1e6);
   const flag = (k, msg) => { if (!bad[k]) bad[k] = `${label} ${msg}`; };
   const grow = (x) => (x > 0 ? x * (1 + alt) : x);
-  let cash, cc, bc, rc, newC = 0, oldC = 0, rsC = 0, riC = 0, upC = 0;
+  let cash, cc, bc, rc, newC = 0, oldC = 0, rsC = 0, riC = 0, upC = 0, cRetCum = 0;
   for (let t = 0; t <= H; t++) {
     const mo = r.months[t];
     const proceeds = r.facilities.filter((f) => f.startedAt === t && f.amount > 0).reduce((a, f) => a + f.amount - f.fees - (f.refi ? f.refi.payoff : 0), 0);
@@ -51,10 +62,10 @@ function audit(label, m, r, bad) {
     if (t === 0) { cash = p.cashAvailable + flows; cc = p.cashAvailable + flows; bc = p.cashAvailable; rc = p.cashAvailable; }
     else {
       cash = grow(cash) + mo.inc - mo.liv - mo.rentPaid + mo.rentIn + flows - mo.existInst - newPay - mo.ownerCost;
-      const cRet = t > occ && cc > 0 ? cc * alt : 0;            // rule-7 cash grows after completion, only while positive
-      cc = cc + cRet + flows;
-      bc += t > occ && bc > 0 ? bc * alt : 0;
-      rc = grow(rc) + mo.inc - mo.liv - mo.rentEq - ren.inst[t];
+      const cRet = cc > 0 ? cc * alt : 0;                         // both sides grow from today, only while positive
+      cc = cc + cRet + flows; cRetCum += cRet;
+      bc += bc > 0 ? bc * alt : 0; bc -= ren.settle[t];            // the not-building side makes the planned settlements too
+      rc = grow(rc) + mo.inc - mo.liv - mo.rentEq - ren.inst[t] - ren.settle[t];
     }
     if (!near(mo.cash, cash)) flag('household cash', `M${t}: engine ${mo.cash} vs rebuilt ${cash}`);
     if (!near(mo.ccash, cc)) flag('rule-7 cash', `M${t}: engine ${mo.ccash} vs rebuilt ${cc}`);
@@ -63,7 +74,9 @@ function audit(label, m, r, bad) {
     cash = mo.cash; cc = mo.ccash; bc = mo.bcash; rc = mo.rCash;   // re-anchor: report one slip once
     newC += newPay; upC += mo.ownerCost; riC += mo.rentIn; oldC += ren.inst[t] - mo.existInst; rsC += t >= 1 ? mo.rentEq - mo.rentPaid : 0;
     for (const [k, v] of [['newInstCum', newC], ['upkeepCum', upC], ['rentInCum', riC], ['oldSavedCum', oldC], ['rentSavedCum', rsC]]) if (!near(mo[k], v)) flag('ledger ' + k, `M${t}: engine ${mo[k]} vs ${v}`);
-    const nw = mo.ccash - mo.newInstCum + mo.oldSavedCum + mo.rentSavedCum + mo.rentInCum - mo.upkeepCum + mo.value - mo.debtNew;
+    if (!near(mo.cRetCum, cRetCum)) flag('growth total', `M${t}: engine ${mo.cRetCum} vs ${cRetCum}`);
+    if (!near(mo.oldDebtGap, ren.debt[t] - mo.debtExisting)) flag('old-loan balance gap', `M${t}: engine ${mo.oldDebtGap} vs ${ren.debt[t] - mo.debtExisting}`);
+    const nw = mo.ccash - mo.newInstCum + mo.oldSavedCum + mo.rentSavedCum + mo.rentInCum - mo.upkeepCum + mo.value - mo.debtNew + (ren.debt[t] - mo.debtExisting);
     if (!near(mo.netWorth, nw)) flag('net worth', `M${t}: engine ${mo.netWorth} vs ${nw}`);
     if (!near(mo.renterNW, mo.bcash) || !near(mo.advantage, mo.netWorth - mo.renterNW)) flag('baseline / advantage', `M${t}`);
     if (!near(mo.debt, mo.debtNew + mo.debtExisting)) flag('debt = new + existing', `M${t}`);

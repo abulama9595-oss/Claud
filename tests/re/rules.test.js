@@ -81,3 +81,23 @@ test('income and living costs grow in yearly steps, and the bank limits follow i
   const rows = m.household.capTimeline;
   assert.ok(rows.some((x) => x.income > m.p.income), 'the capacity timeline shows the higher income');
 });
+
+test('short horizon: the old-loan balance the not-building side still owes is credited to a strategy that paid it off', () => {
+  const big = { id: 1, name: 'Long loan', balance: 2500000, installment: 36600, monthsLeft: 84, rate: 6 };
+  const plan = { ...E.RE_PLAN_PRESETS.landPlusOwned, enabled: true, settlePolicy: 'forMax' };
+  const m = E.computeRE({ horizon: 5, existingLoans: [big], cashAvailable: 4000000, plans: [plan, { ...plan, enabled: false }, { ...plan, enabled: false }, { ...plan, enabled: false }] });
+  const r = m.results[0], end = r.months[r.months.length - 1];
+  assert.ok(r.payoffs.some((x) => x.name === 'Long loan'), 'the loan was paid off');
+  let bal = 2500000; const inst = Math.max(36600, E.rePmt(2500000, 6, 84));
+  for (let t = 1; t <= 60; t++) bal -= inst - bal * 0.005;
+  assert.ok(Math.abs(end.oldDebtGap - bal) < 1e-3, `credited ${end.oldDebtGap} vs still owed by the baseline ${bal}`);
+});
+
+test('a planned settlement happens on both sides, so it does not change the comparison', () => {
+  const loan = { id: 1, name: 'Old', balance: 300000, installment: 9000, monthsLeft: 40, rate: 6.5 };
+  const plans = [{ ...E.RE_PLAN_PRESETS.allCash, enabled: true }, null, null, null].map((o) => o || { ...E.RE_PLAN_PRESETS.allCash, enabled: false });
+  const base = { cashAvailable: 10000000, existingLoans: [loan], plans };
+  const a = E.computeRE(base).results[0], b = E.computeRE({ ...base, existingLoans: [{ ...loan, settleAt: 6 }] }).results[0];
+  assert.ok(b.payoffs.length === 1 && b.months[6].renterSettle > 0, 'paid off on both sides');
+  assert.ok(Math.abs(a.advantage - b.advantage) < 1e-3, `advantage ${a.advantage} vs ${b.advantage}`);
+});

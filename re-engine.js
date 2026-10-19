@@ -413,6 +413,14 @@ function reSimulate(p, prj, opt) {
 }
 
 /* ---------- home mode: month-by-month household cash simulation of one strategy (v2) ---------- */
+// early-settlement cost (SAMA cap): the balance plus the next min(feeMonths, months left) months' profit on the DECLINING balance
+function reSettleCost(bal, rateApr, inst, left, feeMonths) {
+  const r = rateApr / 100 / 12;
+  let b = bal, fee = 0;
+  for (let k = 0; k < Math.min(feeMonths, left) && b > 0.5; k++) { const i = b * r; fee += i; b -= Math.min(b + i, inst) - i; }
+  return bal + fee;
+}
+
 function rePlanSimulate(p, prj, plan) {
   const H = Math.round(p.horizon * 12);
   const alt = Math.pow(1 + p.altReturn / 100, 1 / 12) - 1;
@@ -431,10 +439,19 @@ function rePlanSimulate(p, prj, plan) {
   // existing loans (instalment floored at the annuity that clears the balance in the stated months)
   const loans = p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).map((l) => { const left = Math.max(1, Math.round(l.monthsLeft)); return { ...l, bal: l.balance, left, installment: Math.max(l.installment, rePmt(l.balance, l.rate, left)), settledAt: null, interestPaid: 0, kind: "existing" }; });
   const loanPay = (bal, i, inst) => Math.min(bal + i, inst);
-  // renter/not-building baseline keeps paying the existing loans untouched
-  const renterInst = new Array(H + 1).fill(0), renterDebt = new Array(H + 1).fill(0);
-  loans.forEach((l) => { let bal = l.bal; for (let t = 1; t <= H && bal > 0.5; t++) { const i = bal * l.rate / 100 / 12; const pay = loanPay(bal, i, l.installment); bal -= pay - i; renterInst[t] += pay; } });
-  loans.forEach((l) => { let bal = l.bal; for (let t = 0; t <= H; t++) { if (t >= 1 && bal > 0.5) { const i = bal * l.rate / 100 / 12; bal -= loanPay(bal, i, l.installment) - i; } renterDebt[t] += Math.max(0, bal); } });
+  // the not-building side pays the existing loans on schedule and makes the same planned settlements you set
+  // (a settlement you plan anyway is not an effect of building)
+  const renterInst = new Array(H + 1).fill(0), renterDebt = new Array(H + 1).fill(0), renterSettle = new Array(H + 1).fill(0);
+  loans.forEach((l) => {
+    let bal = l.bal; const s = l.settleAt != null && l.settleAt > 0 ? Math.round(l.settleAt) : null;
+    for (let t = 0; t <= H; t++) {
+      if (t >= 1 && bal > 0.5) {
+        if (t === s) { renterSettle[t] += reSettleCost(bal, l.rate, l.installment, Math.max(0, l.left - (t - 1)), feeMonths); bal = 0; }
+        else { const i = bal * l.rate / 100 / 12; const pay = loanPay(bal, i, l.installment); bal -= pay - i; renterInst[t] += pay; }
+      }
+      renterDebt[t] += Math.max(0, bal);
+    }
+  });
 
   // the four new facilities
   const mk = (key, label, rate, tenure, fees) => ({ key, label, bal: 0, pmt: 0, amount: 0, rate: reEffRate(p, rate, Math.max(1, Math.round(tenure * 12))), quoted: rate, tenure, n: Math.max(1, Math.round(tenure * 12)), fees: 0, feesPct: fees, startedAt: null, settledAt: null, interestPaid: 0, monthsPaid: 0, capacity: null, kind: key, name: label });
@@ -450,12 +467,7 @@ function rePlanSimulate(p, prj, plan) {
   const instOf = (f) => f.bal > 0.5 && f.settledAt === null ? f.pmt : 0;
   const allInst = () => activeExisting().reduce((a, l) => a + l.installment, 0) + facs.reduce((a, f) => a + instOf(f), 0);
   // early-settlement cost (SAMA cap): the balance plus the next min(feeMonths, months left) months' profit on the DECLINING balance
-  const settleCost = (l) => {
-    const r = l.rate / 100 / 12, left = l.kind === "existing" ? Math.max(0, l.left) : Math.max(0, l.n - l.monthsPaid), inst = l.kind === "existing" ? l.installment : l.pmt;
-    let bal = l.bal, fee = 0;
-    for (let k = 0; k < Math.min(feeMonths, left) && bal > 0.5; k++) { const i = bal * r; fee += i; bal -= Math.min(bal + i, inst) - i; }
-    return l.bal + fee;
-  };
+  const settleCost = (l) => reSettleCost(l.bal, l.rate, l.kind === "existing" ? l.installment : l.pmt, l.kind === "existing" ? Math.max(0, l.left) : Math.max(0, l.n - l.monthsPaid), feeMonths);
   const instOfAny = (l) => l.kind === "existing" ? l.installment : l.pmt;
 
   let cash = p.cashAvailable, rCash = p.cashAvailable;
@@ -467,7 +479,7 @@ function rePlanSimulate(p, prj, plan) {
   //            − upkeep + home value (no selling costs) − new-loan debt still owed.
   //   if you don't build = your own cash growing at the same rate over the same period (from completion); nothing subtracted.
   let bcash = p.cashAvailable, ccash = p.cashAvailable;
-  let newInstCum = 0, oldSavedCum = 0, rentInCum = 0, rentSavedCum = 0, upkeepCum = 0;
+  let newInstCum = 0, oldSavedCum = 0, rentInCum = 0, rentSavedCum = 0, upkeepCum = 0, cRetCum = 0;
   const annualRentOut = (p.rentOutFixed || 0) > 0 ? p.rentOutFixed : (p.rentOutPct || 0) > 0 ? prj.total * p.rentOutPct / 100 : 0;
   const lettingOut = annualRentOut > 0;
   let minCash = Infinity, minCashT = 0, belowBufferMonths = 0, shortfall = 0, fundingGap = 0;
@@ -619,12 +631,12 @@ function rePlanSimulate(p, prj, plan) {
     const rentEq = t >= 1 ? p.rentNow * Math.pow(1 + p.rentGrowth / 100, yrIdx) : 0;
     const rentPaid = t >= 1 && (!occupied || lettingOut) ? rentEq : 0;   // if the new home is let out you don't move in
     const ret = t >= 1 && cash > 0 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
-    // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall
-    // growth starts after completion (cash on hand at completion is plain cash, no growth); the not-building cash grows over the
-    // same period so both sides are compared fairly
-    const growNow = t >= 1 && t > prj.occupy;
+    // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall.
+    // Both sides grow from today; the rule-6 "cash on hand at completion" is the same cash WITHOUT growth (ccash − cRetCum).
+    const growNow = t >= 1;
     const bRet = growNow && bcash > 0 ? bcash * alt : 0, cRet = growNow && ccash > 0 ? ccash * alt : 0;
-    bcash += bRet; ccash += cRet;
+    bcash += bRet; ccash += cRet; cRetCum += cRet;
+    bcash -= renterSettle[t];   // the not-building side makes your planned settlements too
     // rent from letting the new home out: from the month after completion, growing with the rent-growth setting
     const rentIn = lettingOut && t > prj.occupy ? annualRentOut / 12 * Math.pow(1 + p.rentGrowth / 100, Math.floor((t - prj.occupy - 1) / 12)) : 0;
     // household cash grows only while it is positive (growth is never a charge on a shortfall); this month's salary and rent arrive after it
@@ -664,7 +676,7 @@ function rePlanSimulate(p, prj, plan) {
     const newPay = pays.lm + pays.eq + pays.pl + pays.pl2 + pays.co + pays.rf;
     const extraPay = pays.lmExtra + pays.eqExtra + pays.plExtra + pays.pl2Extra + pays.coExtra + pays.rfExtra;
     cash -= existInst + newPay + ownerCost;
-    rCash -= renterInst[t];
+    rCash -= renterInst[t] + renterSettle[t];
     // net-worth basis: new-loan instalments and upkeep are plain costs; old-loan instalments you no longer pay and rent you no
     // longer pay are savings; rent from letting the new home is income — none of them touch the growing cash
     newInstCum += newPay; upkeepCum += ownerCost; rentInCum += rentIn;
@@ -673,14 +685,17 @@ function rePlanSimulate(p, prj, plan) {
     const debtNew = facs.reduce((a, f) => a + (f.settledAt === null ? f.bal : 0), 0);
     const debt = debtExisting + debtNew;
     const liqValue = value;   // no selling costs: the seller pays no tax or broker fee
-    const netWorth = ccash - newInstCum + oldSavedCum + rentSavedCum + rentInCum - upkeepCum + value - debtNew, renterNW = bcash, advantage = netWorth - renterNW;
+    // old-loan balance the not-building side still owes but this strategy no longer does (matters only when the horizon ends
+    // before your old loans would)
+    const oldDebtGap = renterDebt[t] - debtExisting;
+    const netWorth = ccash - newInstCum + oldSavedCum + rentSavedCum + rentInCum - upkeepCum + value - debtNew + oldDebtGap, renterNW = bcash, advantage = netWorth - renterNW;
     if (cash < minCash) { minCash = cash; minCashT = t; }
     if (cash < p.cashBuffer) belowBufferMonths++;
     if (cash < 0) shortfall = Math.max(shortfall, -cash);
     if (occupied && cashRestoredT === null && cash >= p.cashBuffer) cashRestoredT = t;
     if (occupied && breakEvenMonth === null && advantage >= 0) breakEvenMonth = t;
     if (debtFreeT === null && t > 0 && debt < 0.5) debtFreeT = t;
-    months.push({ t, year: yearOf(t), cash, rCash, bcash, ccash, bRet, cRet, rentIn, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? inc : 0, liv: t >= 1 ? liv : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, extraPay, dbr: (existInst + newPay - extraPay) / inc * 100 });
+    months.push({ t, year: yearOf(t), cash, rCash, bcash, ccash, bRet, cRet, cRetCum, renterSettle: renterSettle[t], oldDebtGap, rentIn, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? inc : 0, liv: t >= 1 ? liv : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, extraPay, dbr: (existInst + newPay - extraPay) / inc * 100 });
   }
   const nY = yearOf(H), years = [];
   for (let y = 0; y <= nY; y++) {
