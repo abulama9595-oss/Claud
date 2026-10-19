@@ -37,6 +37,8 @@ const RE_BASE = {
   builtArea: 520, buildCost: 2300,         // sqm built-up, SAR/sqm turnkey
   builtPct: 0, floors: 1,                  // if builtPct > 0, built-up area = landArea × builtPct % (footprint) × floors; builtArea is then ignored
   softPct: 8, contPct: 7, finishExtra: 150000, // design/permits/supervision %, contingency %, kitchen/AC/landscape SAR
+  overrunPct: 0,                           // cost overrun on construction (build + soft + contingency + finishing): adds cost, not value
+  landBrokerPct: 2.5,                      // broker fee on the land purchase (REGA default 2.5%); not part of the home's value
   buildMonths: 18, devMarginPct: 10,       // construction duration; market value uplift of a self-built home over its cost
   landMonth: 0, buildStart: 0, costInflation: 3, // timing: month the land is bought, month construction starts (≥ landMonth), construction-cost inflation %/yr
   // ready property
@@ -216,35 +218,36 @@ function reProject(p) {
   const vatConstr = (hard + soft + cont) * p.vatPct / 100;
   const vatFinish = finish * p.vatPct / 100;
   const broker = price * p.brokerPct / 100;
+  const landBroker = build ? land * (p.landBrokerPct || 0) / 100 : 0;          // paid with the land; not in value, RETT or the LTV
+  const overrun = build ? (hard + soft + cont + finish) * (p.overrunPct || 0) / 100 : 0;   // extra cost only — the home is not worth more
+  const vatOverrun = overrun * p.vatPct / 100;
   const rettBase = build ? land : price;
   const exempt = p.mode === "home" && p.firstHomeExempt ? Math.min(rettBase, p.rettExemptCap) : 0;
   const rett = (rettBase - exempt) * p.rettPct / 100;
-  const total = land + price + rett + broker + hard + soft + cont + finish + vatConstr + vatFinish;
-  // market value at completion: what the finished home is worth (VAT, RETT, fees, contingency are sunk)
-  const value0 = build ? (land + hard + soft + finish) * (1 + p.devMarginPct / 100) : price + finish;
+  const total = land + price + rett + broker + landBroker + hard + soft + cont + finish + overrun + vatConstr + vatFinish + vatOverrun;
   const bm = build ? Math.max(1, Math.round(p.buildMonths)) : 0;
   const occupy = start + bm + 1; // first month of living in / letting
   // monthly spend schedule, index = month
   const schedule = new Array(occupy).fill(0);
   if (build) {
-    schedule[landMonth] += land + rett;
-    const perMo = (hard + soft + cont + vatConstr) / bm;
+    schedule[landMonth] += land + rett + landBroker;
+    const perMo = (hard + soft + cont + vatConstr + overrun + vatOverrun) / bm;
     for (let t = start + 1; t <= start + bm; t++) schedule[t] += perMo;
     schedule[start + bm] += finish + vatFinish;
   } else {
     schedule[landMonth] += price + rett + broker + finish + vatFinish;
   }
   // market value path: nothing before the land is bought; land appreciates from purchase; the finished home is worth
-  // (land + construction) × (1 + uplift) at completion, with the construction share accruing in proportion to progress.
-  // With landMonth = buildStart = 0 this is identical to the original formula.
-  const compValue = build ? (land + hard + soft + finish) * (1 + p.devMarginPct / 100) : price + finish; // value at completion in purchase-month prices
+  // land + construction × (1 + self-build uplift) at completion — the uplift is on what you build, not on the land —
+  // with the construction share accruing in proportion to progress. VAT, RETT, fees, contingency and overruns are sunk.
+  const compValue = build ? land + (hard + soft + finish) * (1 + p.devMarginPct / 100) : price + finish; // value at completion in purchase-month prices
   const valueAt = (t) => {
     if (t < landMonth) return 0;
     const prog = build ? Math.min(1, Math.max(0, (t - start) / bm)) : 1;
     return (land + (compValue - land) * prog) * Math.pow(1 + g, (t - landMonth) / 12);
   };
-  return { build, land, landToday, price, hard, soft, cont, finish, vat: vatConstr + vatFinish, broker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), bm, occupy, start, landMonth, inflate, schedule, valueAt,
-    builtArea, costPerSqm: build && builtArea > 0 ? (total - land - rett) / builtArea : 0 };
+  return { build, land, landToday, price, hard, soft, cont, finish, overrun, vat: vatConstr + vatFinish + vatOverrun, broker, landBroker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), bm, occupy, start, landMonth, inflate, schedule, valueAt,
+    builtArea, costPerSqm: build && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
 }
 
 /* ---------- rate quoting ---------- */
@@ -539,7 +542,7 @@ function rePlanSimulate(p, prj, plan) {
     f.split = f.key === "pl" && plan.plSplit && amount > onePl + 1 ? [onePl, amount - onePl] : null;
     const dbr = allInst() / p.income * 100;
     const basis = mode === "max" ? "the bank's maximum" : mode === "need" ? `the shortfall${gap > amount + 1 ? ` (${fS(gap)} needed)` : ""}` : "the amount you set";
-    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. ${f.key === "lm" ? `The bank pays it directly to the seller; you pay the other ${fS(Math.max(0, (prj.build ? prj.land : prj.price) - amount))} of the price plus ${fS(prj.rett)} transfer tax${f.fees > 1 ? ` and ${fS(f.fees)} bank fees` : ""} from your own cash.` : `Net to your cash ${fS(amount - f.fees)}.`}` });
+    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. ${f.key === "lm" ? `The bank pays it directly to the seller; you pay the other ${fS(Math.max(0, (prj.build ? prj.land : prj.price) - amount))} of the price plus ${fS(prj.rett)} transfer tax${prj.landBroker > 0 ? ` and ${fS(prj.landBroker)} broker's fee` : ""}${f.fees > 1 ? ` and ${fS(f.fees)} bank fees` : ""} from your own cash.` : `Net to your cash ${fS(amount - f.fees)}.`}` });
     if (mode === "need" && gap > amount + 1) flags.push(`${f.label} covers ${fS(amount)} of a ${fS(gap)} shortfall (${c.limitedBy}).`);
   }
   // PERSONAL LOAN (refinance included): the bank lends its MAXIMUM as one or two new personal loans (each instalment ≤ perLoanCap,
@@ -619,8 +622,8 @@ function rePlanSimulate(p, prj, plan) {
     // planned settlements first (e.g. a loan you intend to clear on a known date)
     loans.forEach((l) => { if (l.settledAt === null && l.bal > 0.5 && l.settleAt != null && l.settleAt > 0 && t === Math.round(l.settleAt)) doSettle(l, t, "planned settlement from your cash"); });
     // milestones
-    if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett)} incl. RETT${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
-    if (t === prj.start && prj.build) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett)} over ${prj.bm} months.` });
+    if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett + prj.landBroker)} incl. RETT${prj.landBroker > 0 ? " and the broker's fee" : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
+    if (t === prj.start && prj.build) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett - prj.landBroker)} over ${prj.bm} months.` });
     // facilities, in order: land mortgage → existing property → personal loan → cash-out
     const landValue = prj.build ? prj.land : prj.price;   // buying ready: the purchase mortgage is sized on the purchase price
     // every new loan at the bank's maximum that month (your rule)

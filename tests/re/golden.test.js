@@ -15,5 +15,5 @@ test('clinic default is unchanged (golden rule)', () => {
 test('real-estate defaults match CLAUDE.md', () => {
   const m = E.computeRE({});
   assert.equal(m.verdict, 'OWNING WINS');
-  assert.equal(Math.round(m.prj.total), 3055912);
+  assert.equal(Math.round(m.prj.total), 3087912);   // 3,055,912 + 2.5% broker's fee on the land (32,000)
 });

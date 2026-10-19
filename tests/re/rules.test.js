@@ -53,3 +53,15 @@ test('bank terms: migrated once from the first enabled strategy that uses each l
   const { conflicts } = E.reTermsFromPlans(plans);
   assert.equal(conflicts.map((c) => c.loan).join(','), 'pl');
 });
+
+test('home value: the self-build uplift applies to construction only; overruns add cost, not value; land broker fee is a cost', () => {
+  const base = { appreciation: 0, costInflation: 0, landMonth: 0, buildStart: 0, devMarginPct: 10, vatPct: 15, landBrokerPct: 2.5 };
+  const a = E.computeRE(base).prj;
+  assert.ok(Math.abs(a.value0 - (a.land + (a.hard + a.soft + a.finish) * 1.1)) < 1e-6, 'value at completion');
+  assert.ok(Math.abs(a.landBroker - a.land * 0.025) < 1e-6 && Math.abs(a.schedule[0] - (a.land + a.rett + a.landBroker)) < 1e-6, 'broker fee paid with the land');
+  const b = E.computeRE({ ...base, overrunPct: 20 }).prj;
+  assert.ok(Math.abs(b.total - a.total - (a.hard + a.soft + a.cont + a.finish) * 0.2 * 1.15) < 1e-6, 'overrun + VAT added to the cost');
+  assert.equal(b.value0, a.value0, 'overrun does not raise the value');
+  const spend = (prj) => prj.schedule.reduce((x, y) => x + (y || 0), 0);
+  assert.ok(Math.abs(spend(b) - b.total) < 1e-6, 'every riyal of cost is in the spend schedule');
+});
