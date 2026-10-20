@@ -132,6 +132,7 @@
     .toast { position: fixed; z-index: 60; left: 50%; bottom: 18px; transform: translateX(-50%); background: #0E1A2B; color: #ECE4D3; border-radius: 10px; padding: 10px 14px; display: flex; gap: 14px; align-items: center; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.3); max-width: calc(100vw - 32px); }
     .toast button { background: #B0823A; color: #0E1A2B; border: none; border-radius: 7px; padding: 6px 12px; font-weight: 700; cursor: pointer; min-height: 32px; }
     .wf-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) minmax(120px, 2fr) 92px; gap: 10px; align-items: center; padding: 5px 0; font-size: 12.5px; }
+    .wf-head { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brassTx); padding: 10px 0 2px; }
     .wf-track { position: relative; height: 18px; }
     .wf-bar { position: absolute; top: 2px; height: 14px; border-radius: 3px; }
     @media (max-width: 640px) { .wf-row { grid-template-columns: 1fr 90px; } .wf-track { grid-column: 1 / -1; order: 3; } }
@@ -285,24 +286,31 @@
     const readJSON = (k) => { try { const j = JSON.parse(localStorage.getItem(k) || "null"); return j && typeof j === "object" ? j : null; } catch (e) { return null; } };
 
     /* ---------- pictures (plain HTML/CSS bars: crisp, print well) ---------- */
-    // how a figure adds up, as a waterfall: each step starts where the last one ended
+    // how a figure adds up, as a waterfall: each step starts where the last one ended. A `head` row opens a group and a
+    // `subtotal` row closes it with the group's own sum (its bar spans the group)
     function Waterfall({ rows, totalLabel, total }) {
-      let run = 0; const pts = rows.map((x) => { const a = run; run += x.v; return { ...x, a, b: run }; });
-      const lo = Math.min(0, ...pts.map((x) => Math.min(x.a, x.b))), hi = Math.max(1, ...pts.map((x) => Math.max(x.a, x.b)), total);
+      let run = 0, from = 0, first = true;
+      const pts = rows.map((x) => {
+        if (x.head) { from = run; return x; }
+        if (x.subtotal) { const o = { ...x, v: run - from, a: from, b: run }; from = run; return o; }
+        const o = { ...x, a: run, b: run + x.v, first }; run += x.v; first = false; return o;
+      });
+      const bars = pts.filter((x) => !x.head);
+      const lo = Math.min(0, total, ...bars.map((x) => Math.min(x.a, x.b))), hi = Math.max(1, total, ...bars.map((x) => Math.max(x.a, x.b)));
       const pos = (v) => (v - lo) / (hi - lo) * 100;
       return (
         <div>
-          {pts.map((x, k) => (
-            <div key={k} className="wf-row">
-              <div style={{ minWidth: 0 }}>{x.label}{x.note && <div style={{ fontSize: 12, color: K.sub }}>{x.note}</div>}</div>
-              <div className="wf-track"><div className="wf-bar" style={{ left: `${pos(Math.min(x.a, x.b))}%`, width: `${Math.max(0.6, Math.abs(pos(x.b) - pos(x.a)))}%`, background: k === 0 ? "#5B6773" : x.v < 0 ? "#C0604B" : "#3C8A6E" }} /></div>
-              <div className="mono" style={{ textAlign: "right", color: x.v < 0 ? K.neg : K.text }}>{x.v < 0 ? "−" : "+"}{fS(Math.abs(x.v))}</div>
+          {pts.map((x, k) => x.head ? <div key={k} className="wf-head">{x.label}{x.note && <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: K.sub }}> · {x.note}</span>}</div> : (
+            <div key={k} className="wf-row" style={x.subtotal ? { fontWeight: 700, borderTop: `1px solid ${K.line}`, marginBottom: 4 } : null}>
+              <div style={{ minWidth: 0 }}>{x.label}{x.note && <div style={{ fontSize: 12, color: K.sub, fontWeight: 400 }}>{x.note}</div>}</div>
+              <div className="wf-track"><div className="wf-bar" style={{ left: `${pos(Math.min(x.a, x.b))}%`, width: `${Math.max(0.6, Math.abs(pos(x.b) - pos(x.a)))}%`, background: x.subtotal ? "#33414F" : x.first ? "#5B6773" : x.v < 0 ? "#C0604B" : "#3C8A6E" }} /></div>
+              <div className="mono" style={{ textAlign: "right", color: x.v < 0 ? K.neg : K.text }}>{x.subtotal ? fM(x.v) : `${x.v < 0 ? "−" : "+"}${fS(Math.abs(x.v))}`}</div>
             </div>
           ))}
           <div className="wf-row" style={{ borderTop: `1.5px solid ${K.text}`, marginTop: 4, paddingTop: 7, fontWeight: 700 }}>
             <div>{totalLabel}</div>
             <div className="wf-track"><div className="wf-bar" style={{ left: `${pos(Math.min(0, total))}%`, width: `${Math.max(0.6, Math.abs(pos(total) - pos(0)))}%`, background: "#0E1A2B" }} /></div>
-            <div className="mono" style={{ textAlign: "right" }}>{fM(total)}</div>
+            <div className="mono" style={{ textAlign: "right", color: total < 0 ? K.neg : K.text }}>{fM(total)}</div>
           </div>
         </div>
       );
@@ -373,6 +381,8 @@
       const [whyLine, setWhyLine] = useState("plan");   // "why this start": your plan as set, or the best mix for each date
       const [whyDate, setWhyDate] = useState(null);      // …the start date compared with yours (null = the best one)
       const [cmpKey, setCmpKey] = useState("cash");     // "Compare your plans over time": which line
+      const [payKey, setPayKey] = useState(null);       // "What it costs to pay a loan off early": the loan shown (null = the first)
+      const [payMonth, setPayMonth] = useState(null);   // …and the month you would pay it off (null = the plan's own payoff, or a year in)
       const toggleDis = (id, open) => setOpenDis((s) => s[id] === open ? s : { ...s, [id]: open });
       const dirty = useMemo(() => JSON.stringify(inp) !== snap, [inp, snap]);
 
@@ -614,7 +624,6 @@
       const rateOf = (l) => `${l.rate}%${l.rateType === "flat" ? " flat" : ""}`;
       const sameResult = (a, b) => !!a && !!b && Math.abs(a.econAdv - b.econAdv) < 1 && ["lm", "eq", "pl", "co", "pl2"].every((k) => Math.abs((a[k] ? a[k].amount : 0) - (b[k] ? b[k].amount : 0)) < 1);
       const occOf = (r) => Math.min(r.months.length - 1, r.occupy);
-      const cashAtMoveIn = (r) => fundingBridgeRows(r, occOf(r), inp, prj).total;
 
       /* ---------- left rail: your inputs at a glance ---------- */
       const InputsSummary = () => home ? (
@@ -733,13 +742,13 @@
               <tbody>{liveIdx.map((i) => { const r = m.results[i]; return (
                 <tr key={i} style={{ cursor: "pointer", background: i === focusIdx ? SOFT : "transparent" }} onClick={() => { setFocus(i); }}>
                   <td className="l" style={{ padding: "6px 4px 6px 0", color: colT(i), fontWeight: 700 }}>{planName(i)}{r === lead ? " ★" : ""}{!r.feasible && <span style={{ color: K.neg, fontWeight: 400 }}> · runs out</span>}{isTool(i) && optStale && <span style={{ color: K.sub, fontWeight: 400 }}> · updating…</span>}</td>
-                  <td style={{ padding: 4, color: r.moveInOk === false ? K.neg : K.text }}>{fM(cashAtMoveIn(r))}</td>
+                  <td style={{ padding: 4, color: r.moveInOk === false ? K.neg : K.text }}>{fM(r.onHandAtMoveIn)}</td>
                   <td style={{ padding: "4px 0 4px 4px", color: signCol(r.econAdv), fontWeight: 700 }}>{fM(r.econAdv)}</td>
                 </tr>); })}</tbody>
             </table>
           )}
           {lead && <div style={{ fontSize: 12.5, marginTop: 10, background: lead.econAdv >= 0 ? SOFT_POS : SOFT_NEG, borderRadius: 7, padding: "8px 10px", lineHeight: 1.45 }}><b>So far:</b> {bestF ? <>the best is {isTool(recIdx) ? "the tool's pick" : planName(recIdx)}, <b style={{ color: signCol(lead.econAdv) }}>{fM(lead.econAdv)}</b> vs {baseLbl} in {endDate} when everything grows.</> : "none of your plans works every month."}</div>}
-          <div style={{ fontSize: 12, color: K.sub, marginTop: 6 }}>"At move-in": your own cash and the loans, after every cost, without salary or growth. Click a row to see that plan in detail.</div>
+          <div style={{ fontSize: 12, color: K.sub, marginTop: 6 }}>"At move-in": what is left from your cash and the loans after every cost + what your salary saved, no growth counted. Click a row to see that plan in detail.</div>
           {cur === "answer" && <div className="grid no-print" style={{ gap: 8, marginTop: 12 }}>
             <button className="btn gold" onClick={quickSave}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved as "${loadedName}"`) : "Save this scenario"}</button>
             <button className="btn" onClick={() => setPrintAll(true)}>Print / PDF (one page)</button>
@@ -774,7 +783,7 @@
             <Box title="What you have">
               <Field label="Cash today" value={inp.cashAvailable} min={0} max={8000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
               <Field label="Safety cushion to keep" value={inp.cashBuffer} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="a plan that dips below it is flagged; one that goes below zero does not work" help={EXPL.recovery} />
-              <Field label="Cash at move-in must be at least" value={moveLine} min={-2000000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("minCashMoveIn", v)} hint="your own cash + loans − costs at move-in, without salary · 0 = never negative · a plan below it ranks after plans that meet it" help={EXPL.moveIn} />
+              <Field label="Cash at move-in must be at least" value={moveLine} min={-2000000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("minCashMoveIn", v)} hint="what is left from your cash and the loans + what your salary saved, at move-in, no growth · 0 = never negative · a plan below it ranks after plans that meet it" help={EXPL.moveIn} />
               <Field label="Property you already own — its value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint={inp.ownedValue > 0 ? `a bank would lend up to ${fM(inp.ownedValue * inp.ownedLtv / 100)} against it (${inp.ownedLtv}%)` : "0 if none"} />
             </Box>
           </div>
@@ -1128,7 +1137,7 @@
                 <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{st.length ? st.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
                 {r && <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
                   <Status r={r} />
-                  <span>cash at move-in <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fM(cashAtMoveIn(r))}</b></span>
+                  <span>cash at move-in <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fM(r.onHandAtMoveIn)}</b></span>
                   <span>vs {baseLbl} <b className="mono" style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b><Hint text={EXPL.econ} label="vs not building" /> <span style={{ color: K.sub, fontSize: 12 }}>rule 7: {fM(r.advantage)}</span></span>
                 </div>}
                 {r && r.flags.length > 0 && <div style={{ fontSize: 12.5, color: r.feasible ? "#7A4F12" : K.neg, marginTop: 6, lineHeight: 1.45 }}>{calText(r.flags[0])}</div>}
@@ -1222,7 +1231,7 @@
             <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{steps2.length ? steps2.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
             <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
               <Status r={r} />
-              <span>cash at move-in <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fM(cashAtMoveIn(r))}</b></span>
+              <span>cash at move-in <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fM(r.onHandAtMoveIn)}</b></span>
               <span>vs {baseLbl} <b className="mono" style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b> <span style={{ color: K.sub, fontSize: 12 }}>rule 7: {fM(r.advantage)}</span></span>
             </div>
             {r.flags.length > 0 && <div style={{ fontSize: 12.5, color: r.feasible ? "#7A4F12" : K.neg, marginTop: 6, lineHeight: 1.45 }}>{calText(r.flags[0])}</div>}
@@ -1397,8 +1406,10 @@
         ["Personal loans, refinancing included", (r) => facTxt(r.pl), null, EXPL.refi],
         ["Cash-out on the new home", (r) => facTxt(r.co), null, EXPL.capacity],
         ["Personal loans at move-in", (r) => facTxt(r.pl2), null, EXPL.refi],
-        ["Cash at move-in (your cash + loans − costs)", (r) => fM(cashAtMoveIn(r)), (r) => r.moveInOk === false ? K.neg : K.text, EXPL.moveIn],
-        ["Bank balance at move-in (with salary)", (r) => fM(r.cashAtCompletion), null, EXPL.cashMoveIn],
+        ["Cash at move-in (no growth)", (r) => fM(r.onHandAtMoveIn), (r) => r.moveInOk === false ? K.neg : K.text, EXPL.cashMoveIn],
+        ["…left from your cash and the loans", (r) => fM(r.loansLeftAtMoveIn), null, EXPL.loansLeft],
+        ["…saved from your salary", (r) => fM(r.salaryToMoveIn), null, EXPL.salaryLeft],
+        ["Bank balance at move-in (with the return on cash)", (r) => fM(r.cashAtCompletion), null, EXPL.bankMoveIn],
         [`Bank balance ${inp.recoveryMonths} months after move-in`, (r) => fM(r.cashAfterWindow), (r) => r.cashAfterWindow >= inp.cashBuffer ? K.pos : K.neg, EXPL.cashAfter],
         ["Lowest bank balance", (r) => `${fM(r.minCash)} · ${fCal(r.minCashT)}`, (r) => r.minCash < 0 ? K.neg : K.text, EXPL.cashLow],
         ["Months below your cushion", (r) => `${r.belowBufferMonths || 0}`, (r) => r.belowBufferMonths ? "#7A4F12" : K.text, "Months in which your bank balance is below your safety cushion."],
@@ -1420,7 +1431,7 @@
         const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, text: calText(e.text) }));
         rows.push({ t: r.minCashT, o: 1e6, kind: "low", text: `Lowest bank balance: ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
         if (r.debtFreeT != null) rows.push({ t: r.debtFreeT, o: 1e6 + 1, kind: "end", text: "Debt-free." });
-        rows.push({ t: occ, o: 1e6 + 2, kind: "occ", text: `You move in. Cash at move-in from your own cash and the loans: ${fM(cashAtMoveIn(r))}.` });
+        rows.push({ t: occ, o: 1e6 + 2, kind: "occ", text: `You move in with ${fM(r.onHandAtMoveIn)} in cash (no growth counted): ${fM(r.loansLeftAtMoveIn)} left from your cash and the loans ${r.salaryToMoveIn < 0 ? `− ${fM(-r.salaryToMoveIn)} where your salary fell short` : `+ ${fM(r.salaryToMoveIn)} saved from your salary`}.` });
         return rows.sort((a, b) => a.t - b.t || a.o - b.o);
       };
       // what to watch out for, about the answer as a whole
@@ -1446,7 +1457,7 @@
         const fbC = fundingBridgeRows(r, occ, inp, prj), fbH = fundingBridgeRows(r, Hh, inp, prj);
         const settle = ms.reduce((a, x) => a + (x.renterSettle || 0), 0), bGrow = ms.reduce((a, x) => a + (x.bRet || 0), 0);
         return [
-          { label: `If you build (${planName(focusIdx)})`, parts: [{ label: "cash at move-in", v: fbC.total, color: "#5B6773" }, { label: "loans after move-in", v: fbH.total - fbC.total, color: "#7C8894" }, { label: `growth at ${(+netRet.toFixed(2))}%`, v: fbH.ret, color: "#9AA6B2" }, { label: "home value", v: end.value, color: "#2F6DB5" }, { label: "old instalments no longer paid", v: end.oldSavedCum, color: "#3C8A6E" }, { label: "rent received", v: end.rentInCum, color: "#1F9A80" }, { label: "rent no longer paid", v: end.rentSavedCum, color: "#5FA88A" }, { label: "old debt you no longer owe", v: end.oldDebtGap, color: "#86B9A2" }, { label: "instalments on new loans", v: -end.newInstCum, color: "#C0604B" }, { label: "upkeep", v: -end.upkeepCum, color: "#D59A7A" }, { label: "new debt still owed", v: -end.debtNew, color: "#A33D29" }, { label: "the home you sold", v: -end.ownGone, color: "#7A2E20" }].filter((p) => Math.abs(p.v) >= 1) },
+          { label: `If you build (${planName(focusIdx)})`, parts: [{ label: "left from your cash and the loans at move-in", v: fbC.total, color: "#5B6773" }, { label: "loans after move-in", v: fbH.total - fbC.total, color: "#7C8894" }, { label: `growth at ${(+netRet.toFixed(2))}%`, v: fbH.ret, color: "#9AA6B2" }, { label: "home value", v: end.value, color: "#2F6DB5" }, { label: "old instalments no longer paid", v: end.oldSavedCum, color: "#3C8A6E" }, { label: "rent received", v: end.rentInCum, color: "#1F9A80" }, { label: "rent no longer paid", v: end.rentSavedCum, color: "#5FA88A" }, { label: "old debt you no longer owe", v: end.oldDebtGap, color: "#86B9A2" }, { label: "instalments on new loans", v: -end.newInstCum, color: "#C0604B" }, { label: "upkeep", v: -end.upkeepCum, color: "#D59A7A" }, { label: "new debt still owed", v: -end.debtNew, color: "#A33D29" }, { label: "the home you sold", v: -end.ownGone, color: "#7A2E20" }].filter((p) => Math.abs(p.v) >= 1) },
           { label: `If you ${renting ? "keep renting" : "don't build"}`, parts: [{ label: "your own cash", v: r.cashStart, color: "#5B6773" }, { label: `growth at ${(+netRet.toFixed(2))}%`, v: bGrow, color: "#9AA6B2" }, { label: "planned settlements", v: -settle, color: "#C0604B" }].filter((p) => Math.abs(p.v) >= 1) },
         ];
       };
@@ -1480,17 +1491,24 @@
               </p>
               {i !== recIdx && <div className="note" style={{ marginTop: 0 }}>The figures below are for {planRef(i)}, the one you picked; the sentence above is about the best one.</div>}
               <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 190px), 1fr))", gap: 10, marginTop: 12 }}>
-                <Tile label={`Cash at move-in · ${fCal(occ)}`} value={fM(rc.onHand)} tone={r.moveInOk === false ? K.neg : K.text} sub={<>your cash + loans − costs, no salary · <b>{fM(rc.bank)}</b> in the bank{r.moveInOk === false ? <> · <span style={{ color: K.neg }}>below your line of {fM(moveLine)}</span></> : null}</>} help={EXPL.cashMoveIn} />
-                <Tile label={`Lowest bank balance · ${fCal(r.minCashT)}`} value={fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={r.minCash < 0 ? "runs short — this plan doesn't work" : inp.cashBuffer > 0 ? (r.minCash >= inp.cashBuffer ? `never below your ${fM(inp.cashBuffer)} cushion` : `below your ${fM(inp.cashBuffer)} cushion for ${r.belowBufferMonths} months; back ${r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} months after move-in`}`) : "never runs short"} help={EXPL.cashLow} />
+                <Tile label={`Cash at move-in · ${fCal(occ)}`} value={fM(rc.total)} tone={r.moveInOk === false ? K.neg : K.text} sub={<>{fM(rc.onHand)} left from your cash and the loans {rc.salary < 0 ? <>− {fM(-rc.salary)} where your salary fell short</> : <>+ {fM(rc.salary)} saved from your salary</>} · no growth counted{r.moveInOk === false ? <> · <span style={{ color: K.neg }}>below your line of {fM(moveLine)}</span></> : null}</>} help={EXPL.cashMoveIn} />
+                <Tile label={`Lowest bank balance · ${fCal(r.minCashT)}`} value={fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={<>{r.minCash < 0 ? "runs short — this plan doesn't work" : inp.cashBuffer > 0 ? (r.minCash >= inp.cashBuffer ? `never below your ${fM(inp.cashBuffer)} cushion` : `below your ${fM(inp.cashBuffer)} cushion for ${r.belowBufferMonths} months; back ${r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} months after move-in`}`) : "never runs short"} · the return on your cash included</>} help={EXPL.cashLow} />
                 <Tile label={`Wealth in ${endDate}`} value={fM(r.econEnd)} sub={<>vs {fM(r.econBaseEnd)} if you {renting ? "keep renting" : "don't build"} · <b style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b></>} help={EXPL.econ} />
               </div>
               <div className="note">In today's money: <b style={{ color: signCol(r.econPV) }}>{fM(r.econPV)}</b>. The money building takes earns {irr == null ? "a rate that can't be worked out here" : <b>{(irr * 100).toFixed(1)}% a year</b>}, against {(+netRet.toFixed(2))}% on cash. Your rule-7 measure: {fM(r.netWorthEnd)} vs {fM(r.renterEnd)} → <b style={{ color: signCol(r.advantage) }}>{fM(r.advantage)}</b>. All-in cost {fM(prj.total)}; worth {fM(prj.value0)} at move-in<Hint text={EXPL.value} label="What the home is worth" />.</div>
               {WatchOut({ items: watchOut() })}
             </section>
-            <Box title={`How the ${fM(rc.onHand)} at move-in adds up`} style={{ marginTop: 14 }} right={!one && <PlanPicker />} help={EXPL.cashMoveIn}>
-              <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 8 }}>{planName(i)} · your own cash and the loans only — no salary and no growth (your rule 6)</div>
-              <Waterfall rows={rc.fb.rows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v }))} totalLabel={`Cash at move-in, ${fCal(occ)}`} total={rc.onHand} />
-              <div className="note">Your bank balance that month is <b>{fM(rc.bank)}</b>: these {fM(rc.onHand)} {rc.salary < 0 ? "−" : "+"} {fM(Math.abs(rc.salary))} of salary {rc.salary < 0 ? "short after" : "left after"} living costs and instalments {rc.growth < 0 ? "−" : "+"} {fM(Math.abs(rc.growth))} earned on the balance{rc.salary < 0 ? ". Your salary does not cover everything in some months — that gap comes out of this cash" : ""}.</div>
+            <Box title={`How the ${fM(rc.total)} at move-in adds up`} style={{ marginTop: 14 }} right={!one && <PlanPicker />} help={EXPL.cashMoveIn}>
+              <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 4 }}>{planName(i)} · what is left from your cash and the loans, plus what your salary saved · no return on cash counted</div>
+              <Waterfall rows={rc.salaryRows.length ? [
+                { head: true, label: "1 · Your cash and the loans", note: `${fCal(0)} → ${fCal(occ)}` },
+                ...rc.fb.rows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v })),
+                { subtotal: true, label: "Left from your cash and the loans" },
+                { head: true, label: "2 · Your salary", note: `${fCal(1)} → ${fCal(occ)}` },
+                ...rc.salaryRows,
+                { subtotal: true, label: rc.salary < 0 ? "Where your salary fell short" : "Saved from your salary" },
+              ] : rc.fb.rows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v }))} totalLabel={`Cash at move-in, ${fCal(occ)}`} total={rc.total} />
+              {(rc.salary < 0 || r.moveInOk === false) && <div className="note">{rc.salary < 0 ? "Up to move-in your salary did not cover living costs and every instalment — the gap came out of your cash. " : ""}{r.moveInOk === false ? <span style={{ color: K.neg }}>This is below your line of {fM(moveLine)}, so this plan ranks after plans that meet it.</span> : null}</div>}
             </Box>
             <Box title={`Wealth in ${endDate}: build vs don't build`} style={{ marginTop: 14 }} right={<span className="no-print"><Seg label="Measure" value={measure} onChange={setMeasure} options={[["econ", "Everything grows"], ["rule7", "Your rule 7"]]} /></span>} help={measure === "econ" ? EXPL.econ : EXPL.netWorth}>
               <WealthBars bars={measure === "econ" ? econBars(r) : ruleSevenBars(r)} />
@@ -1566,7 +1584,7 @@
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Your rule 7 — your own cash and the loans, no salary</div>
               <table className="bridge"><tbody>
-                <BLine label={`Cash at move-in (${fCal(occ)}), no growth`} v={fbC.total} note="your own cash and the loans after every cost — line by line under 'How it adds up' above" />
+                <BLine label={`Left from your cash and the loans at move-in (${fCal(occ)})`} v={fbC.total} note="after every cost, no salary and no growth — part 1 of 'How it adds up' above" />
                 <BLine label={`Growth at ${nr}% a year, today → move-in`} v={fbC.ret} note="both sides grow from today, while the balance is positive" />
                 <BLine label="Loans taken or paid off after move-in" v={fbH.total - fbC.total} note="e.g. a mortgage you pay off early" />
                 <BLine label={`Growth at ${nr}% a year, move-in → ${endDate}`} v={fbH.ret - fbC.ret} note="instalments never touch this cash — your salary pays them" />
@@ -1611,6 +1629,45 @@
         );
       };
       const whatIfFor = (id) => { const c = wi(id); return c && !c.partial ? c.data : c ? c.data : null; };
+      // "What it costs to pay a loan off early": each new loan of the plan shown, a row per year of the loan and any month you pick
+      const PAY_NAME = { lm: build ? "Land mortgage" : "Purchase mortgage", eq: "Own-property mortgage", co: "Cash-out mortgage", pl: "Personal loan", pl2: "Personal loan at move-in" };
+      const PAY_EARLY = { prepaid: "Your plan pays it off", refinanced: "Bought out by your new personal loan", sold: "Repaid when you sell your home", settled: "Paid off to make room for a mortgage" };
+      const PayoffPanel = ({ r }) => {
+        const loans = ["lm", "eq", "co", "pl", "pl2"].map((k) => r[k]).filter((f) => f && f.amount > 0 && f.startedAt != null);
+        if (!loans.length) return <div className="note">This plan takes no new loans.</div>;
+        const f = loans.find((x) => x.key === payKey) || loans[0], pr = rePayoffRows(f, r.plan.extraMo, inp.settleFeeMonths);
+        if (!pr) return null;
+        const e = pr.early, extra = f.key === "lm" ? Math.max(0, r.plan.extraMo || 0) : 0, lastT = r.months.length - 1;
+        const tPick = Math.max(pr.start, Math.min(pr.end, payMonth != null ? payMonth : e ? e.row.t : pr.start + 12)), a = pr.at(tPick);
+        const earlyTxt = !e ? null : e.kind === "prepaid" ? `Your plan pays it off early from your cash in ${fCal(e.t)}, ${r.plan.prepayAfter} months after move-in` : e.kind === "refinanced" ? `In ${fCal(e.t)} your plan's new personal loan buys it out — the bank clears it, no cash from you` : e.kind === "sold" ? `In ${fCal(e.t)} it is repaid from the sale of the home it is secured on` : `In ${fCal(e.t)} your plan pays it off from your cash to make room for a mortgage`;
+        // the yearly rows, with the plan's own payoff in its place (a payoff before that month's instalment gets its own row)
+        const rows = pr.rows.map((x) => ({ ...x, own: !!e && e.kind === "prepaid" && x.t === e.t }));
+        if (e && e.row && !rows.some((x) => x.own)) rows.push({ ...e.row, t: e.t, own: true });
+        rows.sort((x, y) => x.t - y.t || (x.own ? -1 : 1));
+        return (<>
+          {loans.length > 1 && <div style={{ marginBottom: 10 }}><Seg label="Loan" value={f.key} onChange={(k) => { setPayKey(k); setPayMonth(null); }} options={loans.map((x) => [x.key, PAY_NAME[x.key]])} /></div>}
+          <div style={{ fontSize: 13, lineHeight: 1.55, marginBottom: 10 }}>
+            <b>{f.label}</b>: {fM(f.amount)} taken {fCal(f.startedAt)}{f.split ? ` as two loans (${fM(f.split[0])} + ${fM(f.split[1])})` : ""}{f.refi ? `, of which ${fM(f.refi.payoff)} cleared ${f.refi.names.join(" + ")}` : ""} · {f.quoted}%{inp.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over {f.tenure} years · {fSAR(f.pmt)}/mo{extra > 0 ? ` + ${fSAR(extra)} extra` : ""} · last instalment {fCal(pr.end)} · {fM(pr.totalProfit)} profit over its life if you keep it.
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 14, alignItems: "start" }}>
+            <MonthField label="Pay it off in" value={tPick} min={pr.start} max={pr.end} onChange={setPayMonth} hint={tPick === pr.start ? "the month it is taken, before any instalment" : `after that month's instalment · year ${a.year} of the loan`} help={EXPL.payoff} />
+            <div style={{ background: SOFT, borderRadius: 8, padding: "10px 12px", fontSize: 13, lineHeight: 1.55 }}>
+              {a.bal > 0 ? <>To pay it off in <b>{fCal(tPick)}</b>: balance <span className="mono">{fSARm(a.bal)}</span> + early-settlement fee <span className="mono">{fSARm(a.fee)}</span> = <b className="mono" style={{ fontSize: 15 }}>{fSARm(a.total)}</b>.<br />
+                Keep it instead and you pay {a.monthsLeft} more instalments, {fM(pr.totalPaid - a.paid)} in all, {fM(a.profitLeft)} of it profit — paying it off then saves {fM(a.profitLeft - a.fee)} of profit after the fee (before what that cash would have earned).</> : <>Repaid by its last instalment in {fCal(pr.end)} — nothing left to pay.</>}
+            </div>
+          </div>
+          <div className="scroll-x" style={{ marginTop: 10 }}><table className="tbl">
+            <thead><tr><th>Year of the loan</th><th>Month</th><th>To pay it off</th><th>Balance</th><th>Early-settlement fee</th><th>Profit still to pay if you keep it</th><th>Paid so far</th></tr></thead>
+            <tbody>{rows.map((x, k) => { const after = !!e && !x.own && (x.t > e.t || (e.kind !== "prepaid" && x.t === e.t)); return (
+              <tr key={k} style={{ background: x.own ? SOFT_AMB : x.t === tPick && !after ? SOFT : "transparent", color: after ? K.sub : K.text }}>
+                <td className="l">{x.own ? <b>{PAY_EARLY[e.kind]}</b> : x.bal > 0 ? `Year ${x.year}` : "Last instalment"}</td>
+                <td>{fCal(x.t)}{x.t > lastT ? " †" : ""}</td>
+                <td style={{ fontWeight: 700 }}>{fSAR(x.total)}</td><td>{fSAR(x.bal)}</td><td>{fSAR(x.fee)}</td><td>{fSAR(x.profitLeft)}</td><td>{fSAR(x.paid)}</td>
+              </tr>); })}</tbody>
+          </table></div>
+          <div className="note">{earlyTxt ? <>{earlyTxt}: {fSARm(e.row.total)}, incl. {fSARm(e.row.fee)} fee (the highlighted row); the grey rows after it are what it would cost had you kept the loan. </> : null}Each row: the balance after that month's instalment plus the bank's early-settlement fee — at most the next {inp.settleFeeMonths} months of profit on what is left (SAMA cap), the same fee the tool charges when a plan pays a loan off early. "Paid so far" counts every instalment{extra > 0 ? " and extra payment" : ""} from {fCal(pr.start + 1)}.{pr.end > lastT ? ` † After ${endDate}, the end of the comparison: the bank's schedule carries on the same way.` : ""}</div>
+        </>);
+      };
       const StepAnswer = () => {
         if (!lead) return <div><Head id="answer" title="Your answer" /><Box>Tick at least one plan in step 4.</Box></div>;
         const r = focusRes, rc = cashReconcile(r, occOf(r), inp, prj);
@@ -1645,7 +1702,7 @@
               </Dis>
               <Dis id="liquid" title="How tight does cash get?" sub="liquidity" open={!!openDis.liquid} onToggle={toggleDis}>
                 <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 10 }}>
-                  <Tile label="Cash at move-in (rule 6)" value={fM(rc.onHand)} sub={`your bank balance then: ${fM(rc.bank)}`} />
+                  <Tile label="Cash at move-in" value={fM(rc.total)} sub={`${fM(rc.onHand)} left from your cash and the loans ${rc.salary < 0 ? "−" : "+"} ${fM(Math.abs(rc.salary))} from your salary · no growth`} />
                   <Tile label={`Lowest bank balance · ${fCal(r.minCashT)}`} value={fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={r.reserveMonths == null ? null : `covers ${r.reserveMonths.toFixed(1)} months of that month's costs and instalments`} />
                   <Tile label="Tightest month" value={r.tightest ? fSARm(r.tightest.surplus) : "—"} sub={r.tightest ? `left from salary in ${fCal(r.tightest.t)} · ${r.thinMonths} months leave less than 5% of income` : null} tone={r.tightest && r.tightest.surplus < 0 ? K.neg : K.text} />
                   <Tile label="Debt-free" value={r.debtFreeT != null ? fCal(r.debtFreeT) : "later"} sub={st ? `survives ${st.filter((x) => x.key !== "base" && x.passes).length} of ${st.length - 1} stress tests` : "stress tests: working…"} />
@@ -1659,6 +1716,9 @@
                   </table></div>
                   <div className="note">Each loan against the same plan without it (the other loans may then grow to fill the room). A loan that costs more a year than your cash earns loses money unless you need it to pay for the build.</div>
                 </>}
+              </Dis>
+              <Dis id="payoff" title="What it costs to pay a loan off early" sub="each loan, year by year" open={!!openDis.payoff} onToggle={toggleDis}>
+                {PayoffPanel({ r })}
               </Dis>
               {build && <Dis id="ready" title="Or buy a ready villa instead?" sub="price that matches building" open={!!openDis.ready} onToggle={toggleDis}>
                 {!rb ? <div className="note">Working it out…</div> : <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>

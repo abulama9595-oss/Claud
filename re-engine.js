@@ -78,7 +78,7 @@ const RE_BASE = {
   mortgageCap: 55,         // a MORTGAGE's instalments (land purchase, existing property, cash-out) may not exceed this % of income
   landLtv: 90,             // max LTV when the bank finances the land purchase (cash-raising mortgages: 70%)
   recoveryMonths: 24,      // your rule: cash must be back at the buffer within this many months after move-in
-  minCashMoveIn: 0,        // your rule: cash on hand at move-in (own cash + every loan − costs, no salary, no growth) must be at least this
+  minCashMoveIn: 0,        // your rule: cash at move-in (left from own cash + every loan − costs, plus what the salary saved; no growth) must be at least this
   refiMinMonths: 12,
   rentOutPct: 0,           // let the new home out: annual rent as % of the all-in project cost (0 = you live in it)
   rentOutFixed: 0,         // …or a fixed annual rent in SAR (overrides the % when above zero)       // a personal loan can only be refinanced (bought out) once it has run this many months; mortgages never are
@@ -843,10 +843,14 @@ function rePlanSimulate(p, prj, plan) {
   const feasible = shortfall <= 0;
   const recoveryMonths = cashRestoredT != null ? cashRestoredT - prj.occupy : null;
   const recoveryOk = feasible && recoveryMonths != null && recoveryMonths <= p.recoveryMonths;
-  // your rule: your own cash + every loan − every cost so far, in the month you move in (no salary, no growth — the rule-6
-  // "cash on hand") must be at least minCashMoveIn. A plan below it can still work if your salary carries it, but it ranks
-  // after plans that meet the rule (and the tool's search does the same)
-  const occM = months[Math.min(H, prj.occupy)], onHandAtMoveIn = occM.ccash - occM.cRetCum;
+  // your rule: the cash you have when you move in, with NO return on cash counted — what is left from your own cash and the
+  // loans after every cost so far (the rule-6 figure, ccash − cRetCum) + what your salary saved after living costs, rent and
+  // every instalment, month 1 to move-in — must be at least minCashMoveIn. A plan below it ranks after plans that meet the
+  // rule (and the tool's search does the same). It equals the bank balance that month less the return earned on it.
+  const occI = Math.min(H, prj.occupy), occM = months[occI], loansLeftAtMoveIn = occM.ccash - occM.cRetCum;
+  let salaryToMoveIn = 0;
+  for (let t = 1; t <= occI; t++) { const m = months[t]; salaryToMoveIn += m.inc - m.liv - m.rentPaid + m.rentIn - m.existInst - m.lmPay - m.eqPay - m.plPay - m.coPay - m.rfPay - m.ownerCost; }
+  const onHandAtMoveIn = loansLeftAtMoveIn + salaryToMoveIn;
   const moveInLine = p.minCashMoveIn == null ? 0 : p.minCashMoveIn, moveInOk = onHandAtMoveIn >= moveInLine - 0.5;
   const after = Math.min(H, prj.occupy + p.recoveryMonths);
   // liquidity: what the low point covers, and how thin the monthly surplus gets (salary − living − rent − instalments − upkeep + rent received)
@@ -858,10 +862,10 @@ function rePlanSimulate(p, prj, plan) {
   if (prj.occupy > H) flags.push(`The home is not finished before the end of the comparison (move-in month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.`);
   if (shortfall > 0) flags.unshift(`Cash goes NEGATIVE by ${fS(shortfall)} (lowest at month ${minCashT}) — the project cannot be fully funded this way.`);
   else if (!recoveryOk) flags.push(cashRestoredT == null ? `Cash never gets back to your ${fS(p.cashBuffer)} buffer after move-in within the horizon.` : `Cash gets back to your ${fS(p.cashBuffer)} buffer ${recoveryMonths} months after move-in (you asked for ${p.recoveryMonths}).`);
-  if (feasible && !moveInOk) flags.push(`Cash at move-in (your own cash and the loans after every cost, without salary) is ${fS(onHandAtMoveIn)} — below your line of ${fS(moveInLine)}; your salary carries the rest.`);
+  if (feasible && !moveInOk) flags.push(`Cash at move-in (left from your cash and the loans + saved from your salary, no growth) is ${fS(onHandAtMoveIn)} — below your line of ${fS(moveInLine)}.`);
   events.sort((a, b) => a.t - b.t);
   const facOut = (f) => ({ ...f });
-  return { plan, months, years, events, flags, feasible, recoveryOk, onHandAtMoveIn, moveInOk, end,
+  return { plan, months, years, events, flags, feasible, recoveryOk, onHandAtMoveIn, loansLeftAtMoveIn, salaryToMoveIn, moveInOk, end,
     lm: facOut(lm), eq: facOut(eq), pl: facOut(pl), pl2: facOut(pl2), co: facOut(co), rf: facOut(rf), refiTotal, roomSettled, annualRentOut, rentInTotal: rentInCum, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ id: l.id, name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, bal: l.bal })),
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     cashRestoredT, recoveryMonths, cashAfterWindow: months[after].cash, payoffs, newDebtTotal: facs.reduce((a, f) => a + f.amount, 0),

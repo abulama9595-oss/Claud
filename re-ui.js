@@ -26,9 +26,13 @@ function reExpl(inp) {
   return {
     executable: "Cash never goes below zero in any month: income − living − rent − all instalments − project spend + loan proceeds, with cash earning the return on cash while it is positive.",
     recovery: `Months after move-in until your cash balance is back at or above your safety cushion. Your rule: within ${inp.recoveryMonths} months.`,
-    moveIn: `Your rule: in the month you move in, your own cash and the loans after every cost so far — without salary and without growth (the "cash at move-in" figure) — must be at least ${fS(inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn)}. A plan below it can still work if your salary carries the build, but it ranks after plans that meet the rule, and the tool's search does the same. 0 = never negative; raise it to keep a reserve.`,
-    cashLow: "Lowest month-end cash balance (salary included) over the comparison, and when it happens.",
-    cashMoveIn: "Your bank balance in the month you move in: your own cash and the loans after all costs, PLUS what your salary saved after living costs and instalments, PLUS the return earned on the balance until then. 'Cash on hand at completion' in the step-by-step leaves the salary and the return out, so it is lower.",
+    moveIn: `Your rule: your cash at move-in — what is left from your own cash and the loans after every cost so far, plus what your salary saved after living costs, rent and every instalment, with no return on cash counted — must be at least ${fS(inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn)}. A plan below it ranks after plans that meet the rule, and the tool's search does the same. 0 = never negative; raise it to keep a reserve.`,
+    payoff: `What it would cost to pay a loan off in a given month: the balance still owed after that month's instalment plus the bank's early-settlement fee — at most the next ${inp.settleFeeMonths} months of profit on the declining balance (SAMA cap). The same fee the tool charges when a plan pays a loan off early.`,
+    loansLeft: "What is left in the month you move in from your own cash today and every loan taken so far, after every cost: land, construction, fees, early payoffs. No salary and no return on cash.",
+    salaryLeft: "What your salary saved from month 1 to the month you move in: salary less living costs, rent, every instalment (old and new loans) and upkeep, plus any rent received. No return on cash. Negative = your salary did not cover everything and the gap came out of your cash.",
+    bankMoveIn: "Your bank balance in the month you move in: your cash at move-in plus the return your cash earned until then.",
+    cashLow: "Lowest month-end bank balance over the comparison, and when it happens: salary in; living costs, rent, every instalment, the project and payoffs out; and the return your cash earns while it is positive (which is why it can be above the cash at move-in, where no return is counted). A plan whose balance goes below zero does not work.",
+    cashMoveIn: `The cash you have in the month you move in, with no return on cash counted: what is left from your own cash and the loans after every cost so far (land, construction, fees, payoffs) PLUS what your salary saved after living costs, rent and every instalment, from month 1 to move-in. Your rule: at least ${fS(inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn)}.`,
     cashAfter: `Cash balance ${inp.recoveryMonths} months after move-in (your recovery window).`,
     peakInst: `Highest total monthly instalments (existing loans + all new loans) in any month, as % of that month's income, against the bank's ${dbr}% cap. A voluntary extra payment is not an instalment and is left out.`,
     newDebt: "Sum of all new loans actually drawn (land mortgage, owned-property mortgage, personal loans, cash-out), after the bank's LTV, per-loan and total debt-burden limits.",
@@ -148,9 +152,65 @@ const fSARm = (n) => n == null || isNaN(n) ? "—" : (Math.round(n) < 0 ? "−" 
 // rent, every instalment and upkeep (+ any rent received), and the return earned on the balance
 function cashReconcile(r, upto, inp, prj) {
   const fb = fundingBridgeRows(r, upto, inp, prj);
-  const salary = r.months.filter((x) => x.t >= 1 && x.t <= upto).reduce((a, x) => a + x.inc - x.liv - x.rentPaid + x.rentIn - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost, 0);
+  const ms = r.months.filter((x) => x.t >= 1 && x.t <= upto), sum = (f) => ms.reduce((a, x) => a + f(x), 0);
+  const salary = sum((x) => x.inc - x.liv - x.rentPaid + x.rentIn - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost);
+  // what your salary did up to that month, line by line (no return on cash); the lines add up to `salary`
+  const extra = sum((x) => x.extraPay || 0);
+  const salaryRows = [
+    ["Your salary", sum((x) => x.inc), null],
+    ["Living costs", -sum((x) => x.liv), null],
+    ["Rent you pay until you move in", -sum((x) => x.rentPaid), null],
+    ["Rent received", sum((x) => x.rentIn), null],
+    ["Old-loan instalments", -sum((x) => x.existInst), "while your old loans run"],
+    ["New-loan instalments", -sum((x) => x.lmPay + x.eqPay + x.plPay + x.coPay + x.rfPay), extra > 0.5 ? `incl. ${fSAR(extra)} of extra payments` : null],
+    ["Upkeep", -sum((x) => x.ownerCost), "maintenance and insurance from move-in"],
+  ].filter(([, v]) => Math.abs(v) >= 0.5).map(([label, v, note]) => ({ label, v, note }));
   const growth = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.ret, 0);
-  return { onHand: fb.total, salary, growth, bank: r.months[upto].cash, fb };
+  // `total` = the cash you have that month with NO return counted = onHand + salary (= bank − growth)
+  return { onHand: fb.total, salary, salaryRows, total: fb.total + salary, growth, bank: r.months[upto].cash, fb };
+}
+
+/* ---------- a new loan, month by month, and what it costs to pay it off early in any year ---------- */
+// the loan's months exactly as the engine runs them: from the month after it is taken, profit on the balance, then the
+// instalment (plus any voluntary extra on the land mortgage), until it is repaid. `natural` = as if you kept it (ignores an
+// early payoff or a bank buy-out); otherwise it stops where the plan stops it (settledAt)
+function reLoanSchedule(f, extraMo, natural) {
+  const out = [];
+  if (!f || f.startedAt == null || !(f.amount > 0)) return out;
+  const r = f.rate / 1200, extra = f.key === "lm" ? Math.max(0, extraMo || 0) : 0, stop = natural || f.settledAt == null ? Infinity : f.settledAt;
+  let bal = f.amount;
+  for (let t = f.startedAt + 1; bal > 0.5 && t < stop && t <= f.startedAt + 1200; t++) {
+    const int = bal * r, pay = Math.min(f.pmt + extra, bal + int);
+    bal -= pay - int;
+    out.push({ t, bal, int, pay });
+  }
+  return out;
+}
+// what it costs to pay a new loan off early: one row per year of the loan (12, 24, … months after it was taken) and its last
+// instalment — the balance after that month's instalment, the early-settlement fee the engine charges (the next feeMonths
+// months' profit on the declining balance, the SAMA cap), the total, the profit you would still pay if you kept it, and
+// what you have paid so far. at(t) gives the same for any month (at the start month: just taken, nothing paid yet).
+// early = the plan's own payoff as the engine booked it: paid off early from your cash after that month's instalment
+// (prepaid), or before that month's instalment — bought out by a new personal loan (refinanced), repaid when you sell the
+// home it is secured on (sold), or paid from your cash to make room for a mortgage (settled)
+function rePayoffRows(f, extraMo, feeMonths) {
+  const s = reLoanSchedule(f, extraMo, true);
+  if (!s.length) return null;
+  let paid = 0, profit = 0;
+  const cum = s.map((x) => { paid += x.pay; profit += x.int; return { paid, profit }; }), totalProfit = profit, n = s.length;
+  const row = (k) => {
+    const x = k < 0 ? { t: f.startedAt, bal: f.amount } : s[k], c = k < 0 ? { paid: 0, profit: 0 } : cum[k];
+    const monthsPaid = x.t - f.startedAt, bal = x.bal > 0.5 ? x.bal : 0;
+    const total = bal > 0 ? reSettleCost(bal, f.rate, f.pmt, Math.max(0, f.n - monthsPaid), feeMonths) : 0;
+    return { t: x.t, year: Math.ceil(monthsPaid / 12), bal, fee: total - bal, total, profitLeft: totalProfit - c.profit, paid: c.paid, profitPaid: c.profit, monthsLeft: n - k - 1 };
+  };
+  const rows = [];
+  for (let k = 11; k < n; k += 12) rows.push(row(k));
+  if (!rows.length || rows[rows.length - 1].t !== s[n - 1].t) rows.push(row(n - 1));
+  const at = (t) => { const k = Math.round(t) - f.startedAt - 1; return k >= -1 && k < n ? row(k) : null; };
+  const early = f.prepaidAt != null ? { kind: "prepaid", t: f.prepaidAt, row: at(f.prepaidAt) }
+    : f.settledAt != null ? { kind: f.refinancedAt != null ? "refinanced" : f.soldAt != null ? "sold" : "settled", t: f.settledAt, row: at(Math.max(f.startedAt, f.settledAt - 1)) } : null;
+  return { rows, at, start: f.startedAt, end: s[n - 1].t, early, totalProfit, totalPaid: paid };
 }
 
 // a strategy's title in plain words, generated from its settings (your own name is kept as a subtitle)

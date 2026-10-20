@@ -141,15 +141,20 @@ test('a personal-loan step keeps the options it weighed, and the chosen one is t
   assert.ok(checked > 10, `exercised ${checked} personal-loan steps`);
 });
 
-test('cash at move-in: the rule-6 figure, tested against your line', () => {
+test('cash at move-in: left from your cash and the loans + saved from your salary, no growth — tested against your line', () => {
   let below = 0;
   for (const { label, inp } of scenarios(E, 40)) {
-    const m = E.computeRE(inp), p = E.mergeRE(inp);
+    const q = { ...inp, minCashMoveIn: 500000 }, m = E.computeRE(q), p = E.mergeRE(q);
     m.results.forEach((r, i) => {
       if (!r) return;
-      const occ = Math.min(r.months.length - 1, r.occupy);
-      assert.ok(near(r.onHandAtMoveIn, E.fundingBridgeRows(r, occ, p, m.prj).total), `${label} S${i + 1}: the "cash at move-in" figure`);
-      assert.strictEqual(r.moveInOk, r.onHandAtMoveIn >= (p.minCashMoveIn || 0) - 0.5, `${label} S${i + 1}`);
+      const occ = Math.min(r.months.length - 1, r.occupy), rc = E.cashReconcile(r, occ, p, m.prj), at = `${label} S${i + 1}`;
+      assert.ok(near(r.loansLeftAtMoveIn, E.fundingBridgeRows(r, occ, p, m.prj).total), `${at}: left from your cash and the loans`);
+      assert.ok(near(r.salaryToMoveIn, rc.salary), `${at}: saved from your salary`);
+      assert.ok(near(rc.salaryRows.reduce((a, x) => a + x.v, 0), rc.salary), `${at}: the salary lines add up`);
+      assert.ok(near(r.onHandAtMoveIn, r.loansLeftAtMoveIn + r.salaryToMoveIn) && near(r.onHandAtMoveIn, rc.total), `${at}: the two parts`);
+      const growth = r.months.filter((x) => x.t <= occ).reduce((a, x) => a + x.ret, 0);
+      assert.ok(near(r.onHandAtMoveIn, r.months[occ].cash - growth), `${at}: the bank balance less the return earned on it`);
+      assert.strictEqual(r.moveInOk, r.onHandAtMoveIn >= 500000 - 0.5, `${at}: the line`);
       if (!r.moveInOk) below++;
     });
   }
@@ -159,8 +164,8 @@ test('cash at move-in: the rule-6 figure, tested against your line', () => {
 test('the recommendation meets the most of your rules (recovery, cash at move-in); with the line off, the earlier choice returns', () => {
   const met = (r) => (r.recoveryOk ? 1 : 0) + (r.moveInOk ? 1 : 0);
   let bites = 0;
-  for (const { label, inp } of scenarios(E, 60)) {
-    const m = E.computeRE(inp), live = m.results.filter(Boolean), b = m.bestFeasible;
+  for (const { label, inp } of scenarios(E, 120)) {
+    const q = { ...inp, minCashMoveIn: 2000000 }, m = E.computeRE(q), live = m.results.filter(Boolean), b = m.bestFeasible;
     if (!b) { assert.ok(!live.some((r) => r.feasible), label); continue; }
     for (const r of live.filter((x) => x.feasible)) assert.ok(met(r) < met(b) || (met(r) === met(b) && r.econAdv <= b.econAdv), `${label}: ${r.plan.name} outranks the recommendation`);
     // the line far below anything: the earlier rule (recovers in time first, then the best result)
@@ -175,8 +180,8 @@ test('the recommendation meets the most of your rules (recovery, cash at move-in
 test('Auto refinance falls back to the most cash only when that meets more of your rules', () => {
   const score = (x) => (x.feasible ? 1 : 0) + (x.feasible && x.recoveryOk ? 1 : 0) + (x.feasible && x.moveInOk ? 1 : 0);
   let byMoveIn = 0;
-  for (const { label, inp } of scenarios(E, 120)) {
-    E.computeRE(inp).results.forEach((r, i) => {
+  for (const { label, inp } of scenarios(E, 150)) {
+    E.computeRE({ ...inp, minCashMoveIn: 2000000 }).results.forEach((r, i) => {
       if (!r || !r.refiFallback) return;
       const w = r.refiFallbackWhy;
       assert.ok(score(r) > score(w), `${label} S${i + 1}`);
@@ -193,4 +198,48 @@ test("the tool's pick meets your rules whenever some mix does", () => {
     assert.strictEqual(b.ok, b.feasible && b.recoveryOk && b.moveInOk, label);
     if (b.moveInOk) assert.ok(b.onHand >= (E.mergeRE(inp).minCashMoveIn || 0) - 0.5, label);
   }
+});
+
+test("paying a loan off early: each loan's schedule is the engine's, and so is the payoff it books", () => {
+  const debtKey = { lm: 'debtLm', eq: 'debtEq', co: 'debtCo' };
+  // a loan's balance at the end of month t, as the engine shows it (taken in its start month, gone once paid off or bought out)
+  const balAt = (f, s, t) => { if (!f || !(f.amount > 0) || f.startedAt == null || t < f.startedAt) return 0; if (f.prepaidAt != null && t >= f.prepaidAt) return 0; if (t === f.startedAt) return f.amount; const x = s.find((y) => y.t === t); return x ? x.bal : 0; };
+  let months = 0, prepays = 0, rows = 0;
+  const kinds = {};
+  for (const { label, inp } of scenarios(E, 50)) {
+    // "pay the mortgages off early" in every other plan, so the engine books some payoffs
+    const q = { ...inp, cashBuffer: 0, plans: E.mergeRE(inp).plans.map((o, k) => k % 2 ? { ...o, prepayAfter: 12 } : o) }, m = E.computeRE(q), p = E.mergeRE(q);
+    m.results.forEach((r, i) => {
+      if (!r) return;
+      const H = r.months.length - 1, at = `${label} S${i + 1}`, sch = {};
+      ['lm', 'eq', 'co', 'pl', 'pl2'].forEach((k) => { sch[k] = E.reLoanSchedule(r[k], r.plan.extraMo, false); });
+      for (let t = 0; t <= H; t++) {
+        for (const k of ['lm', 'eq', 'co']) assert.ok(near(balAt(r[k], sch[k], t), r.months[t][debtKey[k]], 0.01), `${at} ${k} month ${t}`);
+        assert.ok(near(balAt(r.pl, sch.pl, t) + balAt(r.pl2, sch.pl2, t), r.months[t].debtPl, 0.01), `${at} personal loans month ${t}`);
+        months++;
+      }
+      for (const k of ['lm', 'eq', 'co', 'pl', 'pl2']) {
+        const pr = E.rePayoffRows(r[k], r.plan.extraMo, p.settleFeeMonths);
+        if (!pr) continue;
+        pr.rows.forEach((x) => { assert.ok(x.fee >= -1e-6 && near(x.total, x.bal + x.fee, 1e-6), `${at} ${k} row`); rows++; });
+        assert.strictEqual(pr.rows[pr.rows.length - 1].bal, 0, `${at} ${k}: the last row is paid off`);
+        (r.prepaid || []).filter((x) => x.key === k).forEach((x) => { const a = pr.at(x.t); assert.ok(a && near(a.total, x.cost, 0.01), `${at} ${k}: the engine's payoff ${x.cost} vs ${a && a.total}`); prepays++; });
+        // the plan's own payoff, whatever ended the loan early, costs what the engine booked
+        const e = pr.early;
+        if (!e) { assert.ok(r[k].settledAt == null, `${at} ${k}: ended early without an early payoff`); continue; }
+        const booked = e.kind === "prepaid" ? r.prepaid.find((x) => x.key === k && x.t === e.t).cost
+          : e.kind === "refinanced" ? [r.pl, r.pl2].map((g) => g.refi && g.refi.items.find((x) => x.id === k && !x.old)).find(Boolean).cost
+          : e.kind === "sold" ? r.ownSale.payoff
+          : r.payoffs.find((x) => x.t === e.t && !x.old && x.name === r[k].label).cost;
+        assert.ok(e.row && near(e.row.total, booked, 0.01), `${at} ${k} ${e.kind}: booked ${booked} vs ${e.row && e.row.total}`);
+        kinds[e.kind] = (kinds[e.kind] || 0) + 1;
+      }
+    });
+  }
+  assert.ok(months > 0 && rows > 0 && prepays > 0 && kinds.prepaid > 0, `checked ${months} months, ${rows} rows, ${prepays} early payoffs`);
+  assert.ok(kinds.refinanced > 0 || kinds.settled > 0, `bought out or settled: ${JSON.stringify(kinds)}`);
+  // selling the home you live in repays the mortgage taken on it, before that month's instalment
+  const r = E.computeRE({ rentNow: 0, ownedValue: 2500000, ownHomePlan: 'sell', plans: [{ eqWhen: 'start', lmUse: true }] }).results[0];
+  const e = E.rePayoffRows(r.eq, r.plan.extraMo, E.RE_BASE.settleFeeMonths).early;
+  assert.ok(e && e.kind === 'sold' && e.t === r.ownSale.t && near(e.row.total, r.ownSale.payoff, 0.01), `sold: ${e && e.row.total} vs ${r.ownSale && r.ownSale.payoff}`);
 });
