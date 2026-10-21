@@ -61,9 +61,12 @@ function audit(label, m, r, bad) {
     const newPay = mo.lmPay + mo.eqPay + mo.plPay + mo.coPay + mo.rfPay;
     if (t === 0) { cash = p.cashAvailable + flows; cc = p.cashAvailable + flows; bc = p.cashAvailable; rc = p.cashAvailable; }
     else {
-      cash = grow(cash) + mo.inc - mo.liv - mo.rentPaid + mo.rentIn + flows - mo.existInst - newPay - mo.ownerCost;
+      // a plan that needs bridge money pays the bridge rate on a short balance, in both cash ledgers
+      const bi = r.bridged && cash < -0.5 ? -cash * r.bridgeRate / 1200 : 0;
+      if (!near(mo.bridgeInt || 0, bi)) flag('bridge money', `M${t}: engine ${mo.bridgeInt} vs rebuilt ${bi}`);
+      cash = grow(cash) - bi + mo.inc - mo.liv - mo.rentPaid + mo.rentIn + flows - mo.existInst - newPay - mo.ownerCost;
       const cRet = cc > 0 ? cc * alt : 0;                         // both sides grow from today, only while positive
-      cc = cc + cRet + flows; cRetCum += cRet;
+      cc = cc + cRet + flows - bi; cRetCum += cRet;
       bc += bc > 0 ? bc * alt : 0; bc -= ren.settle[t];            // the not-building side makes the planned settlements too
       rc = grow(rc) + mo.inc - mo.liv - mo.rentEq - ren.inst[t] - ren.settle[t];
     }
