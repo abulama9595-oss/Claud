@@ -51,7 +51,7 @@ function audit(label, m, r, bad) {
   const near = (a, b) => Math.abs(a - b) <= TOL * Math.max(1, Math.abs(b) / 1e6);
   const flag = (k, msg) => { if (!bad[k]) bad[k] = `${label} ${msg}`; };
   const grow = (x) => (x > 0 ? x * (1 + alt) : x);
-  let cash, cc, bc, rc, newC = 0, oldC = 0, rsC = 0, riC = 0, upC = 0, cRetCum = 0;
+  let cash, cc, bc, rc, newC = 0, oldC = 0, rsC = 0, riC = 0, upC = 0, cRetCum = 0, retC = 0;
   for (let t = 0; t <= H; t++) {
     const mo = r.months[t];
     const proceeds = r.facilities.filter((f) => f.startedAt === t && f.amount > 0).reduce((a, f) => a + f.amount - f.fees - (f.refi ? f.refi.payoff : 0), 0);
@@ -62,8 +62,10 @@ function audit(label, m, r, bad) {
     if (t === 0) { cash = p.cashAvailable + flows; cc = p.cashAvailable + flows; bc = p.cashAvailable; rc = p.cashAvailable; }
     else {
       // a plan that needs bridge money pays the bridge rate on a short balance, in both cash ledgers
-      const bi = r.bridged && cash < -0.5 ? -cash * r.bridgeRate / 1200 : 0;
+      // …on the cash you can spend (no growth): the household cash less every return earned so far
+      const spendable = cash - retC, bi = r.bridged && spendable < -0.5 ? -spendable * r.bridgeRate / 1200 : 0;
       if (!near(mo.bridgeInt || 0, bi)) flag('bridge money', `M${t}: engine ${mo.bridgeInt} vs rebuilt ${bi}`);
+      retC += cash > 0 ? cash * alt : 0;
       cash = grow(cash) - bi + mo.inc - mo.liv - mo.rentPaid + mo.rentIn + flows - mo.existInst - newPay - mo.ownerCost;
       const cRet = cc > 0 ? cc * alt : 0;                         // both sides grow from today, only while positive
       cc = cc + cRet + flows - bi; cRetCum += cRet;
@@ -71,6 +73,8 @@ function audit(label, m, r, bad) {
       rc = grow(rc) + mo.inc - mo.liv - mo.rentEq - ren.inst[t] - ren.settle[t];
     }
     if (!near(mo.cash, cash)) flag('household cash', `M${t}: engine ${mo.cash} vs rebuilt ${cash}`);
+    // the cash you can spend = household cash less every return earned so far (no growth counted)
+    if (!near(mo.avail, cash - retC)) flag('cash you can spend', `M${t}: engine ${mo.avail} vs rebuilt ${cash - retC}`);
     if (!near(mo.ccash, cc)) flag('rule-7 cash', `M${t}: engine ${mo.ccash} vs rebuilt ${cc}`);
     if (!near(mo.bcash, bc)) flag('baseline cash', `M${t}: engine ${mo.bcash} vs rebuilt ${bc}`);
     if (!near(mo.rCash, rc)) flag('not-building household cash', `M${t}: engine ${mo.rCash} vs rebuilt ${rc}`);
