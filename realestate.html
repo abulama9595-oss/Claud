@@ -1102,13 +1102,13 @@
               <div key={f.key} style={{ borderTop: k ? `1px solid ${K.line}` : "none", paddingTop: k ? 10 : 0, marginTop: k ? 10 : 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>{f.label} · {fCal(st.t)}</div>
                 <p style={{ fontSize: 13.5, lineHeight: 1.55 }}>{st.text}</p>
-                {(f.refiOld || []).length > 0 && <div style={{ fontSize: 12.5, color: K.sub, marginTop: 4, lineHeight: 1.5 }}>Old loans the bank could buy out then: {f.refiOld.map((l) => `${l.name} (≈${l.apr.toFixed(1)}% APR, ${fM(l.bal)} left, ${fSAR(l.inst)}/mo)`).join(" · ")}. The new personal loan: ≈{f.rate.toFixed(1)}% APR.</div>}
+                {(f.refiOld || []).length > 0 && <div style={{ fontSize: 12.5, color: K.sub, marginTop: 4, lineHeight: 1.5 }}>Old loans the bank could buy out then: {f.refiOld.map((l) => `${l.name} (≈${l.apr.toFixed(1)}% APR, ${fM(l.bal)} left, ${fSAR(l.inst)}/mo)`).join(" · ")}. {f.split ? <>The two new personal loans ({fM(f.split[0])} + {fM(f.split[1])}): ≈{f.rate.toFixed(1)}% APR.</> : <>The new personal loan: ≈{f.rate.toFixed(1)}% APR.</>}</div>}
                 {st.rows.length > 1 && <details style={{ marginTop: 6 }}><summary style={{ cursor: "pointer", fontSize: 12.5, color: K.brassTx, fontWeight: 600 }}>The {st.rows.length} ways it weighed</summary>
                   <div className="scroll-x" style={{ marginTop: 6 }}><table className="tbl">
                     <thead><tr><th>Buy out</th><th>New personal loan(s)</th><th>The bank clears</th><th>Cash to you</th><th>vs the choice made, today's money</th><th></th></tr></thead>
                     <tbody>{st.rows.map((x, j) => <tr key={j} style={{ background: x.chosen ? SOFT : "transparent", fontWeight: x.chosen ? 700 : 400 }}>
                       <td className="l">{x.names.length ? x.names.join(" + ") : "nothing"}</td>
-                      <td>{x.split ? `${fM(x.split[0])} + ${fM(x.split[1])}` : fM(x.amount)}</td><td>{fM(x.payoff)}</td><td>{fM(x.net)}</td>
+                      <td>{x.split ? `two: ${fM(x.split[0])} + ${fM(x.split[1])}` : `one: ${fM(x.amount)}`}</td><td>{fM(x.payoff)}</td><td>{fM(x.net)}</td>
                       <td style={{ color: x.chosen ? K.text : signCol(x.d) }}>{x.chosen ? "—" : fM(x.d)}</td>
                       <td className="l">{[x.chosen && "✓ chosen", x.bestValue && "best value", x.bestCash && "most cash"].filter(Boolean).join(" · ")}</td>
                     </tr>)}</tbody>
@@ -1667,7 +1667,7 @@
         return (<>
           {loans.length > 1 && <div style={{ marginBottom: 10 }}><Seg label="Loan" value={f.key} onChange={(k) => { setPayKey(k); setPayMonth(null); }} options={loans.map((x) => [x.key, PAY_NAME[x.key]])} /></div>}
           <div style={{ fontSize: 13, lineHeight: 1.55, marginBottom: 10 }}>
-            <b>{f.label}</b>: {fM(f.amount)} taken {fCal(f.startedAt)}{f.split ? ` as two loans (${fM(f.split[0])} + ${fM(f.split[1])})` : ""}{f.refi ? `, of which ${fM(f.refi.payoff)} cleared ${f.refi.names.join(" + ")}` : ""} · {f.quoted}%{inp.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over {f.tenure} years · {fSAR(f.pmt)}/mo{extra > 0 ? ` + ${fSAR(extra)} extra` : ""} · last instalment {fCal(pr.end)} · {fM(pr.totalProfit)} profit over its life if you keep it.
+            <b>{f.label}</b>: {fM(f.amount)} taken {fCal(f.startedAt)}{f.split ? ` as two new loans (${fM(f.split[0])} + ${fM(f.split[1])})` : ""}{f.refi ? `, of which ${fM(f.refi.payoff)} cleared ${f.refi.names.join(" + ")}` : ""} · {f.quoted}%{inp.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over {f.tenure} years · {fSAR(f.pmt)}/mo{extra > 0 ? ` + ${fSAR(extra)} extra` : ""} · last instalment {fCal(pr.end)} · {fM(pr.totalProfit)} profit over its life if you keep it.
           </div>
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 14, alignItems: "start" }}>
             <MonthField label="Pay it off in" value={tPick} min={pr.start} max={pr.end} onChange={setPayMonth} hint={tPick === pr.start ? "the month it is taken, before any instalment" : `after that month's instalment · year ${a.year} of the loan`} help={EXPL.payoff} />

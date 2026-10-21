@@ -119,7 +119,7 @@ function describeOption(o, inp, prj) {
   return s.join(", then ") + ".";
 }
 const newDebtOf = (r) => r.newDebtTotal || 0;
-const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}${f.prepaidAt != null ? ` · paid off early ${fCal(f.prepaidAt)}` : ""}${f.takenEarly != null ? ` · taken when your cash ran short (planned ${fCal(f.takenEarly)})` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
+const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two new loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}${f.prepaidAt != null ? ` · paid off early ${fCal(f.prepaidAt)}` : ""}${f.takenEarly != null ? ` · taken when your cash ran short (planned ${fCal(f.takenEarly)})` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
 
 /* ---------- one-time notice when an older scenario's per-strategy bank terms were merged into one set ---------- */
 const RE_LOAN_NAME = { lm: "land mortgage", eq: "owned-property mortgage", pl: "personal loan", co: "cash-out mortgage" };
@@ -238,7 +238,7 @@ function planSteps(r, build) {
   const s = [];
   (r.payoffs || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off ${x.name}`, amount: x.cost, note: "from your cash" }));
   r.facilities.filter((f) => f.startedAt != null && f.amount > 0 && f.key !== "rf").forEach((f) => {
-    const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : f.key === "eq" ? "Mortgage on your property" : f.key === "co" ? "Cash-out mortgage" : f.split ? "Two personal loans" : "Personal loan";
+    const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : f.key === "eq" ? "Mortgage on your property" : f.key === "co" ? "Cash-out mortgage" : f.split ? "Two new personal loans" : "Personal loan";
     const note = (f.key === "lm" ? "paid to the seller" : f.refi ? `the bank clears ${f.refi.names.join(" + ")}; ${fS(f.refi.net)} to you` : "paid to you") + (r.covered && r.covered.key === f.key ? " · taken when your cash runs short" : "");
     s.push({ t: f.startedAt, kind: f.key, label, amount: f.amount, note });
   });
