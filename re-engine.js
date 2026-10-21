@@ -893,8 +893,9 @@ function rePlanSimulate(p, prj, plan) {
   months.forEach((m) => { if (m.t < 1) return; const surplus = m.inc - outgo(m) + m.rentIn; if (surplus < 0.05 * m.inc) thinMonths++; if (!tightest || surplus < tightest.surplus) tightest = { t: m.t, surplus }; });
   if (prj.occupy > H) flags.push(`The home is not finished before the end of the comparison (move-in month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.`);
   if (shortfall > 0 && !bridged) {
-    flags.unshift(`Your cash runs out in month ${shortFrom}: you need ${fS(shortfall)} more (the most you are short, in month ${minCashT}) — no loan in this plan covers it, so the project can't be paid for this way.`);
-    events.push({ t: shortFrom, kind: "short", text: `Your cash runs out — no loan in this plan covers it; you need ${fS(shortfall)} more (the most you are short, in month ${minCashT}).` });
+    // computeRE adds how much more cash the plan needs (reAddNeed); the most you are short is not that figure
+    flags.unshift(`Your cash runs out in month ${shortFrom} and no loan in this plan covers it in time. At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.`);
+    events.push({ t: shortFrom, kind: "short", text: `Your cash runs out — no loan in this plan covers it in time. At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.` });
     events.sort((a, b) => a.t - b.t);
   }
   else if (!recoveryOk) flags.push(cashRestoredT == null ? `Cash never gets back to your ${fS(p.cashBuffer)} buffer after move-in within the horizon.` : `Cash gets back to your ${fS(p.cashBuffer)} buffer ${recoveryMonths} months after move-in (you asked for ${p.recoveryMonths}).`);
@@ -1011,6 +1012,45 @@ function reRunPlan(p, prj, plan) {
   return r2;
 }
 
+// a plan that runs out of cash: how much more money would let you carry it out. More cash to start with adds the same amount
+// to the cash you can spend in every month (no growth is counted), and the plan is carried out as it says — with more cash a
+// loan may cover a gap it could not cover before, so the answer can be well below the most you are short. needMore = the least
+// extra cash with which the plan works every month; needMoreBridge = the least with which it works with bridge money (shown
+// only when it is clearly less). One bisection over whole riyals narrows both (each run tells how the plan stands), to 0.25% or
+// 1,000 SAR; each figure is an amount the plan was run with. null = not found (five doublings of the most you are short).
+function reNeedMore(p, prj, plan, r) {
+  const W = { lo: 0, hi: null, r: null }, B = { lo: 0, hi: null, r: null };
+  const probe = (x0) => {
+    const x = Math.ceil(x0), q = reRunPlan({ ...p, cashAvailable: p.cashAvailable + x }, prj, plan), s = reStanding(q);
+    if (s >= 2) { if (W.hi == null || x < W.hi) { W.hi = x; W.r = q; } } else W.lo = Math.max(W.lo, x);
+    if (s >= 1) { if (B.hi == null || x < B.hi) { B.hi = x; B.r = q; } } else B.lo = Math.max(B.lo, x);
+  };
+  let top = Math.max(1000, r.shortfall);
+  for (let k = 0; k < 6 && W.hi == null; k++, top *= 2) probe(top);
+  const none = { needMore: null, needMoreBridge: null, needMoreBridgePeak: 0 };
+  if (W.hi == null) return none;
+  const open = (S) => S.hi - S.lo > Math.max(1000, S.hi * 0.0025);
+  for (let n = 0; n < 80 && (open(W) || open(B)); n++) {
+    const S = open(W) && (!open(B) || W.hi - W.lo >= B.hi - B.lo) ? W : B;
+    probe((S.lo + S.hi) / 2);
+  }
+  const out = { needMore: W.hi, needMoreBridge: null, needMoreBridgePeak: 0 };
+  if (B.r && B.r.bridged && W.hi - B.hi >= Math.max(5000, 0.02 * W.hi)) { out.needMoreBridge = B.hi; out.needMoreBridgePeak = B.r.bridgePeak; }
+  return out;
+}
+// the runs-out flag and event, with how much more you need (texts say "in month N"; the page turns that into a calendar month)
+function reAddNeed(p, prj, r) {
+  const n = reNeedMore(p, prj, r.plan, r);
+  Object.assign(r, n);
+  if (n.needMore == null) return r;
+  const alt = n.needMoreBridge != null ? `; with ${fS(n.needMoreBridge)} more it works only with bridge money (up to ${fS(n.needMoreBridgePeak)} until a loan lands)` : "";
+  const worst = `At the worst, in month ${r.minCashT}, you would be ${fS(r.shortfall)} short`;
+  const i = r.flags.findIndex((f) => /^Your cash runs out in month/.test(f));
+  if (i >= 0) r.flags[i] = `Your cash runs out in month ${r.shortFrom} and no loan in this plan covers it in time: to carry this plan out you need ${fS(n.needMore)} more cash to start with${alt}. ${worst}.`;
+  r.events.forEach((e) => { if (e.kind === "short") e.text = `Your cash runs out — no loan in this plan covers it in time. To carry this plan out you need ${fS(n.needMore)} more cash to start with${alt}. ${worst}.`; });
+  return r;
+}
+
 /* ---------- top-level ---------- */
 function computeRE(inp, opts) {
   const p = mergeRE(inp);
@@ -1020,6 +1060,8 @@ function computeRE(inp, opts) {
   const extra = home && opts && opts.extraPlans ? opts.extraPlans.filter(Boolean).map((o) => ({ ...RE_PLAN_DEFAULTS, ...o, enabled: true, lmMode: "max", eqMode: "max", plMode: "max", coMode: "max" })) : [];
   const results = home ? p.plans.map((o) => o.enabled ? reRunPlan(p, prj, o) : null).concat(extra.map((o) => { const r = reRunPlan(p, prj, o); r.tool = true; return r; }))
     : p.options.map((o) => o.enabled ? reSimulate(p, prj, o) : null);
+  // a plan that runs out: how much more cash it needs to work (the plans you see, not the tool's searches)
+  if (home && !(opts && opts.noNeed)) results.forEach((r) => { if (r && reStanding(r) === 0) reAddNeed(p, prj, r); });
   const live = results.filter(Boolean);
   const score = (r) => home ? r.econAdv : (r.irr == null ? -Infinity : r.irr);   // home: ranked by "everything grows"
   const ranked = live.slice().sort((a, b) => score(b) - score(a));
@@ -1077,10 +1119,13 @@ function computeRE(inp, opts) {
 }
 
 // one strategy (or rental option) on its own: what the sensitivity chart and the start-date sweep need, without the others
-function reRunOne(q, idx) {
+// (opts.need: a plan that runs out also gets how much more cash it needs, as in computeRE)
+function reRunOne(q, idx, opts) {
   const pq = mergeRE(q), prj = reProject(pq), home = pq.mode === "home";
   const o = home ? pq.plans[idx] : pq.options[idx];
-  return { prj, r: !o || !o.enabled ? null : home ? reRunPlan(pq, prj, o) : reSimulate(pq, prj, o) };
+  const r = !o || !o.enabled ? null : home ? reRunPlan(pq, prj, o) : reSimulate(pq, prj, o);
+  if (r && home && opts && opts.need && reStanding(r) === 0) reAddNeed(pq, prj, r);
+  return { prj, r };
 }
 // one-way sensitivity (±20%) on the headline metric of one option
 function tornadoRE(inp, idx) {

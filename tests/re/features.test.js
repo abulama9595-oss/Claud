@@ -309,9 +309,9 @@ test('cash is the money you can spend: no return on cash counted, never shown be
       // money in + what the salary saved + money out = cash at move-in; money in is never negative, money out never positive
       const mp = E.reMoveInParts(r, occ, p, prj);
       assert.ok(mp.moneyIn >= 0 && mp.moneyOut <= 0 && near(mp.total, r.onHandAtMoveIn, 0.01), `${at}: move-in parts`);
-      // a plan that runs out says how much more you need, where it starts
+      // a plan that runs out says so where it starts, with the most you would be short
       if (!r.feasible && !r.bridged) {
-        assert.ok(/you need .* more/.test(r.flags[0]) && r.events.some((e) => e.kind === 'short' && e.t === r.shortFrom), `${at}: the amount you need`);
+        assert.ok(/^Your cash runs out in month/.test(r.flags[0]) && r.flags[0].includes(`you would be ${E.fS(r.shortfall)} short`) && r.events.some((e) => e.kind === 'short' && e.t === r.shortFrom), `${at}: runs out`);
         runsOut++;
       }
     });
@@ -320,4 +320,32 @@ test('cash is the money you can spend: no return on cash counted, never shown be
   // the formatter never shows cash below zero
   assert.strictEqual(E.fCash(-1250000), 'short 1.25M');
   assert.strictEqual(E.fCash(480000), E.fS(480000));
+});
+
+test('a plan that runs out says how much more cash it needs: the least extra cash with which it works (or works with bridge money)', () => {
+  const n = { found: 0, belowPeak: 0, bridge: 0 };
+  for (const { label, inp } of scenarios(E, 40)) {
+    const m = E.computeRE(inp), m0 = E.computeRE(inp, { noNeed: true }), p = E.mergeRE(inp), prj = E.reProject(p);
+    m.results.forEach((r, i) => {
+      if (!r) return;
+      const at = `${label} S${i + 1}`, r0 = m0.results[i];
+      // the search only adds information: every figure of the plan is the one without it
+      assert.ok(r.econAdv === r0.econAdv && r.minCash === r0.minCash && r.onHandAtMoveIn === r0.onHandAtMoveIn, `${at}: unchanged`);
+      if (E.reStanding(r) > 0) { assert.strictEqual(r.needMore, undefined, `${at}: a plan that works needs nothing more`); return; }
+      assert.ok(r0.needMore === undefined && !/you need/.test(r0.flags[0]), `${at}: off = not worked out`);
+      if (r.needMore == null) return;
+      const run = (x) => E.reRunPlan({ ...p, cashAvailable: p.cashAvailable + x }, prj, r.plan);
+      // with that much more cash to start with the plan works every month; with clearly less it does not
+      assert.strictEqual(E.reStanding(run(r.needMore)), 2, `${at}: works with ${r.needMore} more`);
+      const tol = Math.max(1000, r.needMore * 0.0025);
+      if (r.needMore > tol + 1) assert.ok(E.reStanding(run(r.needMore - tol - 1)) < 2, `${at}: the least`);
+      // the runs-out flag and row say it
+      assert.ok(r.flags[0].includes(`you need ${E.fS(r.needMore)} more cash to start with`) && r.events.some((e) => e.kind === 'short' && e.text.includes(`you need ${E.fS(r.needMore)} more`)), `${at}: texts`);
+      if (r.needMoreBridge != null) { const b = run(r.needMoreBridge); assert.ok(r.needMoreBridge < r.needMore && b.bridged && !b.feasible && r.needMoreBridgePeak === b.bridgePeak, `${at}: works with bridge money`); n.bridge++; }
+      if (r.needMore < r.shortfall - 1000) n.belowPeak++;
+      n.found++;
+    });
+  }
+  // a loan of the plan taken early can carry part of the shortfall, so the need is often below the most you are short
+  assert.ok(n.found > 0 && n.belowPeak > 0, JSON.stringify(n));
 });
