@@ -760,9 +760,9 @@ function rePlanSimulate(p, prj, plan) {
     ccash -= bridgeInt; bridgeCum += bridgeInt;
     // planned settlements first (e.g. a loan you intend to clear on a known date)
     loans.forEach((l) => { if (l.settledAt === null && l.bal > 0.5 && l.settleAt != null && l.settleAt > 0 && t === Math.round(l.settleAt)) doSettle(l, t, "planned settlement from your cash"); });
-    // milestones
-    if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett + prj.landBroker)} incl. RETT${prj.landBroker > 0 ? " and the broker's fee" : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
-    if (t === prj.start && prj.build) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett - prj.landBroker)} over ${prj.bm} months.` });
+    // the order of a month's steps as they really happen: the finished home first (what needs it comes after), then the sale
+    // of the home you lived in, then each loan with any payoff that makes room for it, then what that money pays for
+    if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Upkeep starts.` });
     // the home you lived in is sold when you move in (your option): its value less selling costs, after repaying any
     // mortgage this strategy took on it (with the early-settlement fee), lands in your cash
     if (ownPlan === "sell" && t === prj.occupy) {
@@ -783,7 +783,9 @@ function rePlanSimulate(p, prj, plan) {
     // the land mortgage is still secured on the same home, so the cash-out may only lend up to the LTV less what is still owed on it
     if (t === coT) originate(t, co, "max", 0, Math.max(0, prj.valueAt(t) * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0)), Infinity);
     if (t === pl2T) takePersonal(t, pl2);          // after the cash-out: personal loan(s) fill what is left
-    if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Upkeep starts.` });
+    // what the money raised above pays for (the land, the start of construction)
+    if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett + prj.landBroker)} incl. RETT${prj.landBroker > 0 ? " and the broker's fee" : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
+    if (t === prj.start && prj.build) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett - prj.landBroker)} over ${prj.bm} months.` });
     // project spend, all from cash (facility proceeds are already in cash)
     const spend = prj.schedule[t] || 0;
     cash -= spend; ccash -= spend;
@@ -940,7 +942,8 @@ function reCarryOut(p, prj, plan) {
       const what = k === "pl2" ? "personal loans planned for move-in are" : k === "pl" ? "personal loans are" : "mortgage on your existing property is";
       const note = `Your cash would run short in month ${g.from} (up to ${fS(g.peak)}, until the planned loan lands in month ${g.to}), so the ${what} taken in month ${g.from} instead: the bank's maximum then is ${fS(f.amount)}${f.refi ? `, of which ${fS(f.refi.payoff)} buys out ${f.refi.names.join(" + ")} and ${fS(f.refi.net)} reaches you` : ""}. The deficit is covered by a loan.`;
       r2.notes = [note].concat(r2.notes || []);
-      const i = r2.events.findIndex((e) => e.t >= g.from);
+      let i = r2.events.findIndex((e) => e.t === g.from && e.kind === (k === "eq" ? "eq" : "pl"));   // just before its loan
+      if (i < 0) i = r2.events.findIndex((e) => e.t >= g.from);
       r2.events.splice(i < 0 ? r2.events.length : i, 0, { t: g.from, kind: "cover", text: `Your cash would run short now, so the ${what} taken now instead of in month ${f0.startedAt} — the deficit is covered by a loan.` });
       return r2;
     }
