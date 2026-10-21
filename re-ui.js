@@ -24,7 +24,9 @@ const fDiff = (v) => `${fS(Math.abs(v))} ${v >= 0 ? "ahead of" : "behind"}`;
 function reExpl(inp) {
   const dbr = inp.dbrCap, mc = inp.mortgageCap, pc = inp.perLoanCap, age = inp.refiMinMonths == null ? 12 : inp.refiMinMonths, fee = inp.settleFeeMonths, ret = inp.altReturn;
   return {
-    executable: "Cash never goes below zero in any month: income − living − rent − all instalments − project spend + loan proceeds, with cash earning the return on cash while it is positive.",
+    executable: "Cash never goes below zero in any month: income − living − rent − all instalments − project spend + loan proceeds, with cash earning the return on cash while it is positive. If your cash would run short before one of the plan's own loans lands, the tool takes that loan in the month the cash runs short — a personal loan or the mortgage on the property you own, at the bank's maximum then, buying out the old loans it may refinance then — and the plan works every month (the deficit is covered by a loan). If no loan can cover it in time, the plan needs bridge money (see 'Bridge money'); if no loan of the plan ever closes the gap, it runs out of cash.",
+    bridge: `Bridge money: when your cash runs short until one of the plan's loans lands and no loan can cover the gap in time — the bank's room isn't there yet, an old loan can't be refinanced yet, or the gap is closed by the cash-out, which needs the finished home. You would have to arrange it yourself (a short-term loan, or paying the builder later). Its profit, at ${inp.bridgeRate != null && inp.bridgeRate !== "" ? `${inp.bridgeRate}%` : "the personal-loan rate (APR)"} a year on the short balance, is counted until the loan lands and repays it. A plan that needs bridge money ranks after every plan that works without it.`,
+    covered: "Your cash would have run short before this loan's planned month, so the tool takes it in the month the cash runs short instead — the bank's maximum then, buying out the old loans it may refinance then — and the plan works every month. The deficit is covered by a loan.",
     recovery: `Months after move-in until your cash balance is back at or above your safety cushion. Your rule: within ${inp.recoveryMonths} months.`,
     moveIn: `Your rule: your cash at move-in — what is left from your own cash and the loans after every cost so far, plus what your salary saved after living costs, rent and every instalment, with no return on cash counted — must be at least ${fS(inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn)}. A plan below it ranks after plans that meet the rule, and the tool's search does the same. 0 = never negative; raise it to keep a reserve.`,
     payoff: `What it would cost to pay a loan off in a given month: the balance still owed after that month's instalment plus the bank's early-settlement fee — at most the next ${inp.settleFeeMonths} months of profit on the declining balance (SAMA cap). The same fee the tool charges when a plan pays a loan off early.`,
@@ -38,8 +40,8 @@ function reExpl(inp) {
     newDebt: "Sum of all new loans actually drawn (land mortgage, owned-property mortgage, personal loans, cash-out), after the bank's LTV, per-loan and total debt-burden limits.",
     capacity: `What the bank could lend that month. Your instalment capacity is ONE bucket: ${dbr}% of income. What is left of it (${dbr}% × income − every instalment running that month) is the room; inside the bucket all mortgages together may use up to ${mc}% of income and one personal loan up to ${pc}% (a second personal loan may take what is left; never more than two personal loans at once, old ones included). The room is converted to a principal at the loan's rate and tenure (Bank terms), then capped by LTV × the property's value and the bank's ceiling per loan.`,
     bucket: `Instalments running each month as % of that month's income, stacked: existing loans, then each new loan. The dashed lines are the bank's limits: ${dbr}% for everything together and ${mc}% for all mortgages together. Free space under the top line is borrowing room you are not using.`,
-    optimizer: `For the chosen start the tool tries every mix of: land mortgage yes/no, personal loan(s) at build start yes/no, owned-property mortgage (none / at build start / now / at land purchase), cash-out at completion yes/no, personal loan(s) at completion yes/no, and how far to pay off old personal loans for a mortgage (just enough / for the largest mortgage / never) — up to 192 mixes, every loan at the bank's maximum and priced with your Bank terms; old personal loans are bought out automatically when a personal loan is taken, by the 'Auto' rule. It keeps the mix that never runs out of cash, gets cash back to your cushion within ${inp.recoveryMonths} months and keeps your cash at move-in at or above ${fS(inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn)} (your rules), then the highest 'everything grows' result, then the lowest peak instalment.`,
-    newDebtCost: "All profit paid on the new loans over the comparison plus bank fees and early-settlement fees (including mortgages you pay off early).",
+    optimizer: `For the chosen start the tool tries every mix of: land mortgage yes/no, personal loan(s) at build start yes/no, owned-property mortgage (none / at build start / now / at land purchase), cash-out at completion yes/no, personal loan(s) at completion yes/no, and how far to pay off old personal loans for a mortgage (just enough / for the largest mortgage / never) — up to 192 mixes, every loan at the bank's maximum and priced with your Bank terms; old personal loans are bought out automatically when a personal loan is taken, by the 'Auto' rule. It keeps the mix that never runs out of cash (a mix that needs bridge money comes after every mix that doesn't), gets cash back to your cushion within ${inp.recoveryMonths} months and keeps your cash at move-in at or above ${fS(inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn)} (your rules), then the highest 'everything grows' result, then the lowest peak instalment.`,
+    newDebtCost: "All profit paid on the new loans over the comparison plus bank fees and early-settlement fees (including mortgages you pay off early), and the profit on any bridge money.",
     totalInterest: "Profit on new loans + profit still paid on the existing loans + settlement fees.",
     econ: `How strategies are ranked. Everything grows at ${ret}% a year from the month it moves, on both sides: your household cash (salary in; living costs, rent, every instalment and payoff out; growth while it is positive) + the home's value − all debt, against the same household not building: its cash − the old-loan debt it still owes. The difference is shown in Oct-of-the-horizon riyals and in today's money (discounted at ${ret}%).`,
     econIrr: "The yearly return the money you put into building earns, compared with not building (the extra money building takes and gives back each month, and the home minus debt at the end). Compare it with your return on cash.",
@@ -55,7 +57,7 @@ function reExpl(inp) {
     prepay: `Your option: pay the mortgages off early from your own cash this many months after move-in (after that month's instalments), most expensive first, as long as the cash above your safety cushion covers the payoff plus the early-settlement fee (${fee} months' profit). Leave it empty and mortgages run to their end.`,
     dbrRoom: `Bank total cap (${dbr}% of income) minus the instalments running today — the free part of your bucket. Inside it all mortgages together may use up to ${mc}% of income and one personal loan up to ${pc}%.`,
     savings: "Income − living expenses − rent − existing instalments, per month, today.",
-    earliest: "Earliest construction start (every 3 months from today, plus your planned start) that never runs out of cash, gets cash back to your cushion within your recovery window and keeps your cash at move-in at or above your line; if no start meets all of your rules, the earliest that meets the most of them. The land purchase stays where you set it unless the start comes first, in which case it moves to the start.",
+    earliest: "Earliest construction start (every 3 months from today, plus your planned start) that never runs out of cash (with no bridge money if any start manages that), gets cash back to your cushion within your recovery window and keeps your cash at move-in at or above your line; if no start meets all of your rules, the earliest that meets the most of them. The land purchase stays where you set it unless the start comes first, in which case it moves to the start.",
     cost: "Land (grown at the appreciation rate to the purchase month) + RETT + the broker's fee on the land + construction (built-up m² × SAR/m², inflated to the start month) + soft costs + contingency + extras + any cost overrun + VAT.",
     value: `The home's market value = land + building. The land grows at the appreciation rate (${inp.appreciation}% a year) from the month it is bought. The building is worth what it costs to build (construction + soft costs + extras) × (1 + self-build uplift ${inp.devMarginPct}%) — the uplift is on what you build, not on the land — added as it is built, then it loses ${inp.buildDeprPct == null ? 2 : inp.buildDeprPct}% of that value a year from move-in (straight-line, never below zero). VAT, RETT, fees, contingency and overruns add no value. A ready home you buy keeps its price + finishing growing with the market.`,
     buildDepr: "Wear and age: each year from move-in the building loses this % of what it was worth when finished (straight-line, so 2% means it is worth nothing after 50 years). The land is not affected — it keeps growing at the appreciation rate. 0 keeps the building's value flat.",
@@ -80,6 +82,7 @@ function fundingBridgeRows(r, upto, inp, prj) {
   add("Bank fees on new loans", -r.facilities.filter((f) => inRange(f.startedAt) && f.key !== "rf").reduce((a, f) => a + f.fees, 0));
   (r.prepaid || []).filter((x) => inRange(x.t)).forEach((x) => add(`Mortgage paid off early: ${x.name.toLowerCase()}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`));
   if (r.ownSale && inRange(r.ownSale.t)) add("Sale of the home you lived in, net", r.ownSale.net, `${fCal(r.ownSale.t)} · after selling costs${r.ownSale.payoff > 0 ? " and repaying its mortgage" : ""}`);
+  add("Bridge money while your cash was short (profit)", -r.months.filter((x) => x.t <= upto).reduce((a, x) => a + (x.bridgeInt || 0), 0), "until the loan that closes the gap lands");
   const total = rows.reduce((a, x) => a + x.v, 0);
   const ret = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + (x.cRet || 0), 0);
   // does the salary really carry living costs + every instalment each month?
@@ -116,7 +119,7 @@ function describeOption(o, inp, prj) {
   return s.join(", then ") + ".";
 }
 const newDebtOf = (r) => r.newDebtTotal || 0;
-const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}${f.prepaidAt != null ? ` · paid off early ${fCal(f.prepaidAt)}` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
+const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}${f.prepaidAt != null ? ` · paid off early ${fCal(f.prepaidAt)}` : ""}${f.takenEarly != null ? ` · taken when your cash ran short (planned ${fCal(f.takenEarly)})` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
 
 /* ---------- one-time notice when an older scenario's per-strategy bank terms were merged into one set ---------- */
 const RE_LOAN_NAME = { lm: "land mortgage", eq: "owned-property mortgage", pl: "personal loan", co: "cash-out mortgage" };
@@ -214,12 +217,16 @@ function rePayoffRows(f, extraMo, feeMonths) {
 }
 
 // a strategy's title in plain words, generated from its settings (your own name is kept as a subtitle)
-function planTitle(o, build) {
+// r (optional, a result or a tool summary): a loan the tool took early because your cash would run short (r.covered) is
+// named "when your cash runs short"
+function planTitle(o, build, r) {
   const when = { start: "now", land: "when the land is bought", build: "at build start", completion: "at move-in", month: "in a month you chose" };
+  const cov = r && r.covered ? r.covered.key : null, short = "when your cash runs short";
   const pl = o.plWhen && o.plWhen !== "none", pl2 = !!o.pl2Use, parts = [];
+  const plW = cov === "pl" ? short : when[o.plWhen], pl2W = cov === "pl2" ? short : "at move-in";
   if (o.lmUse) parts.push(build ? "mortgage the land" : "mortgage the purchase");
-  if (o.eqWhen && o.eqWhen !== "none") parts.push(`mortgage the property you own ${when[o.eqWhen] || ""}`.trim());
-  if (pl || pl2) parts.push(pl && pl2 ? `personal loans ${when[o.plWhen]} and at move-in` : pl ? `personal loans ${when[o.plWhen]}` : "personal loans at move-in");
+  if (o.eqWhen && o.eqWhen !== "none") parts.push(`mortgage the property you own ${cov === "eq" ? short : when[o.eqWhen] || ""}`.trim());
+  if (pl || pl2) parts.push(pl && pl2 ? `personal loans ${plW} and ${pl2W}` : pl ? `personal loans ${plW}` : `personal loans ${pl2W}`);
   if (o.coUse) parts.push("a cash-out mortgage on the new home at move-in");
   if (!parts.length) return "Pay from your cash — no new loans";
   const t = parts.join(", then ");
@@ -232,7 +239,7 @@ function planSteps(r, build) {
   (r.payoffs || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off ${x.name}`, amount: x.cost, note: "from your cash" }));
   r.facilities.filter((f) => f.startedAt != null && f.amount > 0 && f.key !== "rf").forEach((f) => {
     const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : f.key === "eq" ? "Mortgage on your property" : f.key === "co" ? "Cash-out mortgage" : f.split ? "Two personal loans" : "Personal loan";
-    const note = f.key === "lm" ? "paid to the seller" : f.refi ? `the bank clears ${f.refi.names.join(" + ")}; ${fS(f.refi.net)} to you` : "paid to you";
+    const note = (f.key === "lm" ? "paid to the seller" : f.refi ? `the bank clears ${f.refi.names.join(" + ")}; ${fS(f.refi.net)} to you` : "paid to you") + (r.covered && r.covered.key === f.key ? " · taken when your cash runs short" : "");
     s.push({ t: f.startedAt, kind: f.key, label, amount: f.amount, note });
   });
   (r.prepaid || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off the ${x.name.toLowerCase()} early`, amount: x.cost, note: "from your cash" }));
@@ -271,6 +278,7 @@ function reWealthParts(r) {
     { key: "value", label: "The home's value at the end", v: end.value },
     { key: "cost", label: "What the project cost (land, taxes, fees, construction)", v: -sum("spend") },
     { key: "newLoans", label: "Profit and fees on the new loans", v: -(sum("newInt") + newFees) },
+    { key: "bridge", label: "Bridge money while your cash was short (profit)", v: -sum("bridgeInt") },
     { key: "oldLoans", label: "Old loans: profit and fees, compared with not building", v: end.oldSavedCum + sum("renterSettle") + end.oldDebtGap - oldPaid },
     { key: "rent", label: "Rent you stop paying", v: end.rentSavedCum },
     { key: "rentIn", label: "Rent you receive", v: end.rentInCum },

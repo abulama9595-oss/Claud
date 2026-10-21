@@ -163,14 +163,17 @@ test('cash at move-in: left from your cash and the loans + saved from your salar
 
 test('the recommendation meets the most of your rules (recovery, cash at move-in); with the line off, the earlier choice returns', () => {
   const met = (r) => (r.recoveryOk ? 1 : 0) + (r.moveInOk ? 1 : 0);
+  // works every month (2) before works with bridge money (1) before runs out (0)
+  const st = (r) => r.feasible ? 2 : r.bridged ? 1 : 0;
   let bites = 0;
   for (const { label, inp } of scenarios(E, 120)) {
     const q = { ...inp, minCashMoveIn: 2000000 }, m = E.computeRE(q), live = m.results.filter(Boolean), b = m.bestFeasible;
-    if (!b) { assert.ok(!live.some((r) => r.feasible), label); continue; }
-    for (const r of live.filter((x) => x.feasible)) assert.ok(met(r) < met(b) || (met(r) === met(b) && r.econAdv <= b.econAdv), `${label}: ${r.plan.name} outranks the recommendation`);
+    if (!b) { assert.ok(!live.some((r) => st(r) > 0), label); continue; }
+    for (const r of live.filter((x) => st(x) > 0)) assert.ok(st(r) < st(b) || (st(r) === st(b) && (met(r) < met(b) || (met(r) === met(b) && r.econAdv <= b.econAdv))), `${label}: ${r.plan.name} outranks the recommendation`);
     // the line far below anything: the earlier rule (recovers in time first, then the best result)
     const off = E.computeRE({ ...inp, minCashMoveIn: -1e12 }), old = off.results.filter(Boolean), by = (a, c) => c.econAdv - a.econAdv;
-    const exp = old.filter((r) => r.feasible && r.recoveryOk).sort(by)[0] || old.filter((r) => r.feasible).sort(by)[0] || null;
+    const top = Math.max(0, ...old.map(st)), tier = top > 0 ? old.filter((r) => st(r) === top) : [];
+    const exp = tier.filter((r) => r.recoveryOk).sort(by)[0] || tier.sort(by)[0] || null;
     assert.strictEqual(off.bestFeasible, exp, label + ': line off');
     if (m.results.indexOf(b) !== off.results.indexOf(off.bestFeasible)) bites++;
   }
@@ -178,7 +181,7 @@ test('the recommendation meets the most of your rules (recovery, cash at move-in
 });
 
 test('Auto refinance falls back to the most cash only when that meets more of your rules', () => {
-  const score = (x) => (x.feasible ? 1 : 0) + (x.feasible && x.recoveryOk ? 1 : 0) + (x.feasible && x.moveInOk ? 1 : 0);
+  const st = (x) => x.feasible ? 2 : x.bridged ? 1 : 0, score = (x) => st(x) * 3 + (st(x) > 0 ? (x.recoveryOk ? 1 : 0) + (x.moveInOk ? 1 : 0) : 0);
   let byMoveIn = 0;
   for (const { label, inp } of scenarios(E, 150)) {
     E.computeRE({ ...inp, minCashMoveIn: 2000000 }).results.forEach((r, i) => {
@@ -242,4 +245,47 @@ test("paying a loan off early: each loan's schedule is the engine's, and so is t
   const r = E.computeRE({ rentNow: 0, ownedValue: 2500000, ownHomePlan: 'sell', plans: [{ eqWhen: 'start', lmUse: true }] }).results[0];
   const e = E.rePayoffRows(r.eq, r.plan.extraMo, E.RE_BASE.settleFeeMonths).early;
   assert.ok(e && e.kind === 'sold' && e.t === r.ownSale.t && near(e.row.total, r.ownSale.payoff, 0.01), `sold: ${e && e.row.total} vs ${r.ownSale && r.ownSale.payoff}`);
+});
+
+test("a cash gap that one of the plan's loans closes: covered by taking that loan when the cash runs short, else bridge money (counted), else it runs out", () => {
+  const n = { same: 0, covered: 0, bridged: 0, runsOut: 0 };
+  for (const { label, inp } of scenarios(E, 80)) {
+    const m = E.computeRE(inp), p = E.mergeRE(inp), prj = E.reProject(p);
+    m.results.forEach((r, i) => {
+      if (!r) return;
+      const at = `${label} S${i + 1}`;
+      // the plan as you set it, run straight through (with the refinance choice the result used)
+      const d = E.rePlanSimulate(p, prj, r.refiFallback ? { ...r.plan, refiMode: 'cash' } : r.plan);
+      const gaps = E.reGaps(d.months, d.facilities, d.ownSale);
+      if (d.feasible || gaps.some((g) => !g.closedBy.length)) {
+        // works as set, or a gap no loan closes: exactly the straight run
+        assert.ok(!r.covered && !r.bridged && r.feasible === d.feasible && r.econAdv === d.econAdv && r.minCash === d.minCash, `${at}: unchanged`);
+        if (d.feasible) n.same++; else n.runsOut++;
+        return;
+      }
+      if (r.covered) {
+        // the loan that closed a gap is taken in the month that gap began, and the plan then works every month
+        const c = r.covered, g = gaps.find((x) => x.from === c.at);
+        assert.ok(r.feasible && g && g.closedBy.includes(c.key) && d[c.key].startedAt === g.to && r[c.key].startedAt === c.at, `${at}: covered`);
+        assert.ok(r.notes.length && r.events.some((e) => e.kind === 'cover' && e.t === c.at), `${at}: noted`);
+        n.covered++;
+        return;
+      }
+      if (r.bridged) {
+        // no loan could cover it in time: the gaps are still closed by the plan's loans, and the short balance costs the bridge rate
+        assert.ok(!r.feasible && E.reGaps(r.months, r.facilities, r.ownSale).every((g) => g.closedBy.length), `${at}: bridged gaps`);
+        let prev = null, cost = 0;
+        r.months.forEach((mo) => { const want = prev != null && prev < -0.5 ? -prev * r.bridgeRate / 1200 : 0; assert.ok(near(mo.bridgeInt, want, 1e-6), `${at} M${mo.t}: bridge profit`); cost += mo.bridgeInt; prev = mo.cash; });
+        assert.ok(near(cost, r.bridgeCost, 1e-6) && r.bridgeCost > 0 && /^Needs bridge money/.test(r.flags[0]), `${at}: bridge cost and flag`);
+        n.bridged++;
+        return;
+      }
+      // a gap a loan closes, but neither covered nor bridged: the bridge rerun no longer closes it
+      assert.ok(!r.feasible && r.econAdv === d.econAdv, `${at}: runs out`);
+      n.runsOut++;
+    });
+    // a plan that needs bridge money is recommended only when no plan works every month
+    if (m.bestFeasible && m.bestFeasible.bridged && !m.bestFeasible.feasible) assert.ok(!m.results.some((r) => r && r.feasible), `${label}: bridged recommendation`);
+  }
+  assert.ok(n.same > 0 && n.covered > 0 && n.bridged > 0 && n.runsOut > 0, JSON.stringify(n));
 });
