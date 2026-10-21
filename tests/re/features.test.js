@@ -188,6 +188,8 @@ test('Auto refinance falls back to the most cash only when that meets more of yo
       if (!r || !r.refiFallback) return;
       const w = r.refiFallbackWhy;
       assert.ok(score(r) > score(w), `${label} S${i + 1}`);
+      // the note sits in the month the personal loans are taken (when the old loans are bought out), just before that step
+      r.events.filter((e) => e.kind === 'rf').forEach((e) => { const k = r.events.indexOf(e), next = r.events.slice(k + 1).find((x) => x.t === e.t && x.kind === 'pl'); assert.ok([r.pl, r.pl2].some((f) => f && f.startedAt === e.t) && next, `${label} S${i + 1}: refinance note in month ${e.t}`); });
       if (w.feasible && w.recoveryOk && !w.moveInOk) { byMoveIn++; assert.ok(r.moveInOk, `${label} S${i + 1}: the fallback meets the line`); }
     });
   }

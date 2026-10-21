@@ -1002,7 +1002,12 @@ function reRunPlan(p, prj, plan) {
   if (score(r2) <= score(r)) return r;
   r2.plan = plan; r2.refiFallback = true;
   r2.refiFallbackWhy = { feasible: r.feasible, bridged: !!r.bridged, bridgePeak: r.bridgePeak || 0, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHandAtMoveIn: r.onHandAtMoveIn, minCash: r.minCash, minCashT: r.minCashT, recoveryMonths: r.recoveryMonths, econAdv: r.econAdv, econPV: r.econPV };
-  r2.events.unshift({ t: 0, kind: "pl", text: `Refinancing: buying out the old loans that give the best value would ${!r.feasible ? (r.bridged ? `need ${fS(r.bridgePeak)} of bridge money` : "run your cash out") : !r.recoveryOk ? "miss your cash-recovery window" : `leave your cash at move-in at ${fS(r.onHandAtMoveIn)}, below your line of ${fS(p.minCashMoveIn == null ? 0 : p.minCashMoveIn)}`}, so this strategy buys out the ones that put the most cash in your hands.` });
+  // the note goes in the month the personal loans are taken (that is when the old loans are bought out), just before that step
+  const fRef = [r2.pl, r2.pl2].find((x) => x && x.startedAt != null && x.amount > 0 && x.refiOptions && x.refiOptions.length > 1) || [r2.pl, r2.pl2].find((x) => x && x.startedAt != null && x.amount > 0);
+  const tRef = fRef ? fRef.startedAt : 0;
+  let iRef = r2.events.findIndex((e) => e.t === tRef && e.kind === "pl");
+  if (iRef < 0) iRef = r2.events.findIndex((e) => e.t >= tRef);
+  r2.events.splice(iRef < 0 ? r2.events.length : iRef, 0, { t: tRef, kind: "rf", text: `Which old loans the bank buys out: buying out the ones that give the best value would ${!r.feasible ? (r.bridged ? `need ${fS(r.bridgePeak)} of bridge money` : "run your cash out") : !r.recoveryOk ? "miss your cash-recovery window" : `leave your cash at move-in at ${fS(r.onHandAtMoveIn)}, below your line of ${fS(p.minCashMoveIn == null ? 0 : p.minCashMoveIn)}`}, so this strategy buys out the ones that put the most cash in your hands.` });
   return r2;
 }
 
