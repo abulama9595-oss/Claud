@@ -626,7 +626,7 @@ function rePlanSimulate(p, prj, plan) {
     f.split = f.key === "pl" && plan.plSplit && amount > onePl + 1 ? [onePl, amount - onePl] : null;
     const dbr = allInst() / inc * 100;
     const basis = mode === "max" ? "the bank's maximum" : mode === "need" ? `the shortfall${gap > amount + 1 ? ` (${fS(gap)} needed)` : ""}` : "the amount you set";
-    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. ${f.key === "lm" ? `The bank pays it directly to the seller; you pay the other ${fS(Math.max(0, (prj.build ? prj.land : prj.price) - amount))} of the price plus ${fS(prj.rett)} transfer tax${prj.landBroker > 0 ? ` and ${fS(prj.landBroker)} broker's fee` : ""}${f.fees > 1 ? ` and ${fS(f.fees)} bank fees` : ""} from your own cash.` : `Net to your cash ${fS(amount - f.fees)}.`}` });
+    events.push({ t, kind: f.key, text: `${f.label}: ${fS(amount)}${f.split ? ` as two new loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs — ${basis}; bank could lend up to ${fS(c.cap)} (limited by ${c.limitedBy}); instalment ${fSAR(f.pmt)}/mo; debt burden now ${dbr.toFixed(0)}% of income. ${f.key === "lm" ? `The bank pays it directly to the seller; you pay the other ${fS(Math.max(0, (prj.build ? prj.land : prj.price) - amount))} of the price plus ${fS(prj.rett)} transfer tax${prj.landBroker > 0 ? ` and ${fS(prj.landBroker)} broker's fee` : ""}${f.fees > 1 ? ` and ${fS(f.fees)} bank fees` : ""} from your own cash.` : `Net to your cash ${fS(amount - f.fees)}.`}` });
     if (mode === "need" && gap > amount + 1) flags.push(`${f.label} covers ${fS(amount)} of a ${fS(gap)} shortfall (${c.limitedBy}).`);
   }
   // PERSONAL LOAN (refinance included): the bank lends its MAXIMUM as one or two new personal loans (each instalment ≤ perLoanCap,
@@ -680,7 +680,11 @@ function rePlanSimulate(p, prj, plan) {
       const net = amount - payoff;
       const limitedBy = room < nNew * capInst - 1 ? `${p.dbrCap}% total debt-burden cap${capInst < perLoanTarget - 1 && p1 >= p.plCap - 1 ? ` (the first loan is at the bank's ceiling of ${fS(p.plCap)})` : ""}` : capInst < perLoanTarget - 1 ? `bank ceiling of ${fS(p.plCap)} per personal loan` : `${p.perLoanCap}% cap per personal loan${nNew > 1 ? " (two loans)" : ""}`;
       const value = net - pvPayments(p1, f.rate, rePmt(p1, f.rate, f.n), 1) - (p2 > 1 ? pvPayments(p2, f.rate, rePmt(p2, f.rate, f.n), 1) : 0) + S.reduce((a, l) => a + pvPayments(l.bal, l.rate, instOfAny(l), 0), 0);
-      const c = { S, freed, payoff, amount, net, value, split: p2 > 1 ? [p1, p2] : null, limitedBy, room };
+      // why each new loan is the size it is: one loan stops at the per-loan limit (or the bank's ceiling per loan); the second
+      // takes what is left of your room (or stops at the same limit)
+      const oneWhy = capInst < perLoanTarget - 1 ? `the bank's ceiling of ${fS(p.plCap)} per loan` : `the most one personal loan may take — instalment ≤ ${p.perLoanCap}% of income`;
+      const whys = [oneWhy, room < nNew * capInst - 1 ? `what is left of your room under the ${p.dbrCap}% limit` : oneWhy];
+      const c = { S, freed, payoff, amount, net, value, split: p2 > 1 ? [p1, p2] : null, limitedBy, room, whys };
       cands.push(c);
       if (better(c, bestCash, "net")) bestCash = c;
       if (better(c, bestValue, "value")) bestValue = c;
@@ -711,13 +715,15 @@ function rePlanSimulate(p, prj, plan) {
     cash += best.amount - best.payoff; ccash += best.amount - best.payoff;
     f.capacity = { t, cap: best.amount, room: best.room, limitedBy: best.limitedBy, want: best.amount, mode: "max", taken: best.amount, gap: 0 };
     f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed, items: cleared } : null;
-    const loans = best.split ? `two personal loans, ${fS(best.split[0])} + ${fS(best.split[1])}` : `a personal loan of ${fS(best.amount)}`;
+    // the NEW loans (one or two) — not to be read as the old loans bought out, which are named after
+    const loans = best.split ? `${fS(best.amount)} as two new personal loans: ${fS(best.split[0])} (${best.whys[0]}) + ${fS(best.split[1])} (${best.whys[1]})` : `one new personal loan of ${fS(best.amount)}`;
+    const nOld = f.refi ? f.refi.names.length : 0;
     const basis = refiMode === "pick" ? "the loans you chose" : refiMode === "cash" ? "the most cash in hand" : "the best value";
     let note = "";
     if (picks && droppedPicks.length) note += ` Not bought out: ${droppedPicks.length} of the loans you chose (not running, not yet ${minAge} months old, or not allowed).`;
     if (picks && pickSet.length && !pickBest) note += " The loans you chose can't be cleared in full by this loan, so none is bought out.";
     if (refiMode !== "pick" && refiMode !== "cash" && bestCash && !sameS(bestCash, best) && bestCash.net > best.net + 1) note += ` Buying out ${bestCash.S.length ? bestCash.S.map((l) => l.name).join(" + ") : "no loan"} instead would put ${fS(bestCash.net - best.net)} more in your hands now but leave you ${fS((best.value - bestCash.value) / Math.pow(1 + alt, t))} poorer in today's money, so it is not done.`;
-    events.push({ t, kind: "pl", text: `${f.label}: the bank lends its maximum — ${loans} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs (limited by the ${best.limitedBy}).${f.refi ? ` It refinances ${f.refi.names.join(" + ")} (chosen for ${basis}): the bank clears ${fS(best.payoff)} (incl. early-settlement fees) directly — no cash from you — and ${fS(best.net)} lands in your cash.` : ` ${fS(best.amount)} lands in your cash.`} Instalments ${fSAR(before)} → ${fSAR(allInst())}/mo (${(allInst() / inc * 100).toFixed(0)}% of income).${note}` });
+    events.push({ t, kind: "pl", text: `${f.label}: the bank lends its maximum — ${loans}${best.split ? ", both" : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs${best.split ? "" : ` (limited by the ${best.limitedBy})`}.${f.refi ? ` It buys out ${nOld === 1 ? "1 old loan" : `${nOld} old loans`}, ${f.refi.names.join(" + ")} (chosen for ${basis}): the bank clears ${fS(best.payoff)} (incl. early-settlement fees) directly — no cash from you — and ${fS(best.net)} of the new loans lands in your cash.` : ` ${fS(best.amount)} lands in your cash; no old loan is bought out.`} Instalments ${fSAR(before)} → ${fSAR(allInst())}/mo (${(allInst() / inc * 100).toFixed(0)}% of income).${note}` });
   }
   const fMonText = (t) => `month ${t}`;
 
