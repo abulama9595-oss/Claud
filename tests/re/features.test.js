@@ -275,7 +275,7 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
         // no loan could cover it in time: the gaps are still closed by the plan's loans, and the short balance costs the bridge rate
         assert.ok(!r.feasible && E.reGaps(r.months, r.facilities, r.ownSale).every((g) => g.closedBy.length), `${at}: bridged gaps`);
         let prev = null, cost = 0;
-        r.months.forEach((mo) => { const want = prev != null && prev < -0.5 ? -prev * r.bridgeRate / 1200 : 0; assert.ok(near(mo.bridgeInt, want, 1e-6), `${at} M${mo.t}: bridge profit`); cost += mo.bridgeInt; prev = mo.cash; });
+        r.months.forEach((mo) => { const want = prev != null && prev < -0.5 ? -prev * r.bridgeRate / 1200 : 0; assert.ok(near(mo.bridgeInt, want, 1e-6), `${at} M${mo.t}: bridge profit`); cost += mo.bridgeInt; prev = mo.avail; });
         assert.ok(near(cost, r.bridgeCost, 1e-6) && r.bridgeCost > 0 && /^Needs bridge money/.test(r.flags[0]), `${at}: bridge cost and flag`);
         n.bridged++;
         return;
@@ -288,4 +288,34 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
     if (m.bestFeasible && m.bestFeasible.bridged && !m.bestFeasible.feasible) assert.ok(!m.results.some((r) => r && r.feasible), `${label}: bridged recommendation`);
   }
   assert.ok(n.same > 0 && n.covered > 0 && n.bridged > 0 && n.runsOut > 0, JSON.stringify(n));
+});
+
+test('cash is the money you can spend: no return on cash counted, never shown below zero as cash', () => {
+  let works = 0, runsOut = 0;
+  for (const { label, inp } of scenarios(E, 60)) {
+    const m = E.computeRE(inp), p = E.mergeRE(inp), prj = E.reProject(p);
+    m.results.forEach((r, i) => {
+      if (!r) return;
+      const at = `${label} S${i + 1}`;
+      // the cash you can spend = household cash less every return earned so far; the lowest of it decides whether a plan works
+      let ret = 0, low = Infinity;
+      r.months.forEach((mo) => { ret += mo.ret; assert.ok(near(mo.avail, mo.cash - ret, 1e-6), `${at} M${mo.t}: spendable cash`); low = Math.min(low, mo.avail); });
+      assert.ok(near(r.minCash, low, 1e-6), `${at}: lowest cash`);
+      assert.strictEqual(r.feasible, low >= -0.5 || r.shortfall <= 0, `${at}: works every month = never short`);
+      const occ = Math.min(r.months.length - 1, r.occupy);
+      if (r.feasible) { assert.ok(r.onHandAtMoveIn >= -0.5, `${at}: a plan that works never moves in short`); works++; }
+      // money in + what the salary saved + money out = cash at move-in; money in is never negative, money out never positive
+      const mp = E.reMoveInParts(r, occ, p, prj);
+      assert.ok(mp.moneyIn >= 0 && mp.moneyOut <= 0 && near(mp.total, r.onHandAtMoveIn, 0.01), `${at}: move-in parts`);
+      // a plan that runs out says how much more you need, where it starts
+      if (!r.feasible && !r.bridged) {
+        assert.ok(/you need .* more/.test(r.flags[0]) && r.events.some((e) => e.kind === 'short' && e.t === r.shortFrom), `${at}: the amount you need`);
+        runsOut++;
+      }
+    });
+  }
+  assert.ok(works > 0 && runsOut > 0, `${works} work, ${runsOut} run out`);
+  // the formatter never shows cash below zero
+  assert.strictEqual(E.fCash(-1250000), 'short 1.25M');
+  assert.strictEqual(E.fCash(480000), E.fS(480000));
 });
