@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=3d567df63a"></script>
-  <script src="re-engine.js?v=3d567df63a"></script>
-  <script src="re-ui.js?v=3d567df63a"></script>
+  <script src="engine.js?v=97893d434d"></script>
+  <script src="re-engine.js?v=97893d434d"></script>
+  <script src="re-ui.js?v=97893d434d"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1424,7 +1424,7 @@
       /* ---------- step 6: your answer ---------- */
       const homeRows = [
         ["Works every month, and meets your rules?", (r) => works(r) ? (brokenRules(r).length ? `yes · ${brokenRules(r).join(" · ")}` : "yes") : "no — runs out of cash", (r) => worksCol(r), EXPL.executable],
-        ["Bridge money needed", (r) => r.bridged && !r.feasible ? `${bridgeTxt(r)} · profit ${fM(r.bridgeCost)}` : r.covered ? `none — ${r.covered.key === "eq" ? "the mortgage on your property" : "personal loans"} taken ${fCal(r.covered.at)}, when your cash runs short` : "none", (r) => r.bridged && !r.feasible ? "#7A4F12" : K.text, EXPL.bridge],
+        ["Bridge money needed", (r) => r.bridged && !r.feasible ? `${bridgeTxt(r)} · profit ${fM(r.bridgeCost)}` : r.covered ? `none — ${r.covered.key === "eq" ? "the mortgage on your property" : "personal loans"} taken ${r.covered.split ? `in two parts, ${r.covered.parts.map((x) => fCal(x.at)).join(" and ")}` : fCal(r.covered.at)}, when your cash runs short` : "none", (r) => r.bridged && !r.feasible ? "#7A4F12" : K.text, EXPL.bridge],
         [`Cash back at your cushion within ${inp.recoveryMonths} months of move-in?`, (r) => r.recoveryMonths == null ? "never" : r.recoveryMonths === 0 ? "at move-in" : `${r.recoveryMonths} months after`, (r) => r.recoveryOk ? K.pos : K.neg, EXPL.recovery],
         [`vs ${baseLbl} in ${endDate} — everything grows`, (r) => fM(r.econAdv), (r) => signCol(r.econAdv), EXPL.econ],
         ["…the same in today's money", (r) => fM(r.econPV), (r) => signCol(r.econPV), EXPL.econ],

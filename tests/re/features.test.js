@@ -250,7 +250,7 @@ test("paying a loan off early: each loan's schedule is the engine's, and so is t
 });
 
 test("a cash gap that one of the plan's loans closes: covered by taking that loan when the cash runs short, else bridge money (counted), else it runs out", () => {
-  const n = { same: 0, covered: 0, bridged: 0, runsOut: 0 };
+  const n = { same: 0, covered: 0, split: 0, bridged: 0, runsOut: 0 };
   for (const { label, inp } of scenarios(E, 80)) {
     const m = E.computeRE(inp), p = E.mergeRE(inp), prj = E.reProject(p);
     m.results.forEach((r, i) => {
@@ -265,7 +265,19 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
         if (d.feasible) n.same++; else n.runsOut++;
         return;
       }
-      if (r.covered) {
+      if (r.covered && r.covered.split) {
+        // the personal-loan step was taken in two parts: one loan in the month the gap began, the rest later but by its
+        // planned month; the plan then works every month, or needs less bridge money than with the step taken whole
+        const c = r.covered, g = gaps.find((x) => x.from === c.at);
+        assert.ok(g && g.closedBy.includes(c.key) && d[c.key].startedAt === g.to && c.plannedAt === g.to, `${at}: split gap`);
+        assert.ok(r.pl.startedAt === c.at && r.pl.part === 1 && !r.pl.split && r.pl2.part === 2 && r.pl2.startedAt > c.at && r.pl2.startedAt <= c.plannedAt, `${at}: split parts`);
+        const whole = E.rePlanSimulate(p, prj, { ...(r.refiFallback ? { ...r.plan, refiMode: 'cash' } : r.plan), _bridge: true });
+        assert.ok(r.feasible || (r.bridged && c.partial && (!whole.bridged || r.bridgePeak < whole.bridgePeak)), `${at}: works, or less bridge money`);
+        assert.ok(r.notes.length && r.events.some((e) => e.kind === 'cover' && e.t === c.at), `${at}: noted`);
+        n.split++;
+        if (r.feasible) return;
+      }
+      if (r.covered && !r.covered.split) {
         // the loan that closed a gap is taken in the month that gap began, and the plan then works every month
         const c = r.covered, g = gaps.find((x) => x.from === c.at);
         assert.ok(r.feasible && g && g.closedBy.includes(c.key) && d[c.key].startedAt === g.to && r[c.key].startedAt === c.at, `${at}: covered`);
@@ -290,6 +302,28 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
     if (m.bestFeasible && m.bestFeasible.bridged && !m.bestFeasible.feasible) assert.ok(!m.results.some((r) => r && r.feasible), `${label}: bridged recommendation`);
   }
   assert.ok(n.same > 0 && n.covered > 0 && n.bridged > 0 && n.runsOut > 0, JSON.stringify(n));
+});
+
+test('a personal-loan step the bank cannot lend whole when the cash runs short is taken in two parts', () => {
+  // synthetic: land mortgage, personal loans planned for move-in only, one old personal loan the bank may buy out
+  const inp = { mode: 'home', acquire: 'build', income: 100000, livingExpenses: 35000, rentNow: 0, cashAvailable: 2300000, landArea: 900, landPrice: 3000, buildCost: 2500, builtPct: 60, floors: 2,
+    landMonth: 6, buildStart: 9, buildMonths: 18, dbrCap: 65, perLoanCap: 33, mortgageCap: 55, plCap: 2000000, plRate: 4.25, plTenure: 5, rateQuote: 'flat', cashBuffer: 0, horizon: 15,
+    existingLoans: [{ id: 1, name: 'Loan A', balance: 900000, installment: 25000, monthsLeft: 40, rate: 3, canRefi: true, ageMonths: 24 }],
+    plans: [{ lmUse: true, plWhen: 'none', pl2Use: true, plSplit: true, settlePolicy: 'none', refiMode: 'cash', enabled: true }] };
+  const m = E.computeRE(inp, { noNeed: true }), r = m.results[0], p = E.mergeRE(inp), prj = E.reProject(p), c = r.covered;
+  // as set, the cash runs short before the move-in loans; taken whole in that month they would not be enough
+  const d = E.rePlanSimulate(p, prj, p.plans[0]), g = E.reGaps(d.months, d.facilities, d.ownSale)[0];
+  assert.ok(!d.feasible && g.closedBy.includes('pl2') && !E.rePlanSimulate(p, prj, { ...p.plans[0], _at: { pl2: g.from } }).feasible);
+  // carried out: one loan when the cash runs short, the rest later — each the bank's maximum then — and it works every month
+  assert.ok(r.feasible && c && c.split && c.key === 'pl2' && c.at === g.from && c.plannedAt === r.occupy, JSON.stringify(c));
+  assert.ok(r.pl.startedAt === g.from && !r.pl.split && r.pl2.startedAt > g.from && r.pl2.startedAt <= r.occupy && r.pl.takenEarly === r.occupy);
+  assert.strictEqual(r.plan, m.p.plans[0]);   // your plan is unchanged; only the way it is carried out differs
+  assert.ok(near(c.amount, r.pl.amount + r.pl2.amount, 1e-6) && c.parts.length === 2);
+  assert.ok(/two parts/.test(r.notes[0]) && r.events.filter((e) => e.kind === 'cover').length >= 1 && /first part/.test(r.pl.label) && /second part/.test(r.pl2.label));
+  assert.ok(E.planTitle(r.plan, true, r).includes('in two parts') && E.planSteps(r, true).some((x) => /first part/.test(x.label)));
+  // not when the step may be one loan only
+  const one = E.computeRE({ ...inp, plans: [{ ...inp.plans[0], plSplit: false }] }, { noNeed: true }).results[0];
+  assert.ok(!(one.covered && one.covered.split));
 });
 
 test('cash is the money you can spend: no return on cash counted, never shown below zero as cash', () => {

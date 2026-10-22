@@ -508,8 +508,10 @@ function rePlanSimulate(p, prj, plan) {
   // bank terms are shared by every strategy (one set per loan type)
   const lm = mk("lm", prj.build ? "Mortgage on the new land" : "Mortgage on the purchase", p.lmRate, p.lmTenure, p.lmFeesPct);
   const eq = mk("eq", "Mortgage on your existing property", p.eqRate, p.eqTenure, p.eqFeesPct);
-  const pl = mk("pl", "Personal loan", p.plRate, p.plTenure, 0);
-  const pl2 = mk("pl2", "Personal loan at completion", p.plRate, p.plTenure, 0);
+  // a personal-loan step the tool takes in two parts (plan._split, see reCarryOut) runs as the first part on pl, the rest on pl2
+  const sp = plan._split ? (plan._split.key === "pl2" ? "Personal loan planned for move-in" : "Personal loan") : null;
+  const pl = mk("pl", sp ? `${sp}, first part` : "Personal loan", p.plRate, p.plTenure, 0);
+  const pl2 = mk("pl2", sp ? `${sp}, second part` : "Personal loan at completion", p.plRate, p.plTenure, 0);
   const co = mk("co", "Cash-out on the finished home", p.coRate, p.coTenure, p.coFeesPct);
   const rf = mk("rf", "Refinance (new personal loans)", p.plRate, p.plTenure, 0); // bank buy-out of personal loans, at the personal-loan rate & tenure
   const facs = [lm, eq, pl, co, pl2, rf];
@@ -651,7 +653,7 @@ function rePlanSimulate(p, prj, plan) {
     const eligible = old.filter((l) => mayRefi(l) && ageOf(l) >= minAge).slice(0, 8);
     const tooYoung = old.filter((l) => mayRefi(l) && ageOf(l) < minAge).map((l) => l.name);
     const instNow = allInst();
-    const maxNew = plan.plSplit === false ? 1 : 2;
+    const maxNew = plan.plSplit === false || plan._oneLoan === f.key ? 1 : 2;   // the first part of a step taken in two parts is one loan
     const onePl = (inst) => Math.min(rePrincipalFor(inst, f.rate, f.n), p.plCap);
     // value of a loan's remaining payments (from month t + firstK) up to the horizon plus the balance still owed then,
     // discounted at the return-on-cash rate — the everything-grows measure, seen from this month
@@ -963,10 +965,29 @@ function reCarryOut(p, prj, plan) {
     }
     tried.push({ key: k, gap: g, f });
   }
-  const rb = rePlanSimulate(p, prj, { ...plan, _bridge: true });
+  // still short: a personal-loan step that may be two loans is taken in two parts — one loan in the month the cash runs short
+  // (the bank's maximum for one loan then, on the plan's unused personal-loan step) and the rest at its planned month, itself
+  // taken early if the cash runs short again (each part the bank's maximum when it is taken). Kept when the plan then works
+  // every month, or when it needs less bridge money than taking the step whole.
+  let split = null;
+  const plFree = (!plan.plWhen || plan.plWhen === "none") && !(plan._at && plan._at.pl != null);
+  for (const g of gaps) for (const k of g.closedBy) {
+    if (split || plan._split || plan.plSplit === false || !(k === "pl2" ? plFree : k === "pl" && !plan.pl2Use)) continue;
+    const plannedAt = r[k].startedAt, sp = { key: k, at: g.from, plannedAt };
+    const q = k === "pl2" ? { ...plan, _at: { ...(plan._at || {}), pl: g.from }, _oneLoan: "pl", _split: sp }
+      : { ...plan, pl2Use: true, _at: { ...(plan._at || {}), pl: g.from, pl2: plannedAt }, _oneLoan: "pl", _split: sp };
+    const rs = reCarryOut(p, prj, q);
+    // two parts, in two different months
+    if (rs.pl.amount > 0 && rs.pl.startedAt === g.from && rs.pl2.amount > 0 && rs.pl2.startedAt > g.from && reStanding(rs) >= 1) {
+      const w = tried.find((x) => x.key === k && x.gap === g);   // the step taken whole then: was there a buy-out choice?
+      split = { r: rs, g, k, plannedAt, choice: (plan.refiMode || "auto") !== "cash" && !!(w && w.f && w.f.refiOptions && w.f.refiOptions.length > 1) };
+    }
+  }
+  const rb = split && split.r.feasible ? null : rePlanSimulate(p, prj, { ...plan, _bridge: true });
+  if (split && (split.r.feasible || !rb.bridged || split.r.bridgePeak < rb.bridgePeak - 1)) return reSplitNote(split, plan);
   if (!rb.bridged) return r;
   rb.plan = plan;
-  const label = (k) => k === "sale" ? "sale of the home you live in" : k === "pl2" ? "personal loans at move-in" : k === "pl" ? "personal loans" : (rb[k] && rb[k].label ? rb[k].label.toLowerCase() : k);
+  const label = (k) => k === "sale" ? "sale of the home you live in" : k === "pl2" ? (plan._split ? "second part of the personal loans" : "personal loans at move-in") : k === "pl" ? "personal loans" : (rb[k] && rb[k].label ? rb[k].label.toLowerCase() : k);
   rb.bridges.forEach((b) => {
     const why = b.closedBy.map((k) => {
       const x = tried.find((y) => y.key === k && y.gap.from === b.from);
@@ -991,6 +1012,26 @@ function reCarryOut(p, prj, plan) {
   });
   rb.events.sort((a, b) => a.t - b.t);
   return rb;
+}
+
+// a personal-loan step taken in two parts (see reCarryOut): the parts, the note and the "covered by a loan" rows. The second
+// part may itself have been taken early (the cover inside the rerun); its own note and row are replaced by these.
+function reSplitNote({ r, g, k, plannedAt, choice }, plan) {
+  const a = r.pl, b = r.pl2, what = k === "pl2" ? "personal loans planned for move-in" : "personal loans";
+  const whole = `taken whole then${choice ? " (with the old loans this plan chooses to buy out)" : ""}`;
+  r.plan = plan;
+  [a, r.facilities.find((x) => x.key === "pl")].forEach((x) => { if (x) { x.takenEarly = plannedAt; x.part = 1; } });
+  [b, r.facilities.find((x) => x.key === "pl2")].forEach((x) => { if (x) { x.part = 2; if (x.startedAt < plannedAt) x.takenEarly = plannedAt; else delete x.takenEarly; } });
+  const part = (f) => `${fS(f.amount)} in month ${f.startedAt}${f.startedAt < plannedAt && f !== a ? " (when your cash runs short again)" : ""}${f.refi ? `, of which ${fS(f.refi.payoff)} buys out ${f.refi.names.join(" + ")} and ${fS(f.refi.net)} reaches you` : ""}`;
+  r.covered = { key: k, split: true, label: what, at: g.from, plannedAt, amount: a.amount + b.amount, net: (a.refi ? a.refi.net : a.amount) + (b.refi ? b.refi.net : b.amount), refi: [a, b].flatMap((f) => f.refi ? f.refi.names : []),
+    parts: [a, b].map((f) => ({ key: f.key, at: f.startedAt, amount: f.amount, net: f.refi ? f.refi.net : f.amount, refi: f.refi ? f.refi.names : [] })), gap: { from: g.from, to: g.to, peak: g.peak, peakT: g.peakT }, partial: !r.feasible };
+  const note = `Your cash would run short in month ${g.from} (up to ${fS(g.peak)}, until the planned loans land in month ${g.to}). ${whole.charAt(0).toUpperCase() + whole.slice(1)}, the ${what} would not keep your cash above zero, so they are taken in two parts, each the bank's maximum when it is taken: ${part(a)}; then ${part(b)}. ${r.feasible ? "The deficit is covered by loans." : "Part of the deficit is covered by loans; the rest needs bridge money."}`;
+  r.notes = [note].concat((r.notes || []).filter((x) => !/^Your cash would run short in month/.test(x)));
+  r.events = r.events.filter((e) => e.kind !== "cover");
+  const put = (t, text) => { let i = r.events.findIndex((e) => e.t === t && e.kind === "pl"); if (i < 0) i = r.events.findIndex((e) => e.t >= t); r.events.splice(i < 0 ? r.events.length : i, 0, { t, kind: "cover", text }); };
+  put(a.startedAt, `Your cash would run short now, and the ${what} taken whole now would not be enough, so they are taken in two parts — the first now, as one loan (they were planned in month ${plannedAt}).`);
+  if (b.startedAt < plannedAt) put(b.startedAt, `Your cash would run short again, so the second part of the ${what} is taken now instead of in month ${plannedAt}${r.feasible ? " — the deficit is covered by loans" : ""}.`);
+  return r;
 }
 
 // one strategy, with the "auto" refinance rule: best value first; if that plan fails (runs out of cash or needs bridge money,
