@@ -1,7 +1,7 @@
 // Identities to the riyal, every month of every strategy: no money is created or lost.
 //   household cash · rule-7 cash (ccash) · baseline · rule-7 ledgers · net worth · debt · each facility's instalments
 const test = require('node:test'), assert = require('node:assert/strict');
-const { loadEngine, scenarios } = require('./helpers.js');
+const { loadEngine, scenarios, jointScenarios } = require('./helpers.js');
 const E = loadEngine();
 const TOL = 1e-3;
 
@@ -9,7 +9,7 @@ const TOL = 1e-3;
 // the not-building side also makes the planned settlements (balance + next 3 months' profit on the declining balance)
 function renterSchedule(p, H) {
   const inst = new Array(H + 1).fill(0), debt = new Array(H + 1).fill(0), settle = new Array(H + 1).fill(0);
-  for (const l of p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0)) {
+  for (const l of p.existingLoans.concat(p.joint && p.joint.on ? p.joint.loans : []).filter((l) => l.balance > 0 && l.installment > 0)) {   // تضامن: your spouse's loans too
     const left0 = Math.max(1, Math.round(l.monthsLeft)), pay0 = Math.max(l.installment, E.rePmt(l.balance, l.rate, left0));
     const s = l.settleAt != null && l.settleAt > 0 ? Math.round(l.settleAt) : null;
     let bal = l.balance;
@@ -100,5 +100,19 @@ test('identities hold to the riyal in every month of every strategy', () => {
     m.results.forEach((r, i) => { if (r) { audit(`${sc.label} S${i + 1}`, m, r, bad); n++; } });
   }
   assert.ok(n > 300, `only ${n} strategy results checked`);
+  assert.deepEqual(bad, {});
+});
+
+test('identities hold with تضامن: your spouse\'s salary and loans run through the household on both sides', () => {
+  const bad = {};
+  let n = 0;
+  for (const sc of jointScenarios(E, 40)) {
+    const m = E.computeRE(sc.inp, { noNeed: true });
+    m.results.forEach((r, i) => { if (r) { audit(`${sc.label} S${i + 1}`, m, r, bad); n++; } });
+    // the household's salary is both of yours, every month
+    const r0 = m.results.find(Boolean);
+    if (r0) r0.months.forEach((mo) => { if (mo.t >= 1 && Math.abs(mo.inc - mo.incA - mo.incB) > 1e-6) bad.salary = bad.salary || `${sc.label} M${mo.t}`; });
+  }
+  assert.ok(n > 100, `only ${n} strategy results checked`);
   assert.deepEqual(bad, {});
 });

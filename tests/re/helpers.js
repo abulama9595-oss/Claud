@@ -48,4 +48,16 @@ const FAMILY = {
 const scenarios = (E, n = 120) => [{ label: 'defaults', inp: {} }, { label: 'family', inp: FAMILY }, { label: 'buy', inp: { acquire: 'buy', propertyPrice: 2800000 } }]
   .concat(Array.from({ length: n }, (_, k) => ({ label: `random#${k + 1}`, inp: randomScenario(E, k + 1) })));
 
-module.exports = { ROOT, loadEngine, rng, randomScenario, FAMILY, scenarios };
+// تضامن: the same random households, with a spouse (synthetic) — income across SAMA's bands, 0–2 loans of their own
+function randomJoint(E, seed) {
+  const inp = randomScenario(E, seed), r = rng(seed + 50000), pick = (a) => a[Math.floor(r() * a.length)], between = (a, b, step = 1) => a + Math.round((r() * (b - a)) / step) * step;
+  const loans = [];
+  for (let k = 0, n = pick([0, 1, 1, 2]); k < n; k++) {
+    const months = between(6, 72), rate = between(2, 9, 0.25), bal = between(20000, 400000, 1000);
+    loans.push({ id: `s${k + 1}`, name: `S${k + 1}`, balance: bal, installment: Math.round(E.rePmt(bal, rate, months)), monthsLeft: months, rate, canSettle: r() > 0.3, ageMonths: r() < 0.5 ? null : between(0, 30), settleAt: r() < 0.1 ? between(1, 40) : null, ...(r() < 0.2 ? { rateType: 'flat', rate: between(1.5, 5, 0.25) } : {}) });
+  }
+  return { ...inp, joint: { on: true, income: pick([0, between(4000, 15000, 500), between(15500, 24500, 500), between(25000, 60000, 1000)]), incomeGrowth: pick([null, null, 0, 3]), redf: r() < 0.3, loans } };
+}
+const jointScenarios = (E, n = 40) => Array.from({ length: n }, (_, k) => ({ label: `joint#${k + 1}`, inp: randomJoint(E, k + 1) }));
+
+module.exports = { ROOT, loadEngine, rng, randomScenario, randomJoint, FAMILY, scenarios, jointScenarios };
