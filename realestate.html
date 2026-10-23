@@ -41,6 +41,7 @@
     .hbtn { background: transparent; color: #ECE4D3; border: 1px solid #3A4B62; border-radius: 7px; padding: 6px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer; min-height: 32px; }
     .hbtn.gold { background: #B0823A; border-color: #B0823A; color: #0E1A2B; }
     .hbtn:hover { border-color: #9DAEC0; }
+    .hbtn:disabled { opacity: .6; cursor: default; }
     .pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: #D9B36A; color: #0E1A2B; }
     .seg { display: inline-flex; border: 1px solid var(--lineIn); border-radius: 8px; overflow: hidden; background: #fff; flex-wrap: wrap; }
     .seg button { border: none; background: transparent; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--sub); cursor: pointer; min-height: 32px; }
@@ -167,6 +168,7 @@
     const MAX_PLANS = 8;                         // plans (home) and options (rental) you can compare at once
     const STORE_KEY = "re_scenarios";            // saved scenarios (on the studio site they sync to its server)
     const CUR_KEY = "re_current";                // your working copy, autosaved in this browser
+    const OPEN_KEY = "re_current_name";          // the saved scenario your working copy belongs to (stays in this browser)
     const PREVIEW_KEY = "re_preview_current";    // the preview page's working copy: taken over once, then dropped
     const SOFT = "#F3EFE6", SOFT_NEG = "#F7E9E5", SOFT_POS = "#E6F0EC", SOFT_AMB = "#FBEFD9";
     const tipStyle = { fontFamily: SANS, fontSize: 12, border: `1px solid ${K.line}`, borderRadius: 6 };
@@ -391,8 +393,11 @@
       const [landWithBuild, setLandWithBuild] = useState(false);
       const [printAll, setPrintAll] = useState(false);
       const [saved, setSaved] = useState(loadStore);
-      const [loadedName, setLoadedName] = useState(null);
-      const [snap, setSnap] = useState(() => JSON.stringify(inp));   // your inputs as last saved or loaded
+      // the saved scenario your working copy belongs to — remembered across visits while it is still saved; "unsaved" then
+      // compares your working copy with that scenario as it would open
+      const [loadedName, setLoadedName] = useState(() => { try { const n = localStorage.getItem(OPEN_KEY); return n && saved[n] ? n : null; } catch (e) { return null; } });
+      const [snap, setSnap] = useState(() => { const s0 = loadedName && saved[loadedName]; return JSON.stringify(s0 ? { ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) } : inp); });   // your inputs as last saved or loaded
+      useEffect(() => { try { if (loadedName) localStorage.setItem(OPEN_KEY, loadedName); else localStorage.removeItem(OPEN_KEY); } catch (e) {} }, [loadedName]);
       const [showScen, setShowScen] = useState(false);
       const [undo, setUndo] = useState(null);
       const [openDis, setOpenDis] = useState({});
@@ -625,7 +630,17 @@
       /* scenarios (saved in this browser; on the studio site they sync to its server) */
       const persist = (o) => { setSaved(o); saveStore(o); };
       const saveAs = (n) => { const k = (n || "").trim(); if (!k) return; persist({ ...saved, [k]: { inp, savedAt: new Date().toISOString() } }); setLoadedName(k); setSnap(JSON.stringify(inp)); };
-      const quickSave = () => { const n = window.prompt("Save this scenario as (the same name replaces it)", loadedName || "My scenario"); if (n) saveAs(n); };
+      // Save: straight into the scenario you have open (undo for 10 seconds); a working copy never saved asks for a name
+      const saveCurrent = () => { const n = loadedName && saved[loadedName] ? loadedName : null; if (!n) { saveAsNew(); return; } withUndo(`Saved to "${n}"`, () => saveAs(n)); };
+      // Save as…: under a new name — the scenario you had open keeps its last saved version; a name already in use is replaced
+      // only if you say so
+      const saveAsNew = () => {
+        const n = (window.prompt("Save as a new scenario — name:", loadedName ? `${loadedName} (copy)` : "My scenario") || "").trim();
+        if (!n) return;
+        if (saved[n] && n !== loadedName && !window.confirm(`A scenario called "${n}" is already saved. Replace it with this one?`)) return;
+        withUndo(`Saved as "${n}"`, () => saveAs(n));
+      };
+      const clean = !!loadedName && !dirty;   // nothing to save: the open scenario is as saved
       const doLoad = (n) => {
         const s0 = saved[n]; if (!s0) return;
         if (dirty && !window.confirm(`Load "${n}"? The changes you have not saved here are replaced (you can undo for 10 seconds).`)) return;
@@ -765,7 +780,8 @@
           {lead && <div style={{ fontSize: 12.5, marginTop: 10, background: SOFT, borderRadius: 7, padding: "8px 10px", lineHeight: 1.45 }}><b>Verdict:</b> <span style={{ color: m.vColor, fontWeight: 700 }}>{m.verdict}</span>{bestF ? <> · best that fits: {planName(recIdx)}</> : " · no option fits your cash, the loan-to-value limit and the bank's limit"}</div>}
           <div style={{ fontSize: 12, color: K.sub, marginTop: 6 }}>"Return": the yearly return on the cash you put in (levered IRR); NPV at your {inp.discountRate}% discount rate.</div>
           {cur === "rres" && <div className="grid no-print" style={{ gap: 8, marginTop: 12 }}>
-            <button className="btn gold" onClick={quickSave}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved as "${loadedName}"`) : "Save this scenario"}</button>
+            <button className="btn gold" onClick={saveCurrent} disabled={clean}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved to "${loadedName}" ✓`) : "Save this scenario"}</button>
+            <button className="btn" onClick={saveAsNew}>Save as a new scenario…</button>
             <button className="btn" onClick={() => setPrintAll(true)}>Print / PDF (one page)</button>
           </div>}
         </div>
@@ -786,7 +802,8 @@
           {lead && <div style={{ fontSize: 12.5, marginTop: 10, background: lead.econAdv >= 0 ? SOFT_POS : SOFT_NEG, borderRadius: 7, padding: "8px 10px", lineHeight: 1.45 }}><b>So far:</b> {bestF ? <>the best is {isTool(recIdx) ? "the tool's pick" : planName(recIdx)}, <b style={{ color: signCol(lead.econAdv) }}>{fM(lead.econAdv)}</b> vs {baseLbl} in {endDate} when everything grows.</> : "none of your plans works every month."}</div>}
           <div style={{ fontSize: 12, color: K.sub, marginTop: 6 }}>"At move-in": your cash, the loans and what your salary saved, less everything the project cost — no growth counted. Click a row to see that plan in detail.</div>
           {cur === "answer" && <div className="grid no-print" style={{ gap: 8, marginTop: 12 }}>
-            <button className="btn gold" onClick={quickSave}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved as "${loadedName}"`) : "Save this scenario"}</button>
+            <button className="btn gold" onClick={saveCurrent} disabled={clean}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved to "${loadedName}" ✓`) : "Save this scenario"}</button>
+            <button className="btn" onClick={saveAsNew}>Save as a new scenario…</button>
             <button className="btn" onClick={() => setPrintAll(true)}>Print / PDF (one page)</button>
             <button className="btn" onClick={() => go("pay")}>Change an answer</button>
           </div>}
@@ -2208,6 +2225,7 @@
       const ScenPanel = () => (
         <div className="no-print" style={{ maxWidth: 1480, margin: "12px auto 0", padding: "0 20px" }}>
           <Box title="Saved scenarios" right={<span className="flex flex-wrap" style={{ gap: 8 }}><button className="btn small" onClick={doExport}>Export all</button><label className="btn small" style={{ cursor: "pointer" }}>Import<input type="file" accept="application/json" onChange={doImport} style={{ display: "none" }} /></label><button className="btn small" onClick={resetAll}>Start from the defaults</button><button className="btn small" onClick={() => setShowScen(false)}>Close</button></span>}>
+            <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 8 }}>Save writes your changes to the scenario you have open{loadedName ? <> (<b style={{ color: K.text }}>{loadedName}</b>)</> : ""}; Save as… keeps a copy under a new name.</div>
             {savedRows.length === 0 ? <div style={{ fontSize: 13, color: K.sub }}>Nothing saved yet — use Save in the header.</div> : <div className="scroll-x"><table className="tbl">
               <thead><tr><th>Scenario</th><th>Saved</th><th>Cost</th><th>Best of your plans</th><th>Result</th><th>Peak instalments</th><th>Verdict</th><th></th></tr></thead>
               <tbody>{savedRows.map((s) => <tr key={s.n} style={{ background: s.n === loadedName ? SOFT : "transparent" }}>
@@ -2242,7 +2260,8 @@
               <div style={{ fontSize: 13, color: "#ECE4D3" }} title={dirty ? "changes not saved" : "saved"}>{loadedName ? <>“{loadedName}”{dirty && <span style={{ color: "#D9B36A" }} aria-label="unsaved changes"> ● unsaved</span>}</> : <span style={{ color: "#C8D3DF" }}>Working copy <span style={{ color: "#D9B36A" }}>● not saved</span></span>}</div>
               <div className="flex flex-wrap items-center no-print" style={{ gap: 8 }}>
                 <Seg dark label="What are you deciding" value={inp.mode} onChange={(v) => { set("mode", v); setStep(0); setFocus(-1); setEditIdx(-1); }} options={[["home", "My home"], ["rental", "Rental"]]} />
-                <button className="hbtn gold" onClick={quickSave}>Save</button>
+                <button className="hbtn gold" onClick={saveCurrent} disabled={clean} title={loadedName ? `Save your changes to "${loadedName}"` : "Save this scenario"}>{clean ? "Saved ✓" : "Save"}</button>
+                <button className="hbtn" onClick={saveAsNew} title="Save under a new name">Save as…</button>
                 <button className="hbtn" onClick={() => setShowScen(!showScen)} aria-expanded={showScen}>Scenarios</button>
                 <button className="hbtn" onClick={() => setPrintAll(true)}>Print / PDF</button>
               </div>
