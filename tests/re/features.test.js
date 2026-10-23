@@ -274,6 +274,8 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
         const whole = E.rePlanSimulate(p, prj, { ...(r.refiFallback ? { ...r.plan, refiMode: 'cash' } : r.plan), _bridge: true });
         assert.ok(r.feasible || (r.bridged && c.partial && (!whole.bridged || r.bridgePeak < whole.bridgePeak)), `${at}: works, or less bridge money`);
         assert.ok(r.notes.length && r.events.some((e) => e.kind === 'cover' && e.t === c.at), `${at}: noted`);
+        // the row says how short the cash would be and what the first loan brings
+        assert.ok(r.events.some((e) => e.kind === 'cover' && e.t === c.at && e.text.includes(E.fS(c.gap.peak)) && e.text.includes(E.fS(r.pl.amount))), `${at}: amounts in the row`);
         n.split++;
         if (r.feasible) return;
       }
@@ -282,6 +284,8 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
         const c = r.covered, g = gaps.find((x) => x.from === c.at);
         assert.ok(r.feasible && g && g.closedBy.includes(c.key) && d[c.key].startedAt === g.to && r[c.key].startedAt === c.at, `${at}: covered`);
         assert.ok(r.notes.length && r.events.some((e) => e.kind === 'cover' && e.t === c.at), `${at}: noted`);
+        // the "covered by a loan" row says how short the cash would be and how much the loan brings
+        assert.ok(r.events.some((e) => e.kind === 'cover' && e.t === c.at && e.text.includes(`${E.fS(c.gap.peak)} deficit is covered`) && e.text.includes(`lends ${E.fS(c.amount)}`)), `${at}: amounts in the row`);
         n.covered++;
         return;
       }

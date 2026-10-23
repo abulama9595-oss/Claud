@@ -56,13 +56,16 @@ test('تضامن: each of you stays within your own limit when a loan is taken; 
           if (f.pmt * f.shareA > c.roomA + 1e-6 || f.pmt * (1 - f.shareA) > c.roomB + 1e-6) flag('each share within its room', `${label} ${f.key}`);
         }
         if (f.key === 'pl' || f.key === 'pl2') for (const a of (f.split || [f.amount])) if (E.rePmt(a, f.rate, f.n) > at(f.startedAt, 'incA') * p.perLoanCap / 100 + TOL) flag('personal loan on your income only', `${label} ${f.key} M${f.startedAt}`);
+        if (f.key === 'spl' || f.key === 'spl2') for (const a of (f.split || [f.amount])) if (E.rePmt(a, f.rate, f.n) > at(f.startedAt, 'incB') * p.perLoanCap / 100 + TOL) flag("your spouse's personal loan on their income", `${label} ${f.key} M${f.startedAt}`);
       }
       // the month after a loan is taken: what each of you pays fits the limit the bank tested you against
       for (const t0 of new Set(facs.map((f) => f.startedAt))) {
         const t = t0 + 1; if (t > H) continue;
         const mo = r.months[t], incA = at(t0, 'incA'), incB = at(t0, 'incB'), capA = r.months[t0].capA, capB = r.months[t0].capB;
-        if (mo.payA > incA * capA / 100 + 1e-6) flag('your limit', `${label} M${t}: ${mo.payA} > ${incA * capA / 100}`);
-        const jointWithB = facs.some((f) => (f.key === 'lm' || f.key === 'co') && f.startedAt === t0 && f.shareA < 1 - 1e-9);
+        // (a month in which only your spouse borrowed in their own name says nothing about your limit)
+        const forA = facs.some((f) => f.startedAt === t0 && f.key !== 'spl' && f.key !== 'spl2');
+        if (forA && mo.payA > incA * capA / 100 + 1e-6) flag('your limit', `${label} M${t}: ${mo.payA} > ${incA * capA / 100}`);
+        const jointWithB = facs.some((f) => ((f.key === 'lm' || f.key === 'co') && f.shareA < 1 - 1e-9 || f.key === 'spl' || f.key === 'spl2') && f.startedAt === t0);
         if (jointWithB && mo.payB > incB * capB / 100 + 1e-6) flag("your spouse's limit", `${label} M${t}: ${mo.payB} > ${incB * capB / 100}`);
         const mortA = facs.filter((f) => ['lm', 'eq', 'co'].includes(f.key) && f.startedAt < t && (f.settledAt == null || f.settledAt > t)).reduce((a, f) => a + (mo[f.key + 'Pay'] - (f.key === 'lm' ? mo.extraPay : 0)) * share(f), 0);
         if (mortA > incA * mortPct / 100 + 1e-6) flag('your mortgage limit', `${label} M${t}: ${mortA} > ${incA * mortPct / 100}`);
