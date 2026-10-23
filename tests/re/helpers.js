@@ -56,7 +56,9 @@ function randomJoint(E, seed) {
     const months = between(6, 72), rate = between(2, 9, 0.25), bal = between(20000, 400000, 1000);
     loans.push({ id: `s${k + 1}`, name: `S${k + 1}`, balance: bal, installment: Math.round(E.rePmt(bal, rate, months)), monthsLeft: months, rate, canSettle: r() > 0.3, ageMonths: r() < 0.5 ? null : between(0, 30), settleAt: r() < 0.1 ? between(1, 40) : null, ...(r() < 0.2 ? { rateType: 'flat', rate: between(1.5, 5, 0.25) } : {}) });
   }
-  return { ...inp, joint: { on: true, income: pick([0, between(4000, 15000, 500), between(15500, 24500, 500), between(25000, 60000, 1000)]), incomeGrowth: pick([null, null, 0, 3]), redf: r() < 0.3, loans } };
+  const joint = { on: true, income: pick([0, between(4000, 15000, 500), between(15500, 24500, 500), between(25000, 60000, 1000)]), incomeGrowth: pick([null, null, 0, 3]), redf: r() < 0.3, loans };
+  // who takes each plan's personal loans: you, your spouse or both of you
+  return { ...inp, joint, plans: inp.plans.map((o) => ({ ...o, plBy: pick(['me', 'spouse', 'both']) })) };
 }
 const jointScenarios = (E, n = 40) => Array.from({ length: n }, (_, k) => ({ label: `joint#${k + 1}`, inp: randomJoint(E, k + 1) }));
 

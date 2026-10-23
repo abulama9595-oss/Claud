@@ -33,7 +33,7 @@ function facilityPays(r, H) {
   for (const k of Object.keys(pays)) pays[k] = new Array(H + 1).fill(0);
   for (const f of r.facilities) {
     if (f.startedAt == null || !(f.amount > 0)) continue;
-    const key = f.key === 'pl2' ? 'pl' : f.key, rr = f.rate / 1200;
+    const key = f.key === 'pl2' || f.key === 'spl' || f.key === 'spl2' ? 'pl' : f.key, rr = f.rate / 1200;   // every personal loan, yours and your spouse's
     let bal = f.amount;
     for (let t = f.startedAt + 1; t <= H; t++) {
       if (f.settledAt != null && t >= f.settledAt) break;

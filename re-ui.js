@@ -58,7 +58,8 @@ function reExpl(inp) {
     prepay: `Your option: pay the mortgages off early from your own cash this many months after move-in (after that month's instalments), most expensive first, as long as the cash above your safety cushion covers the payoff plus the early-settlement fee (${fee} months' profit). Leave it empty and mortgages run to their end.`,
     dbrRoom: `Bank total cap (${dbr}% of income) minus the instalments running today — the free part of your bucket. Inside it all mortgages together may use up to ${mc}% of income and one personal loan up to ${pc}%.`,
     savings: inp.joint && inp.joint.on ? "Your income + your spouse's − living expenses − rent − both of your existing instalments, per month, today." : "Income − living expenses − rent − existing instalments, per month, today.",
-    joint: "تضامن (joint finance): you and your spouse take the new mortgages together — the land or purchase mortgage and the cash-out at move-in. The bank tests each of you on your own income (SAMA Responsible Lending Principles for Individual Customers, Chapter IV ¶15–17): all of a person's monthly credit obligations may take at most 55% of their income up to 15,000 SAR (65% for a Ministry of Housing / REDF-supported mortgage), 65% above 15,000 and below 25,000, and from 25,000 the bank's own policy (your limit). The tool uses the stricter of that and your bank's limit, and the mortgage limit for each of you on your own income. A joint mortgage may use both of your rooms; its instalment counts against each of you in proportion to your room when it is taken (fixed for the life of the loan). Personal loans and a mortgage on a property you own stay yours: sized on your income and room. Your spouse's salary and their existing loans run through the household's money whether you build or not, so the comparison stays like for like. Income the bank recognises: gross salary (after GOSI) with fixed allowances, plus half of other regular income you can show for two years; Citizen Account and social security don't count. SAMA also limits salary-deducted personal finance to 33.33% of salary (25% retired) and debts other than mortgages to 45% below 25,000 — the tool warns when your spouse's existing loans pass them.",
+    plBy: "تضامن: a personal loan is in one person's name. Me — yours, sized on your income and your room under your limit. My spouse — your spouse's, sized on their income and their room (their own two-loan rule; it can buy out their own old loans). Both of us — each of you takes the bank's maximum in your own name, in the same month. The money goes into the household's cash either way; each person's instalments count against their own income. More loans means more cash in hand but more profit paid — the plan's result shows which is better.",
+    joint: "تضامن (joint finance): you and your spouse take the new mortgages together — the land or purchase mortgage and the cash-out at move-in. The bank tests each of you on your own income (SAMA Responsible Lending Principles for Individual Customers, Chapter IV ¶15–17): all of a person's monthly credit obligations may take at most 55% of their income up to 15,000 SAR (65% for a Ministry of Housing / REDF-supported mortgage), 65% above 15,000 and below 25,000, and from 25,000 the bank's own policy (your limit). The tool uses the stricter of that and your bank's limit, and the mortgage limit for each of you on your own income. A joint mortgage may use both of your rooms; its instalment counts against each of you in proportion to your room when it is taken (fixed for the life of the loan). A mortgage on a property you own stays yours. Personal loans are taken in one person's name and sized on that person's own income and room (one loan's instalment at most the per-loan limit of their income, two loans at most, buying out only their own old loans): each plan says who takes them — you, your spouse or both of you — and the tool's pick tries all three. Your spouse's salary and their existing loans run through the household's money whether you build or not, so the comparison stays like for like. Income the bank recognises: gross salary (after GOSI) with fixed allowances, plus half of other regular income you can show for two years; Citizen Account and social security don't count. SAMA also limits salary-deducted personal finance to 33.33% of salary (25% retired) and debts other than mortgages to 45% below 25,000 — the tool warns when your spouse's existing loans pass them.",
     earliest: "Earliest construction start (every 3 months from today, plus your planned start) that never runs out of cash (with no bridge money if any start manages that), gets cash back to your cushion within your recovery window and keeps your cash at move-in at or above your line; if no start meets all of your rules, the earliest that meets the most of them. The land purchase stays where you set it unless the start comes first, in which case it moves to the start.",
     cost: "Land (grown at the appreciation rate to the purchase month) + RETT + the broker's fee on the land + construction (built-up m² × SAR/m², inflated to the start month) + soft costs + contingency + extras + any cost overrun + VAT.",
     value: `The home's market value = land + building. The land grows at the appreciation rate (${inp.appreciation}% a year) from the month it is bought. The building is worth what it costs to build (construction + soft costs + extras) × (1 + self-build uplift ${inp.devMarginPct}%) — the uplift is on what you build, not on the land — added as it is built, then it loses ${inp.buildDeprPct == null ? 2 : inp.buildDeprPct}% of that value a year from move-in (straight-line, never below zero). VAT, RETT, fees, contingency and overruns add no value. A ready home you buy keeps its price + finishing growing with the market.`,
@@ -81,7 +82,7 @@ function fundingBridgeRows(r, upto, inp, prj) {
   const spend = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.spend, 0);
   add(build ? `Land price + ${inp.rettPct}% transfer tax${prj.landBroker > 0 ? ` + ${inp.landBrokerPct}% broker` : ""}` : "Purchase price, tax, broker and finishing", -landPart, fCal(prj.landMonth), prj.landMonth + 0.5);
   r.facilities.filter((f) => inRange(f.startedAt) && f.amount > 0 && f.key !== "rf").forEach((f) => {
-    add(f.key === "lm" ? (build ? "Land mortgage, paid to the seller" : "Purchase mortgage, paid to the seller") : f.refi ? "New personal loan(s), bank's maximum" : `Loan paid to you: ${f.label.toLowerCase()}`, f.amount, f.key === "lm" ? `${fCal(f.startedAt)} · never passes through your hands` : fCal(f.startedAt), f.startedAt);
+    add(f.key === "lm" ? (build ? "Land mortgage, paid to the seller" : "Purchase mortgage, paid to the seller") : f.refi ? `${f.owner === "B" ? "Your spouse's new" : "New"} personal loan(s), bank's maximum` : `Loan paid to you: ${f.label.toLowerCase()}`, f.amount, f.key === "lm" ? `${fCal(f.startedAt)} · never passes through your hands` : fCal(f.startedAt), f.startedAt);
     if (f.refi) add(`The bank clears ${f.refi.names.join(" + ")} with it (refinance)`, -f.refi.payoff, `${fCal(f.startedAt)} · paid by the bank directly, incl. early-settlement fees`, f.startedAt);
   });
   add("Construction and finishing", -(spend - landPart), `${fCal(prj.start + 1)} → ${fCal(Math.min(upto, prj.start + prj.bm))}`, prj.start + 1);
@@ -113,12 +114,14 @@ function describePlan(o, inp, prj, build) {
   if (mortT.length && o.settlePolicy !== "none") add(Math.min(...mortT), 1, o.settlePolicy === "forMax" ? "first pay off as many old personal loans as it takes for the mortgage to reach the most the property allows (from your own cash, before the bank grants it)" : "first pay off old personal loans only if a mortgage would not fit in the bank's test otherwise (from your own cash, before the bank grants it)");
   if (o.lmUse) add(prj.landMonth, 2, `mortgage the ${build ? "land" : "purchase"} when it is bought (${fCal(prj.landMonth)}) for the maximum the bank allows — paid to the seller`);
   if (o.eqWhen !== "none") add(tw(o.eqWhen, o.eqMonth), 2.1, `mortgage the property you already own ${whenTxt(o.eqWhen, o.eqMonth, prj)} for the maximum the bank allows`);
-  if (o.plWhen !== "none") add(tw(o.plWhen, o.plMonth), 2.2, `take personal loan(s) ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows, ${refiTxt(o)}`);
+  // تضامن: whose name the personal loans are in
+  const plWho = !(inp.joint && inp.joint.on) ? "take personal loan(s)" : o.plBy === "spouse" ? "your spouse takes personal loan(s) in their name" : o.plBy === "both" ? "each of you takes personal loan(s) in your own name" : "take personal loan(s) in your name";
+  if (o.plWhen !== "none") add(tw(o.plWhen, o.plMonth), 2.2, `${plWho} ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows, ${refiTxt(o)}`);
   add(prj.landMonth, 3, build ? `buy the land (${fCal(prj.landMonth)})${o.lmUse ? " with that mortgage and your cash" : " in cash — no mortgage on it"}` : `buy the home (${fCal(prj.landMonth)})${o.lmUse ? " with that mortgage and your cash" : " in cash — no mortgage on it"}`);
   if (o.extraMo > 0) add(prj.landMonth, 3.1, `pay ${fSAR(o.extraMo)} a month extra on the land mortgage`);
   if (build) add(prj.start, 4, `build (${fCal(prj.start + 1)} → ${fCal(prj.start + prj.bm)}), paid from your cash, your salary and those loans`);
   if (o.coUse) add(prj.occupy, 5, `when the home is finished (${fCal(prj.occupy)}), take a cash-out mortgage on it for the maximum the bank allows`);
-  if (o.pl2Use) add(prj.occupy, 6, `take personal loan(s) at move-in (${fCal(prj.occupy)}) for the maximum the bank allows, ${refiTxt(o)}`);
+  if (o.pl2Use) add(prj.occupy, 6, `${plWho} at move-in (${fCal(prj.occupy)}) for the maximum the bank allows, ${refiTxt(o)}`);
   if (o.prepayAfter != null && o.prepayAfter !== "") add(prj.occupy + Math.round(o.prepayAfter), 7, `pay the mortgages off early from your cash ${o.prepayAfter} months after move-in (${fCal(prj.occupy + Math.round(o.prepayAfter))}) if the cash above your cushion covers it`);
   const steps = s.sort((a, b) => a.t - b.t || a.k - b.k).map((x) => x.text);
   if (o.settlePolicy === "none" || !mortT.length) steps.push("keep your other old loans running");
@@ -245,15 +248,18 @@ function rePayoffRows(f, extraMo, feeMonths) {
 
 // a strategy's title in plain words, generated from its settings (your own name is kept as a subtitle)
 // r (optional, a result or a tool summary): a loan the tool took early because your cash would run short (r.covered) is
-// named "when your cash runs short"
-function planTitle(o, build, r) {
+// named "when your cash runs short". joint (optional): تضامن is on — the personal loans then say whose they are (taken from r
+// when not given)
+function planTitle(o, build, r, joint) {
   const when = { start: "now", land: "when the land is bought", build: "at build start", completion: "at move-in", month: "in a month you chose" };
-  const cov = r && r.covered ? r.covered.key : null, short = r && r.covered && r.covered.split ? "in two parts, when your cash runs short" : "when your cash runs short";
+  const cov = r && r.covered ? RE_PL_STEP[r.covered.key] || r.covered.key : null, short = r && r.covered && r.covered.split ? "in two parts, when your cash runs short" : "when your cash runs short";
   const pl = o.plWhen && o.plWhen !== "none", pl2 = !!o.pl2Use, parts = [];
   const plW = cov === "pl" ? short : when[o.plWhen], pl2W = cov === "pl2" ? short : "at move-in";
+  const J = joint != null ? !!joint : !!(r && (r.spl != null || (r.months && r.months[0] && r.months[0].incB != null)));
+  const pls = !J ? "personal loans" : o.plBy === "spouse" ? "your spouse's personal loans" : o.plBy === "both" ? "personal loans for both of you" : "your personal loans";
   if (o.lmUse) parts.push(build ? "mortgage the land" : "mortgage the purchase");
   if (o.eqWhen && o.eqWhen !== "none") parts.push(`mortgage the property you own ${cov === "eq" ? short : when[o.eqWhen] || ""}`.trim());
-  if (pl || pl2) parts.push(pl && pl2 ? `personal loans ${plW} and ${pl2W}` : pl ? `personal loans ${plW}` : `personal loans ${pl2W}`);
+  if (pl || pl2) parts.push(pl && pl2 ? `${pls} ${plW} and ${pl2W}` : pl ? `${pls} ${plW}` : `${pls} ${pl2W}`);
   if (o.coUse) parts.push("a cash-out mortgage on the new home at move-in");
   if (!parts.length) return "Pay from your cash — no new loans";
   const t = parts.join(", then ");
@@ -262,10 +268,11 @@ function planTitle(o, build, r) {
 
 // what a strategy actually does, in date order, as short steps (from its result)
 function planSteps(r, build) {
-  const s = [];
+  const s = [], J = !!(r.months && r.months[0] && r.months[0].incB != null);   // تضامن: say whose personal loan it is
   (r.payoffs || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off ${x.name}`, amount: x.cost, note: "from your cash" }));
   r.facilities.filter((f) => f.startedAt != null && f.amount > 0 && f.key !== "rf").forEach((f) => {
-    const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : f.key === "eq" ? "Mortgage on your property" : f.key === "co" ? "Cash-out mortgage" : f.split ? "Two new personal loans" : f.part ? `Personal loan, ${f.part === 1 ? "first" : "second"} part` : "Personal loan";
+    const who = !J ? "" : f.owner === "B" ? "Your spouse's " : "Your ", P = who ? "personal loan" : "Personal loan";
+    const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : f.key === "eq" ? "Mortgage on your property" : f.key === "co" ? "Cash-out mortgage" : f.split ? `${who}${who ? "two new personal loans" : "Two new personal loans"}` : f.part ? `${who}${P}, ${f.part === 1 ? "first" : "second"} part` : `${who}${P}`;
     const note = (f.key === "lm" ? "paid to the seller" : f.refi ? `the bank clears ${f.refi.names.join(" + ")}; ${fS(f.refi.net)} to you` : "paid to you") + (f.takenEarly != null ? " · taken when your cash runs short" : "");
     s.push({ t: f.startedAt, kind: f.key, label, amount: f.amount, note });
   });
@@ -298,7 +305,7 @@ const bucketOf = (r) => r.months.map((m) => ({ t: m.t, inc: m.t >= 1 ? m.inc : (
    the debt still owed. What is left: */
 function reWealthParts(r) {
   const ms = r.months, end = ms[ms.length - 1], sum = (k) => ms.reduce((a, m) => a + (m[k] || 0), 0);
-  const refi = [r.pl, r.pl2].filter((f) => f && f.refi && f.refi.items).flatMap((f) => f.refi.items);
+  const refi = [r.pl, r.pl2, r.spl, r.spl2].filter((f) => f && f.refi && f.refi.items).flatMap((f) => f.refi.items);
   const oldPaid = (r.payoffs || []).filter((x) => x.old !== false).reduce((a, x) => a + x.cost, 0) + refi.filter((x) => x.old).reduce((a, x) => a + x.cost, 0);
   const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + (r.ownSale ? r.ownSale.fee : 0);
   const parts = [
