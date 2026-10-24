@@ -224,6 +224,9 @@ function mergeRE(inp) {
 function reNormLoans(list, idPrefix) {
   return list.map((l, i) => {
     const q = { id: idPrefix ? `${idPrefix}${i + 1}` : i + 1, name: `${idPrefix ? "Spouse's loan" : "Loan"} ${i + 1}`, balance: 0, installment: 0, monthsLeft: 0, rate: 6, canSettle: true, canRefi: true, ageMonths: null, ...l };
+    // what kind of loan it is: a personal loan (the default) counts as one of the two personal loans a person may have and
+    // may be bought out or paid off to make room; a mortgage never does, and it counts in the mortgage limit instead
+    q.type = q.type === "mortgage" ? "mortgage" : "personal";
     if (q.rateType === "flat") { q.flatRate = q.rate; q.rate = reFlatToApr(q.rate, Math.max(1, Math.round((q.ageMonths || 0) + (q.monthsLeft || 0)))); q.rateType = "apr"; }
     return q;
   });
@@ -561,7 +564,9 @@ function rePlanSimulate(p, prj, plan) {
   const isJoint = (f) => !!J && (f.key === "lm" || f.key === "co");
   const shareOf = (f, who) => { const a = isJoint(f) && f.shareA != null ? f.shareA : f.owner === "B" ? 0 : 1; return who === "A" ? a : 1 - a; };
   const instFor = (who) => activeExisting().reduce((a, l) => a + (l.owner === who ? l.installment : 0), 0) + facs.reduce((a, f) => a + instOf(f) * shareOf(f, who), 0);
-  const mortFor = (who, except) => [lm, eq, co].filter((x) => x !== except).reduce((a, x) => a + instOf(x) * shareOf(x, who), 0);
+  // existing mortgages (loans typed "mortgage") count in the mortgage limit with the new ones, each against its owner
+  const existMortFor = (who) => activeExisting().reduce((a, l) => a + (l.type === "mortgage" && (who == null || l.owner === who) ? l.installment : 0), 0);
+  const mortFor = (who, except) => [lm, eq, co].filter((x) => x !== except).reduce((a, x) => a + instOf(x) * shareOf(x, who), 0) + existMortFor(who);
   // early-settlement cost (SAMA cap): the balance plus the next min(feeMonths, months left) months' profit on the DECLINING balance
   const settleCost = (l) => reSettleCost(l.bal, l.rate, l.kind === "existing" ? l.installment : l.pmt, l.kind === "existing" ? Math.max(0, l.left) : Math.max(0, l.n - l.monthsPaid), feeMonths);
   const instOfAny = (l) => l.kind === "existing" ? l.installment : l.pmt;
@@ -605,7 +610,7 @@ function rePlanSimulate(p, prj, plan) {
   function capacityOf(f, ltvCap, productCap) {
     if (J) return capacityJoint(f, ltvCap, productCap);
     const totalRoom = dbrTarget - allInst();                                   // what is left of the bucket this month
-    const mortRunning = [lm, eq, co].filter((x) => x !== f).reduce((a, x) => a + instOf(x), 0);   // the mortgage cap is for all mortgages together
+    const mortRunning = [lm, eq, co].filter((x) => x !== f).reduce((a, x) => a + instOf(x), 0) + existMortFor(null);   // the mortgage cap is for all mortgages together, existing ones included
     const facCap = f.key === "pl" ? perLoanTarget * (plan.plSplit ? 2 : 1) : Math.max(0, mortgageTarget - mortRunning); // this facility's own ceiling inside the bucket
     const room = Math.max(0, Math.min(totalRoom, facCap));
     const byDbr = rePrincipalFor(room, f.rate, f.n);
@@ -634,7 +639,7 @@ function rePlanSimulate(p, prj, plan) {
   // only PERSONAL loans may be paid off early: existing loans you allow, the strategy's personal loan, a refinance taken as a personal loan.
   // Mortgages (land, existing property, cash-out, refinance into a mortgage) run to their end.
   const isPersonalFac = (f) => f.key === "pl" || f.key === "pl2" || f.key === "rf" || f.key === "spl" || f.key === "spl2";
-  const pool = () => activeExisting().filter((l) => l.canSettle !== false).concat(facs.filter((f) => isPersonalFac(f) && f.bal > 0.5 && f.settledAt === null && f.startedAt !== null));
+  const pool = () => activeExisting().filter((l) => l.canSettle !== false && l.type !== "mortgage").concat(facs.filter((f) => isPersonalFac(f) && f.bal > 0.5 && f.settledAt === null && f.startedAt !== null));
   // your rule: a personal loan is paid off with your own cash ONLY to clear room for a MORTGAGE (never for a personal loan).
   //   "asNeeded" — just enough personal loans that the mortgage covers the funding gap
   //   "forMax"   — as many personal loans as it takes for the mortgage to reach the most the property allows (LTV / product cap),
@@ -714,7 +719,7 @@ function rePlanSimulate(p, prj, plan) {
     const ofInc = !J ? "of income" : who === "B" ? "of your spouse's income" : "of your income";
     // personal loans already running: the borrower's existing loans + their other personal-loan step (two loans if it was split)
     const others = mine.filter((x) => x !== f && x.bal > 0.5 && x.settledAt === null && x.startedAt !== null);
-    const old = activeExisting().filter((l) => (l.owner === "B") === (who === "B")).concat(others);   // the borrower's loans only
+    const old = activeExisting().filter((l) => (l.owner === "B") === (who === "B") && l.type !== "mortgage").concat(others);   // the borrower's personal loans only (a mortgage is neither a slot nor refinanceable)
     const loansOf = (l) => l.kind === "existing" ? 1 : (l.split ? 2 : 1);
     const oldCount = old.reduce((a, l) => a + loansOf(l), 0);
     const ageOf = (l) => l.kind === "existing" ? (l.ageMonths == null ? Infinity : l.ageMonths + t) : t - l.startedAt;
@@ -1237,6 +1242,9 @@ function computeRE(inp, opts) {
     if (l.installment < need - 1) warnings.push(`${l.name}: an instalment of ${fSAR(l.installment)} does not clear ${fS(l.balance)} in ${left} months at ${l.rate}% a year (APR) — the tool uses ${fSAR(need)}. Check the rate or the months left.`);
     else if (l.installment > need * 1.02 + 1) { let b = l.balance, k = 0; const r = l.rate / 1200; while (b > 0.5 && k < 1200) { const i = b * r; b -= Math.min(b + i, l.installment) - i; k++; } warnings.push(`${l.name}: an instalment of ${fSAR(l.installment)} clears ${fS(l.balance)} in about ${k} months, not ${left}. Check the rate (APR) or the months left.`); }
   });
+  // an existing mortgage already past the mortgage limit leaves no room for a new one
+  const mortCapPct = p.mortgageCap == null ? p.dbrCap : p.mortgageCap, existMortA0 = p.existingLoans.reduce((a, l) => a + (l.type === "mortgage" && l.balance > 0 && l.installment > 0 ? l.installment : 0), 0);
+  if (existMortA0 > p.income * mortCapPct / 100 + 0.5) warnings.push(`your existing mortgage${p.existingLoans.filter((l) => l.type === "mortgage").length > 1 ? "s" : ""} already take${p.existingLoans.filter((l) => l.type === "mortgage").length > 1 ? "" : "s"} ${(existMortA0 / p.income * 100).toFixed(0)}% of your income — above the ${mortCapPct}% mortgage limit, so no new mortgage fits until it runs down.`);
   // تضامن, your spouse: SAMA's other limits (¶15–17 a, b) on the loans they already have
   if (J) {
     const pctB = incB0 > 0 ? existingInstB / incB0 * 100 : 0;
@@ -1251,8 +1259,9 @@ function computeRE(inp, opts) {
   // (تضامن: your room and your spouse's; a joint mortgage may use both, personal loans only yours)
   const capTimeline = (() => {
     const H = Math.round(p.horizon * 12), n = Math.max(1, Math.round(p.lmTenure * 12)), r = reEffRate(p, p.lmRate, n), nPl = Math.max(1, Math.round(p.plTenure * 12)), rPl = reEffRate(p, p.plRate, nPl);
-    const run = (list) => list.filter((l) => l.balance > 0 && l.installment > 0).map((l) => { const left = Math.max(1, Math.round(l.monthsLeft)); return { bal: l.balance, inst: Math.max(l.installment, rePmt(l.balance, l.rate, left)), rate: l.rate, settleAt: l.settleAt }; });
+    const run = (list) => list.filter((l) => l.balance > 0 && l.installment > 0).map((l) => { const left = Math.max(1, Math.round(l.monthsLeft)); return { bal: l.balance, inst: Math.max(l.installment, rePmt(l.balance, l.rate, left)), rate: l.rate, settleAt: l.settleAt, mort: l.type === "mortgage" }; });
     const ls = run(p.existingLoans), lsB = run(jLoans);
+    const mortInst = (list) => list.reduce((a, l) => a + (l.bal > 0.5 && l.mort ? l.inst : 0), 0);   // existing mortgages running
     const gB = J && J.incomeGrowth != null && J.incomeGrowth !== "" ? +J.incomeGrowth : (p.incomeGrowth || 0);
     const rows = []; let prev = null;
     for (let t = 0; t <= Math.min(H, 120); t++) {
@@ -1263,19 +1272,20 @@ function computeRE(inp, opts) {
       const room = Math.max(0, incT * (J ? reSamaCap(incT, p.dbrCap, J.redf) : p.dbrCap) / 100 - inst);
       const instB = lsB.reduce((a, l) => a + (l.bal > 0.5 ? l.inst : 0), 0), incBT = incB0 * Math.pow(1 + gB / 100, yT);
       const roomB = J ? Math.max(0, incBT * reSamaCap(incBT, p.dbrCap, J.redf) / 100 - instB) : 0;
-      const mortRoomB = J ? Math.min(roomB, incBT * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100) : 0;
+      const mortRoomB = J ? Math.max(0, Math.min(roomB, incBT * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100 - mortInst(lsB))) : 0;
       // …and what your spouse could take as personal loans in their own name (their two-loan rule, their per-loan limit)
-      const slotsB = Math.max(0, 2 - lsB.filter((l) => l.bal > 0.5).length), capInstB = Math.min(incBT * p.perLoanCap / 100, rePmt(p.plCap, rPl, nPl));
+      const slotsB = Math.max(0, 2 - lsB.filter((l) => l.bal > 0.5 && !l.mort).length), capInstB = Math.min(incBT * p.perLoanCap / 100, rePmt(p.plCap, rPl, nPl));
       const pl1B = J && slotsB >= 1 ? Math.min(roomB, capInstB) : 0, pl2B = J ? Math.min(roomB, Math.min(slotsB, 2) * capInstB) : 0;
-      // personal loans: never more than two running at once (your existing loans count) and each stops at the bank's ceiling per loan
-      const slots = Math.max(0, 2 - ls.filter((l) => l.bal > 0.5).length), capInst = Math.min(incT * p.perLoanCap / 100, rePmt(p.plCap, rPl, nPl));
-      const mortRoom = Math.min(room, incT * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100), pl1 = slots >= 1 ? Math.min(room, capInst) : 0, pl2 = Math.min(room, Math.min(slots, 2) * capInst);
+      // personal loans: never more than two running at once (your existing personal loans count, a mortgage does not) and each
+      // stops at the bank's ceiling per loan; the mortgage room is net of the mortgages you already pay
+      const slots = Math.max(0, 2 - ls.filter((l) => l.bal > 0.5 && !l.mort).length), capInst = Math.min(incT * p.perLoanCap / 100, rePmt(p.plCap, rPl, nPl));
+      const mortRoom = Math.max(0, Math.min(room, incT * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100 - mortInst(ls))), pl1 = slots >= 1 ? Math.min(room, capInst) : 0, pl2 = Math.min(room, Math.min(slots, 2) * capInst);
       const key = Math.round(inst) + "|" + Math.round(incT) + (J ? "|" + Math.round(instB) + "|" + Math.round(incBT) : "");
       if (key !== prev) { rows.push({ t, inst, income: incT, room, mortRoom, pl1Room: pl1, pl2Room: pl2, maxMortgage: rePrincipalFor(mortRoom + mortRoomB, r, n), ...(J ? { instB, incomeB: incBT, roomB, mortRoomB, pl1RoomB: pl1B, pl2RoomB: pl2B, maxOnePlB: Math.min(p.plCap, rePrincipalFor(pl1B, rPl, nPl)), maxTwoPlB: Math.min(p.plCap, rePrincipalFor(Math.min(pl2B, capInstB), rPl, nPl)) + Math.min(p.plCap, rePrincipalFor(Math.max(0, pl2B - capInstB), rPl, nPl)) } : {}), maxOnePl: Math.min(p.plCap, rePrincipalFor(pl1, rPl, nPl)), maxTwoPl: Math.min(p.plCap, rePrincipalFor(Math.min(pl2, capInst), rPl, nPl)) + Math.min(p.plCap, rePrincipalFor(Math.max(0, pl2 - capInst), rPl, nPl)), maxOneLoan: rePrincipalFor(pl1, r, n), maxAllLoans: rePrincipalFor(room, r, n) }); prev = key; }
     }
     return rows;
   })();
-  const household = { warnings, existingInst, existingDbr, dbrRoom: Math.max(0, p.income * capPctA / 100 - existingInstA), perLoanRoom: p.income * p.perLoanCap / 100, mortgageRoom: p.income * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100, savings: p.income + incB0 - p.livingExpenses - p.rentNow - existingInst, capTimeline,
+  const household = { warnings, existingInst, existingDbr, dbrRoom: Math.max(0, p.income * capPctA / 100 - existingInstA), perLoanRoom: p.income * p.perLoanCap / 100, mortgageRoom: Math.max(0, p.income * (p.mortgageCap == null ? p.dbrCap : p.mortgageCap) / 100 - p.existingLoans.reduce((a, l) => a + (l.type === "mortgage" && l.balance > 0 ? l.installment : 0), 0)), savings: p.income + incB0 - p.livingExpenses - p.rentNow - existingInst, capTimeline,
     ...(J ? { joint: { income: incB0, existingInstA, existingInstB, existingDbrB: incB0 > 0 ? existingInstB / incB0 * 100 : 0, capPctA, capPctB, dbrRoomB: Math.max(0, incB0 * capPctB / 100 - existingInstB) } } : {}) };
   // renter path is common to all options (same rent, same alt return) — take it from any live option
   const renter = live[0] ? live[0].months.map((m) => ({ t: m.t, rentEq: m.rentEq })) : [];
