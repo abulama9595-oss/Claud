@@ -1,4 +1,4 @@
-// Shared helpers for the real-estate engine tests (node --test tests/re/).
+// Shared helpers for the v2 real-estate engine tests (node --test tests/re2/).
 // Scenarios here are synthetic — never put anyone's real figures in this folder.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 // the model files sit at the repository root (Claud) or under web/ (the studio mirror)
@@ -43,6 +43,28 @@ function randomScenario(E, seed) {
   };
 }
 
+// the same household in the NEW shape (v2): the project as a kind, 0–2 properties you own (one of them the home you live in
+// when you pay no rent), a plan's mortgages on them, a loan secured on one, the new settings. For the new tests —
+// randomScenario keeps the OLD shape for the fork-parity tests.
+function randomScenario2(E, seed) {
+  const r = rng(seed + 90000), pick = (a) => a[Math.floor(r() * a.length)], between = (a, b, step = 1) => a + Math.round((r() * (b - a)) / step) * step;
+  const { mode, acquire, ownedValue, ownedLtv, ...rest } = randomScenario(E, seed);
+  const props = [];
+  for (let k = 0, n = pick([0, 1, 1, 2]); k < n; k++) {
+    const home = k === 0 && rest.rentNow === 0 && r() < 0.7;
+    props.push({ id: `p${k + 1}`, name: `Property ${k + 1}`, value: between(1000000, 8000000, 50000), ltv: pick([60, 70, 70]), canMortgage: r() > 0.15, rentNow: !home && r() < 0.3 ? between(2000, 10000, 500) : 0, isHome: home,
+      plan: pick(['keep', 'keep', 'sell']), sellAt: 'moveIn', letAfterMove: r() < 0.3, letYield: pick([3, 4]), sellCostPct: pick([2.5, 7.5]) });
+  }
+  const loans = rest.existingLoans.map((l) => ({ ...l }));
+  if (props.length && loans.length && r() < 0.3) loans[0].securedOn = props[0].id;   // an existing mortgage on it
+  const plans = rest.plans.map((o) => {
+    const { eqWhen, eqMonth, ...q } = o, when = pick(['none', 'none', 'start', 'land', 'build', 'completion', 'month']);
+    return { ...q, mortgages: when === 'none' || !props.length ? {} : { [pick(props).id]: { when, month: when === 'month' ? between(0, 36) : 0 } }, prepayAfter: r() < 0.15 ? pick([0, 12, 24]) : null };
+  });
+  return { ...rest, kind: acquire === 'buy' ? 'readyVilla' : 'landVilla', properties: props, existingLoans: loans, plans, propertyValueBasis: pick(['market', 'market', 'today']), samaBands: r() < 0.7,
+    partRentAnnual: r() < 0.2 ? between(20000, 80000, 5000) : 0, cashZakatPct: r() < 0.2 ? 2.5 : 0, bridgeRate: r() < 0.2 ? between(5, 9, 0.5) : null, rentFreezeUntil: pick([null, '2030-09']) };
+}
+
 // a fixed synthetic household (made-up figures) with two old personal loans and a property it already owns
 const FAMILY = {
   income: 60000, livingExpenses: 22000, cashAvailable: 1800000, rentNow: 0, ownedValue: 3500000,
@@ -66,4 +88,10 @@ function randomJoint(E, seed) {
 }
 const jointScenarios = (E, n = 40) => Array.from({ length: n }, (_, k) => ({ label: `joint#${k + 1}`, inp: randomJoint(E, k + 1) }));
 
-module.exports = { ROOT, loadEngine, rng, randomScenario, randomJoint, FAMILY, scenarios, jointScenarios };
+// the fixed household in the new shape: the home it lives in is one of its properties
+const FAMILY2 = { kind: 'landVilla', income: FAMILY.income, livingExpenses: FAMILY.livingExpenses, cashAvailable: FAMILY.cashAvailable, rentNow: 0, existingLoans: FAMILY.existingLoans,
+  properties: [{ id: 'p1', name: 'Our home', value: 3500000, ltv: 70, canMortgage: true, isHome: true }] };
+const scenarios2 = (E, n = 60) => [{ label: 'defaults2', inp: { kind: 'landVilla' } }, { label: 'family2', inp: FAMILY2 }, { label: 'ready2', inp: { kind: 'readyVilla', propertyPrice: 2800000 } }]
+  .concat(Array.from({ length: n }, (_, k) => ({ label: `random2#${k + 1}`, inp: randomScenario2(E, k + 1) })));
+
+module.exports = { ROOT, loadEngine, rng, randomScenario, randomScenario2, randomJoint, FAMILY, FAMILY2, scenarios, scenarios2, jointScenarios };
