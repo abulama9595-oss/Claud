@@ -1,13 +1,28 @@
 // v2 of the real-estate engine (forked from re-engine.js; the old file is frozen). Loaded by realestate-v2.html.
 /* ============================================================
    v2 DATA MODEL (re2Import converts the old tool's scenarios; mergeRE applies it)
-   inp.kind        "landVilla" | "readyVilla" | "land" | "landBuilding" | "readyBuilding" — the project. This phase runs every
-                   kind as its villa twin (land → landVilla, landBuilding → landVilla, readyBuilding → readyVilla); the
-                   kind-specific project model comes next. mode ("home" — the household simulation is the one engine) and
-                   acquire ("build" for landVilla / land / landBuilding, "buy" for the ready kinds) are DERIVED in mergeRE and
-                   never stored by the new tool.
-   inp.occupancy   buildings: "liveLet" (you live in one unit, the rest is let) | "let" (let out entirely); unitCount, unitRent,
-                   unitRentBasis "unit" | "sqm", netLettablePct (keys only in this phase).
+   inp.kind        "landVilla" | "readyVilla" | "land" | "landBuilding" | "readyBuilding" — the project (RE_KINDS; reProject
+                   builds each one, see its comment). mode ("home" — the household simulation is the one engine) and acquire
+                   ("build" for landVilla / land / landBuilding, "buy" for the ready kinds) are DERIVED in mergeRE and never
+                   stored by the new tool. The villa kinds give the old tool's numbers. A building is costed and valued like the
+                   villa (floors × builtPct drive the area; the cost approach) and its units are let (reLetting). Land only is
+                   the land, RETT and the broker's fee at landMonth and nothing else: no construction and no move-in (occupy =
+                   landMonth + 1 = "the project is paid for"; you keep paying the rent you pay today; no upkeep), the land path
+                   as its value, holding costs (whiteLandPct — the white-land fee, %/yr of the land's market value, monthly from
+                   the first January after the purchase while landArea + whiteLandOtherArea ≥ 5,000 m² — and landZakat "trade"
+                   = 2.5%/yr, both out of cash in both measures: r.holdingCost, months.holding), an optional sale in year
+                   landSellYear (prj.saleAt: value × (1 − landSellCostPct) into cash, the land mortgage repaid with the
+                   early-settlement fee, the value 0 after — r.landSale), land finance for its purchase mortgage (landOnlyLtv,
+                   landTenure, lmRate + landRateAdd) and no cash-out. RETT first-home relief (firstHomeExempt) applies to the
+                   villa kinds only. A ready asset with readyLandShare set is land + a building readyAge years old that ages.
+   inp.occupancy   buildings: "liveLet" (you live in one unit, the rest is let — their rent joins the annex channel, partIn) |
+                   "let" (let out entirely — the whole-home channel, letIn; you do not move in and keep paying your rent);
+                   unitCount, unitRent (SAR/mo per unit — or SAR/m²/yr with unitRentBasis "sqm" on builtArea × netLettablePct),
+                   vacancyPct, mgmtPct (+ VAT): reLetting(p, prj) → { units, letUnits, perUnit, grossAnnual, netAnnual }. Rent
+                   received never joins the bank's income test (cash only).
+   rentFreezeUntil YYYY-MM (Riyadh rent freeze; blank / null = none): no rent growth — received (letIn, partIn, ownIn) or paid
+                   (rentEq) — until that month, counted from the scenario's month 0 (inp.asOf, YYYY-MM; this month when it is
+                   missing); a rent set before it stays flat until then and takes its yearly steps from then on.
    inp.properties  every property you already own (reNormProps): { id "p1"…, name, value, ltv (default ownedLtv), canMortgage,
                    rentNow (what it earns today), isHome (the home you live in today — at most one), plan "keep" | "sell",
                    sellAt "moveIn" | month, letAfterMove, letYield (%/yr of its value), sellCostPct, existingLoanId }.
@@ -24,9 +39,9 @@
    samaBands       true = SAMA's debt-burden bands (reSamaCap: 55% up to 15,000 — 65% REDF-supported, joint.redf —, 65% below
                    25,000, then dbrCap) apply to a single borrower too, in the simulation, the household figures and the room
                    timeline; false = the bank's dbrCap alone (the old behaviour; what re2Import sets).
-   Keys with no engine effect yet (later phases): landSellYear, landSellCostPct, landZakat, whiteLandPct, whiteLandOtherArea,
-                   rentFreezeUntil, readyLandShare, readyAge, landOnlyLtv, landTenure, landRateAdd, invLtv, invTenure, invRateAdd,
-                   dscrMin, occupancy, unitCount, unitRent, unitRentBasis, netLettablePct, legacyRental.
+   Keys with no engine effect yet (later phases): invLtv, invTenure, invRateAdd, dscrMin (income-property finance for a
+                   building let out entirely), legacyRental (an imported old rental scenario: a building let out entirely whose
+                   one unit earns the old rentMo).
    IMPORT (re2Import; mergeRE runs it on any scenario without `kind` that carries an old-only key — mode, acquire, ownedValue,
                    ownHomePlan, ownHomeYield, ownHomeSellCostPct, options — or a plan with eqWhen / eqMonth / mortgageWhen; a
                    scenario with `properties` or `kind` is never imported). mode + acquire → kind (rental → the building kinds
@@ -256,6 +271,8 @@ function mergeRE(inp) {
   if (!RE_KINDS[p.kind]) p.kind = RE_BASE.kind;
   p.mode = "home"; p.acquire = RE_KINDS[p.kind].acquire;
   if (p.occupancy !== "let") p.occupancy = "liveLet";
+  if (p.unitRentBasis !== "sqm") p.unitRentBasis = "unit";
+  if (p.landZakat !== "trade") p.landZakat = "none";
   // one set of bank terms per loan type: migrate an older scenario once, from its raw strategies; shared terms you already
   // have are never overwritten, and merging again changes nothing
   if (inp && inp.plans && inp.termsV == null) { const { terms } = reTermsFromPlans(inp.plans); for (const [k, v] of Object.entries(terms)) if (inp[k] == null) p[k] = v; }
@@ -302,13 +319,37 @@ const reSamaCap = (income, dbrCap, redf) => income <= 15000 ? Math.min(dbrCap, r
 
 /* ---------- v2 model: project kinds, your properties, a plan's mortgages on them, the import of old scenarios ---------- */
 // the five projects and how each is acquired (mode is always "home": one household simulation)
+// (home = a home of yours — the villa kinds, where RETT first-home relief applies; building = units that are let; land = land only)
 const RE_KINDS = {
-  landVilla: { acquire: "build", label: "Buy land and build a villa" },
-  readyVilla: { acquire: "buy", label: "Buy a ready villa" },
-  land: { acquire: "build", label: "Buy land only" },
-  landBuilding: { acquire: "build", label: "Buy land and build a residential building" },
-  readyBuilding: { acquire: "buy", label: "Buy a ready residential building" },
+  landVilla: { acquire: "build", home: true, building: false, land: false, label: "Buy land and build a villa" },
+  readyVilla: { acquire: "buy", home: true, building: false, land: false, label: "Buy a ready villa" },
+  land: { acquire: "build", home: false, building: false, land: true, label: "Buy land only" },
+  landBuilding: { acquire: "build", home: false, building: true, land: false, label: "Buy land and build a residential building" },
+  readyBuilding: { acquire: "buy", home: false, building: true, land: false, label: "Buy a ready residential building" },
 };
+// land only: the white-land fee applies while your undeveloped plots in the city (this one + whiteLandOtherArea) add up to
+// 5,000 m² or more; zakat on land held to sell is 2.5% of its market value a year (ZATCA: trade goods)
+const RE_WHITE_LAND_MIN_AREA = 5000, RE_LAND_ZAKAT_PCT = 2.5;
+// calendar: month 0 is the scenario's as-of month (p.asOf, YYYY-MM; this month when it is missing)
+const reYm = (v) => { const m = /^(\d{4})-(\d{1,2})$/.exec(String(v == null ? "" : v).trim()); return m && +m[2] >= 1 && +m[2] <= 12 ? { y: +m[1], m: +m[2] } : null; };
+const reAsOf = (p) => reYm(p && p.asOf) || (() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() + 1 }; })();
+// a month written YYYY-MM as a simulation month (negative = already past); null when it is not a month
+function reMonthIndex(p, ym) { const a = reYm(ym); if (!a) return null; const z = reAsOf(p); return (a.y - z.y) * 12 + (a.m - z.m); }
+// the calendar month (1 = January … 12 = December) of simulation month t
+function reCalMonth(p, t) { const z = reAsOf(p); return ((z.m - 1 + Math.round(t || 0)) % 12 + 12) % 12 + 1; }
+// a building's units and their rent: the units you let (all of them, or all but the one you live in), the rent per unit a
+// month (as entered, or a rent per m² a year on the net lettable share of the built area, spread over the units), the gross
+// rent a year and the net rent a year after vacancy and the management fee (VAT on the fee). Zeros for a villa or land.
+function reLetting(p, prj) {
+  const K = RE_KINDS[p.kind], isB = prj && prj.isBuilding != null ? !!prj.isBuilding : !!(K && K.building);
+  const units = isB ? Math.max(0, Math.round(+p.unitCount || 0)) : 0;
+  const letUnits = Math.max(0, units - (p.occupancy === "liveLet" ? 1 : 0));
+  const rent = Math.max(0, +p.unitRent || 0);
+  const perUnit = units <= 0 ? 0 : p.unitRentBasis === "sqm" ? (+(prj && prj.builtArea) || 0) * (+p.netLettablePct || 0) / 100 * rent / units / 12 : rent;
+  const grossAnnual = letUnits * perUnit * 12;
+  const netAnnual = grossAnnual * (1 - (+p.vacancyPct || 0) / 100) * (1 - (+p.mgmtPct || 0) / 100 * (1 + (+p.vatPct || 0) / 100));
+  return { units, letUnits, perUnit, grossAnnual, netAnnual };
+}
 // the properties you already own, with their defaults (ids p1, p2, … when missing); at most one is the home you live in today
 function reNormProps(list, p) {
   const ltv0 = p && p.ownedLtv != null && p.ownedLtv !== "" ? +p.ownedLtv : 70;
@@ -382,7 +423,8 @@ function re2Import(old) {
   const out = { ...o };
   const mode = o.mode === "rental" ? "rental" : "home", acquire = o.acquire === "buy" ? "buy" : "build";
   out.kind = mode === "rental" ? (acquire === "buy" ? "readyBuilding" : "landBuilding") : (acquire === "buy" ? "readyVilla" : "landVilla");
-  if (mode === "rental") { out.occupancy = "let"; out.legacyRental = true; }   // the old rental mode: a building let out entirely (its numbers differ by design)
+  // the old rental mode: a building let out entirely (its numbers differ by design); its monthly rent becomes one let unit
+  if (mode === "rental") { out.occupancy = "let"; out.legacyRental = true; if (out.unitCount == null) { out.unitCount = 1; out.unitRentBasis = "unit"; out.unitRent = o.rentMo == null || o.rentMo === "" ? RE_BASE.rentMo : +o.rentMo || 0; } }
   delete out.mode; delete out.acquire;
   // the old per-strategy bank terms, read once into the shared terms (as the old mergeRE did, from the raw old plans)
   if (Array.isArray(o.plans) && o.termsV == null) { const { terms } = reTermsFromPlans(o.plans); for (const [k, v] of Object.entries(terms)) if (out[k] == null) out[k] = v; }
@@ -412,40 +454,56 @@ function rePrincipalFor(pmt, rAnnual, n) {
   return r === 0 ? pmt * n : pmt * (1 - Math.pow(1 + r, -n)) / r;
 }
 
-/* ---------- project cost build-up ---------- */
+/* ---------- project cost build-up, per kind (RE_KINDS) ----------
+   landVilla / readyVilla: as the old tool (bit-identical). landBuilding / readyBuilding: the same cost build-up (floors × builtPct
+   drive the area, finishExtra) and the same value path (the cost approach: land grows, the building ages); the units' rent via
+   reLetting. land: the land, RETT (no first-home relief) and the broker's fee at landMonth and nothing else — no construction
+   (hard = soft = cont = finish = overrun = vat = 0, bm = 0), no move-in: occupy = landMonth + 1 means "the project is paid for";
+   the value is the land path; saleAt = the month of the sale you planned (landSellYear × 12, null = hold); holding = the
+   holding costs (white-land fee from the first January after the purchase while the plots add up to 5,000 m², zakat on land
+   held to sell), charged in rePlanSimulate through holdingAt(t). RETT first-home relief (firstHomeExempt) applies to the villa
+   kinds only — a building or land is not a first home. A ready asset with readyLandShare set is land (growing) + a building
+   that already stands, readyAge years old, losing buildDeprPct of its original value a year (so steeper on what you paid). */
 function reProject(p) {
-  const build = p.acquire === "build";
+  const kind = RE_KINDS[p.kind] ? p.kind : "landVilla", K = RE_KINDS[kind];
+  const build = K.acquire === "build";                 // land is bought (and, except for land only, built on)
+  const construct = build && !K.land;                  // there is a construction
+  const isLand = !!K.land, isBuilding = !!K.building;
+  const moveIn = !!K.home || (isBuilding && p.occupancy !== "let");   // you live in it (a building let out entirely, land: no)
   const g = p.appreciation / 100;
   const landMonth = Math.max(0, Math.round(p.landMonth || 0));
-  const start = build ? Math.max(landMonth, Math.round(p.buildStart || 0)) : landMonth;
+  const start = construct ? Math.max(landMonth, Math.round(p.buildStart || 0)) : landMonth;
   const inflate = Math.pow(1 + (p.costInflation || 0) / 100, start / 12);   // construction priced at the month it starts
   const landToday = build ? p.landArea * p.landPrice : 0;
   const land = landToday * Math.pow(1 + g, landMonth / 12);                 // land priced at the month it is bought
   const price = build ? 0 : p.propertyPrice * Math.pow(1 + g, landMonth / 12);
   const builtArea = p.builtPct > 0 ? p.landArea * p.builtPct / 100 * (p.floors || 1) : p.builtArea;
-  const hard = build ? builtArea * p.buildCost * inflate : 0;
+  const hard = construct ? builtArea * p.buildCost * inflate : 0;
   const soft = hard * p.softPct / 100;
   const cont = (hard + soft) * p.contPct / 100;
-  const finish = p.finishExtra * inflate;
+  const finish = isLand ? 0 : p.finishExtra * inflate;
   const vatConstr = (hard + soft + cont) * p.vatPct / 100;
   const vatFinish = finish * p.vatPct / 100;
   const broker = price * p.brokerPct / 100;
   const landBroker = build ? land * (p.landBrokerPct || 0) / 100 : 0;          // paid with the land; not in value, RETT or the LTV
-  const overrun = build ? (hard + soft + cont + finish) * (p.overrunPct || 0) / 100 : 0;   // extra cost only — the home is not worth more
+  const overrun = construct ? (hard + soft + cont + finish) * (p.overrunPct || 0) / 100 : 0;   // extra cost only — the home is not worth more
   const vatOverrun = overrun * p.vatPct / 100;
   const rettBase = build ? land : price;
-  const exempt = p.mode === "home" && p.firstHomeExempt ? Math.min(rettBase, p.rettExemptCap) : 0;
+  // first-home relief (the state bears RETT on the first rettExemptCap of a citizen's first home): the villa kinds only
+  const exempt = K.home && p.firstHomeExempt ? Math.min(rettBase, p.rettExemptCap) : 0;
   const rett = (rettBase - exempt) * p.rettPct / 100;
   const total = land + price + rett + broker + landBroker + hard + soft + cont + finish + overrun + vatConstr + vatFinish + vatOverrun;
-  const bm = build ? Math.max(1, Math.round(p.buildMonths)) : 0;
-  const occupy = start + bm + 1; // first month of living in / letting
+  const bm = construct ? Math.max(1, Math.round(p.buildMonths)) : 0;
+  const occupy = start + bm + 1; // first month of living in / letting — for land: the month after the land is paid for
   // monthly spend schedule, index = month
   const schedule = new Array(occupy).fill(0);
-  if (build) {
+  if (construct) {
     schedule[landMonth] += land + rett + landBroker;
     const perMo = (hard + soft + cont + vatConstr + overrun + vatOverrun) / bm;
     for (let t = start + 1; t <= start + bm; t++) schedule[t] += perMo;
     schedule[start + bm] += finish + vatFinish;
+  } else if (isLand) {
+    schedule[landMonth] += land + rett + landBroker;
   } else {
     schedule[landMonth] += price + rett + broker + finish + vatFinish;
   }
@@ -453,21 +511,40 @@ function reProject(p) {
   // BUILDING is worth what it cost (construction + design + extras) × (1 + self-build uplift) — the uplift is on what you
   // build, not the land — accruing with progress during construction, then losing buildDeprPct % of that value a year from
   // completion (straight-line, never below 0). VAT, RETT, fees, contingency and overruns add no value. A ready home bought
-  // as such keeps price + finishing growing with the market (its land/building split is unknown); readyParts (internal)
-  // values a ready villa like the home you would build: the same land, and a building that already stands.
+  // as such keeps price + finishing growing with the market (its land/building split is unknown) — unless readyLandShare
+  // says what share of the price is land: then the land grows and the building (the rest + finishing), readyAge years old,
+  // keeps ageing. readyParts (internal) values a ready villa like the home you would build: the same land, and a building
+  // that already stands. Land only: the land path.
   const dep = Math.max(0, p.buildDeprPct == null ? 0 : p.buildDeprPct) / 100;
-  const done = build ? start + bm : landMonth;                    // the month the building is complete
-  const buildValue = build ? (hard + soft + finish) * (1 + p.devMarginPct / 100) : 0;
+  const done = construct ? start + bm : landMonth;                // the month the building is complete
+  const buildValue = construct ? (hard + soft + finish) * (1 + p.devMarginPct / 100) : 0;
   const ready = !build && p.readyParts ? p.readyParts : null;
+  const shareIn = p.readyLandShare, share = shareIn == null || shareIn === "" || isNaN(+shareIn) ? null : Math.min(100, Math.max(0, +shareIn));
+  const split = !build && !ready && share != null ? { land: price * share / 100, building: price * (1 - share / 100) + finish, age: Math.max(0, +p.readyAge || 0) } : null;
   const valueAt = (t) => {
     if (t < landMonth) return 0;
     const yrs = (t - landMonth) / 12;
+    if (isLand) return land * Math.pow(1 + g, yrs);
     if (build) return land * Math.pow(1 + g, yrs) + buildValue * Math.min(1, Math.max(0, (t - start) / bm)) * Math.max(0, 1 - dep * Math.max(0, t - done) / 12);
     if (ready) return ready.land * Math.pow(1 + g, yrs) + ready.building * Math.max(0, 1 - dep * yrs);
+    // a building bought `age` years old: straight-line on its original value, so each year takes dep / (1 − dep × age) of what you paid
+    if (split) return split.land * Math.pow(1 + g, yrs) + split.building * Math.max(0, 1 - dep * yrs / Math.max(0.05, 1 - dep * split.age));
     return (price + finish) * Math.pow(1 + g, yrs);
   };
-  return { build, land, landToday, price, hard, soft, cont, finish, overrun, vat: vatConstr + vatFinish + vatOverrun, broker, landBroker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), buildValue, landValueAt: (t) => t < landMonth ? 0 : (ready ? ready.land : build ? land : price + finish) * Math.pow(1 + g, (t - landMonth) / 12), bm, occupy, start, landMonth, inflate, schedule, valueAt,
-    builtArea, costPerSqm: build && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
+  const landValueAt = (t) => t < landMonth ? 0 : (ready ? ready.land : split ? split.land : build ? land : price + finish) * Math.pow(1 + g, (t - landMonth) / 12);
+  // buildings: the units and their rent; land: the sale you planned and the holding costs (charged month by month in rePlanSimulate)
+  const letting = reLetting(p, { kind, isBuilding, builtArea });
+  const sellAt = isLand && +p.landSellYear > 0 ? Math.round(+p.landSellYear * 12) : null;
+  const saleAt = sellAt != null && sellAt > landMonth ? sellAt : null;   // you cannot sell before you own it
+  const area = (+p.landArea || 0) + (+p.whiteLandOtherArea || 0);
+  const whitePct = isLand && area >= RE_WHITE_LAND_MIN_AREA && +p.whiteLandPct > 0 ? +p.whiteLandPct : 0;
+  const holding = isLand ? { whitePct, whiteFrom: whitePct > 0 ? landMonth + 13 - reCalMonth(p, landMonth) : null, zakatPct: p.landZakat === "trade" ? RE_LAND_ZAKAT_PCT : 0, area, minArea: RE_WHITE_LAND_MIN_AREA } : null;
+  // what holding the land costs in month t while you own it: the white-land fee (from the first January after the purchase) and
+  // zakat on land held to sell, each a yearly % of the land's market value, charged monthly (÷ 12)
+  const holdingAt = (t) => !holding || t <= landMonth ? 0 : landValueAt(t) * ((holding.whiteFrom != null && t >= holding.whiteFrom ? holding.whitePct : 0) + holding.zakatPct) / 100 / 12;
+  return { kind, build, construct, isLand, isBuilding, moveIn, units: letting.units, letting, saleAt, holding, holdingAt,
+    land, landToday, price, hard, soft, cont, finish, overrun, vat: vatConstr + vatFinish + vatOverrun, broker, landBroker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), buildValue, landValueAt, bm, occupy, start, landMonth, inflate, schedule, valueAt,
+    builtArea, costPerSqm: construct && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
 }
 
 /* ---------- rate quoting ---------- */
@@ -708,7 +785,8 @@ function rePlanSimulate(p, prj, plan) {
   // the four new facilities
   const mk = (key, label, rate, tenure, fees) => ({ key, label, bal: 0, pmt: 0, amount: 0, rate: reEffRate(p, rate, Math.max(1, Math.round(tenure * 12))) + (p.rateShock || 0), quoted: rate, tenure, n: Math.max(1, Math.round(tenure * 12)), fees: 0, feesPct: fees, startedAt: null, settledAt: null, interestPaid: 0, monthsPaid: 0, capacity: null, kind: key, name: label });
   // bank terms are shared by every strategy (one set per loan type)
-  const lm = mk("lm", prj.build ? "Mortgage on the new land" : "Mortgage on the purchase", p.lmRate, p.lmTenure, p.lmFeesPct);
+  // (land only: land finance — its own LTV (landOnlyLtv), tenure (landTenure) and a rate above the mortgage rate (landRateAdd))
+  const lm = prj.isLand ? mk("lm", "Mortgage on the land", p.lmRate + (+p.landRateAdd || 0), p.landTenure, p.lmFeesPct) : mk("lm", prj.build ? "Mortgage on the new land" : "Mortgage on the purchase", p.lmRate, p.lmTenure, p.lmFeesPct);
   const eq = mk("eq", "Mortgage on your existing property", p.eqRate, p.eqTenure, p.eqFeesPct);
   // تضامن: who takes the personal loans (plan.plBy) — you ("me", the default), your spouse or both of you; your spouse's are
   // spl (the first personal-loan step) and spl2 (at move-in), on their own income and room
@@ -754,10 +832,17 @@ function rePlanSimulate(p, prj, plan) {
   //   if you don't build = your own cash growing at the same rate from today, less the settlements you planned anyway.
   let bcash = p.cashAvailable, ccash = p.cashAvailable;
   let newInstCum = 0, oldSavedCum = 0, rentInCum = 0, rentSavedCum = 0, upkeepCum = 0, cRetCum = 0;
-  const annualRentOut = (p.rentOutFixed || 0) > 0 ? p.rentOutFixed : (p.rentOutPct || 0) > 0 ? prj.total * p.rentOutPct / 100 : 0;
-  const lettingOut = annualRentOut > 0;
-  // part of the new home let while you live in it (annex / floor) — not when the whole home is let
-  const partRent = !lettingOut && (p.partRentAnnual || 0) > 0 ? p.partRentAnnual : 0;
+  // a building's units (reLetting: net of vacancy and the management fee): let out entirely ("let") they are the whole-home
+  // rent and you do not move in; with you living in one of them ("liveLet") they are let like an annex of your home
+  const letB = prj.isBuilding && p.occupancy === "let", unitsNet = prj.letting ? prj.letting.netAnnual : 0;
+  const annualRentOut = letB && unitsNet > 0 ? unitsNet : (p.rentOutFixed || 0) > 0 ? p.rentOutFixed : (p.rentOutPct || 0) > 0 ? prj.total * p.rentOutPct / 100 : 0;
+  const lettingOut = annualRentOut > 0 || letB;
+  // you move into the new home: a villa or a building you live in — not a home let out whole, never land (you keep paying the
+  // rent you pay today, and the home you live in now stays as it is)
+  const livesIn = prj.moveIn && !lettingOut;
+  // part of the new home let while you live in it (annex / floor) — not when the whole home is let; a building's let units join it
+  const partRent = livesIn && (p.partRentAnnual || 0) > 0 ? p.partRentAnnual : 0;
+  const annexRent = partRent + (livesIn && prj.isBuilding && unitsNet > 0 ? unitsNet : 0);
   // the home you own and live in today (no rent today): keep it, let it or sell it when you move into the new one —
   // not when the whole new home is let (you would stay where you are). It appreciates with the market.
   // your properties (this phase reads one of each): the first you may mortgage is the collateral of this plan's existing-
@@ -766,13 +851,22 @@ function rePlanSimulate(p, prj, plan) {
   const eqProp = props.find((x) => x.canMortgage && x.value > 0) || null, homeProp = props.find((x) => x.isHome && x.value > 0) || null;
   const eqIsHome = !!(eqProp && homeProp && eqProp.id === homeProp.id);
   eq.propId = eqProp ? eqProp.id : null;
-  const ownPlan = !lettingOut && !(p.rentNow > 0) && homeProp && (homeProp.plan === "sell" || homeProp.letAfterMove) ? (homeProp.plan === "sell" ? "sell" : "let") : "keep";
+  const ownPlan = livesIn && !(p.rentNow > 0) && homeProp && (homeProp.plan === "sell" || homeProp.letAfterMove) ? (homeProp.plan === "sell" ? "sell" : "let") : "keep";
   const ownedAt = (t) => (homeProp ? homeProp.value : 0) * Math.pow(1 + p.appreciation / 100, t / 12);
   // what the bank lends on the property you mortgage: its value — today's, or the market value at the time (propertyValueBasis)
   // — times its LTV, less what you still owe on a loan already secured on it
   const eqSecured = () => eqProp ? loans.reduce((a, l) => a + (l.settledAt === null && l.bal > 0.5 && reSecuredOn(l, eqProp) ? l.bal : 0), 0) : 0;
   const eqLtvCap = (t) => eqProp ? Math.max(0, (p.propertyValueBasis === "today" ? eqProp.value : eqProp.value * Math.pow(1 + p.appreciation / 100, t / 12)) * eqProp.ltv / 100 - eqSecured()) : 0;
   let soldAt = null, ownSale = null, partRentCum = 0, ownRentCum = 0, dbrOverA = -Infinity;
+  let landSale = null, holdingCum = 0;   // land only: the sale you planned (once), and what holding the land has cost so far
+  // the Riyadh rent freeze (rentFreezeUntil, YYYY-MM, from the scenario's month 0): no rent growth — received or paid — until
+  // that month; a rent set before it stays flat until then and takes its yearly steps from then on (the first one a year after
+  // the freeze ends: rents are reviewed yearly). rentYears(t, s0) = the growth steps in month t of a rent first paid in month s0
+  // (no freeze, or one already over by s0: steps from s0 — the old tool's numbers)
+  const F = reMonthIndex(p, p.rentFreezeUntil);
+  const rentYears = (t, s0) => { const b = F != null && F > s0 ? F : s0; return t < b ? 0 : Math.floor((t - b) / 12); };
+  // …and a rent that follows a property's value (the home you let after moving): frozen at its first month until then, then on its own clock
+  const rentClock = (t, s0) => F != null && F > s0 ? (t < F ? s0 : s0 + (t - F)) : t;
   let minCash = Infinity, minCashT = 0, belowBufferMonths = 0, shortfall = 0, fundingGap = 0, shortFrom = null;
   // the cash you actually have to spend: your household cash WITHOUT the return on cash (your rule — growth is never counted
   // as money you can spend). Whether a plan works, its lowest cash, the cash back at your cushion, the gaps a loan closes,
@@ -998,16 +1092,16 @@ function rePlanSimulate(p, prj, plan) {
   const at = plan._at || {}, off = plan._off || {};
   // the mortgage on the property you may mortgage: the plan's step for it (a step on a property you do not own lends nothing)
   const eqSteps = rePlanMorts(plan), eqM = eqProp ? eqSteps.find((m) => m.id === eqProp.id) || null : eqSteps[0] || null;
-  const eqT = at.eq != null ? at.eq : eqM ? when(eqM.when, eqM.month) : -1, plT = !byA || off.pl ? -1 : at.pl != null ? at.pl : when(plan.plWhen, plan.plMonth), coT = plan.coUse ? prj.occupy : -1;
+  const eqT = at.eq != null ? at.eq : eqM ? when(eqM.when, eqM.month) : -1, plT = !byA || off.pl ? -1 : at.pl != null ? at.pl : when(plan.plWhen, plan.plMonth), coT = plan.coUse && !prj.isLand ? prj.occupy : -1;   // (no cash-out on land: nothing finished to mortgage)
   const pl2T = plan.pl2Use && byA && !off.pl2 ? (at.pl2 != null ? at.pl2 : prj.occupy) : -1;
   // your spouse's personal loans: the same two steps (each may be moved on its own when the cash runs short)
   const splT = !byB || off.spl ? -1 : at.spl != null ? at.spl : when(plan.plWhen, plan.plMonth), spl2T = plan.pl2Use && byB && !off.spl2 ? (at.spl2 != null ? at.spl2 : prj.occupy) : -1;
   for (let t = 0; t <= H; t++) {
     setMonth(t);
-    const yrIdx = Math.floor(Math.max(0, t - 1) / 12);
+    const yrIdx = rentYears(t, 1);   // the rent you pay: set today, yearly steps from month 1 — held by the rent freeze
     const occupied = t >= prj.occupy;
     const rentEq = t >= 1 ? p.rentNow * Math.pow(1 + p.rentGrowth / 100, yrIdx) : 0;
-    const rentPaid = t >= 1 && (!occupied || lettingOut) ? rentEq : 0;   // if the new home is let out you don't move in
+    const rentPaid = t >= 1 && !(occupied && livesIn) ? rentEq : 0;   // you pay rent until you move in — throughout if the new home is let out, or it is land
     const ret = t >= 1 && cash > 0 ? cash * alt : 0;   // return earned on the cash balance this month (kept for the cash breakdown)
     const rRet = t >= 1 && rCash > 0 ? rCash * alt : 0;   // …and on the not-building household's cash
     // the return-on-cash rate is GROWTH: it applies only while a balance is positive, never as a charge on a shortfall.
@@ -1017,10 +1111,10 @@ function rePlanSimulate(p, prj, plan) {
     bcash += bRet; ccash += cRet; cRetCum += cRet;
     bcash -= renterSettle[t];   // the not-building side makes your planned settlements too
     // rent from letting the new home out: from the month after completion, growing with the rent-growth setting
-    const letIn = lettingOut && t > prj.occupy ? annualRentOut / 12 * Math.pow(1 + p.rentGrowth / 100, Math.floor((t - prj.occupy - 1) / 12)) : 0;
-    // …or part of it (annex), and the home you lived in before, let from the month after move-in
-    const partIn = partRent > 0 && t > prj.occupy ? partRent / 12 * Math.pow(1 + p.rentGrowth / 100, Math.floor((t - prj.occupy - 1) / 12)) : 0;
-    const ownIn = ownPlan === "let" && t > prj.occupy ? ownedAt(t) * (homeProp.letYield || 0) / 100 / 12 : 0;
+    const letIn = lettingOut && t > prj.occupy ? annualRentOut / 12 * Math.pow(1 + p.rentGrowth / 100, rentYears(t, prj.occupy + 1)) : 0;
+    // …or part of it (annex, a building's let units), and the home you lived in before, let from the month after move-in
+    const partIn = annexRent > 0 && t > prj.occupy ? annexRent / 12 * Math.pow(1 + p.rentGrowth / 100, rentYears(t, prj.occupy + 1)) : 0;
+    const ownIn = ownPlan === "let" && t > prj.occupy ? ownedAt(rentClock(t, prj.occupy + 1)) * (homeProp.letYield || 0) / 100 / 12 : 0;
     const rentIn = letIn + partIn + ownIn;
     partRentCum += partIn; ownRentCum += ownIn;
     // household cash grows only while it is positive (growth is never a charge on a shortfall); this month's salary and rent arrive after it
@@ -1034,7 +1128,9 @@ function rePlanSimulate(p, prj, plan) {
     loans.forEach((l) => { if (l.settledAt === null && l.bal > 0.5 && l.settleAt != null && l.settleAt > 0 && t === Math.round(l.settleAt)) doSettle(l, t, "planned settlement from your cash"); });
     // the order of a month's steps as they really happen: the finished home first (what needs it comes after), then the sale
     // of the home you lived in, then each loan with any payoff that makes room for it, then what that money pays for
-    if (t === prj.occupy && prj.build) events.push({ t, kind: "milestone", text: `Construction complete — move in. Upkeep starts.` });
+    // (a building let out entirely: no move-in; land: no construction and no move-in — only "Land bought")
+    if (t === prj.occupy && prj.construct) events.push({ t, kind: "milestone", text: letB ? `Building complete — let from month ${t + 1}. Upkeep starts.` : `Construction complete — move in. Upkeep starts.` });
+    else if (t === prj.occupy && letB) events.push({ t, kind: "milestone", text: `Building bought — let from month ${t + 1}. Upkeep starts.` });
     // the home you lived in is sold when you move in (your option): its value less selling costs, after repaying any
     // mortgage this strategy took on it (with the early-settlement fee), lands in your cash
     if (ownPlan === "sell" && t === prj.occupy) {
@@ -1045,21 +1141,32 @@ function rePlanSimulate(p, prj, plan) {
       cash += net; ccash += net; soldAt = t; ownSale = { t, value, costs, payoff, fee, net };
       events.push({ t, kind: "cash", text: `Sell the home you lived in: ${fSAR(value)} less ${fSAR(costs)} selling costs${payoff > 0 ? ` and ${fSAR(payoff)} to repay its mortgage (incl. ${fSAR(fee)} early-settlement fee)` : ""} — ${fSAR(net)} lands in your cash.` });
     }
+    // land only: the sale you planned — the land's market value then less selling costs; the mortgage on the land is repaid
+    // from it first (with the early-settlement fee); from then on the land is not yours (its value counts 0 in both measures)
+    if (prj.saleAt != null && t === prj.saleAt && landSale === null) {
+      const value = prj.valueAt(t), costs = value * (+p.landSellCostPct || 0) / 100;
+      let payoff = 0, fee = 0;
+      if (lm.bal > 0.5 && lm.settledAt === null && lm.startedAt !== null) { payoff = settleCost(lm); fee = payoff - lm.bal; lm.bal = 0; lm.settledAt = t; lm.soldAt = t; }
+      const net = value - costs - payoff;
+      cash += net; ccash += net; landSale = { t, value, costs, payoff, fee, net };
+      events.push({ t, kind: "cash", text: `Land sold for ${fSAR(value)} after ${fSAR(costs)} selling costs${payoff > 0 ? `; the land mortgage of ${fSAR(payoff)} (incl. ${fSAR(fee)} early-settlement fee) is repaid` : ""} — ${fSAR(net)} lands in your cash.` });
+    }
     // facilities, in order: land mortgage → existing property → personal loan → cash-out
     const landValue = prj.build ? prj.land : prj.price;   // buying ready: the purchase mortgage is sized on the purchase price
     // every new loan at the bank's maximum that month (your rule)
-    if (t === lmT) originate(t, lm, "max", 0, landValue * p.landLtv / 100, Infinity);
+    if (t === lmT) originate(t, lm, "max", 0, landValue * (prj.isLand ? p.landOnlyLtv : p.landLtv) / 100, Infinity);
     if (t === eqT && soldAt !== null && eqIsHome) { eq.capacity = { t, cap: 0, limitedBy: "the property was sold at move-in", want: 0, mode: "max", taken: 0, gap: 0 }; events.push({ t, kind: "eq", text: `${eq.label}: not possible — the property was sold at move-in.` }); }
     else if (t === eqT) originate(t, eq, "max", 0, eqLtvCap(t), Infinity);
     if (t === plT) takePersonal(t, pl);
     if (t === splT) takePersonal(t, spl);
     // the land mortgage is still secured on the same home, so the cash-out may only lend up to the LTV less what is still owed on it
     if (t === coT) originate(t, co, "max", 0, Math.max(0, prj.valueAt(t) * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0)), Infinity);
+    if (plan.coUse && prj.isLand && t === prj.occupy) events.push({ t, kind: "co", text: `${co.label}: not available on land — there is no finished home to mortgage.` });
     if (t === pl2T) takePersonal(t, pl2);          // after the cash-out: personal loan(s) fill what is left
     if (t === spl2T) takePersonal(t, spl2);
     // what the money raised above pays for (the land, the start of construction)
     if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett + prj.landBroker)} incl. RETT${prj.landBroker > 0 ? " and the broker's fee" : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
-    if (t === prj.start && prj.build) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett - prj.landBroker)} over ${prj.bm} months.` });
+    if (t === prj.start && prj.construct) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett - prj.landBroker)} over ${prj.bm} months.` });
     // project spend, all from cash (facility proceeds are already in cash)
     const spend = prj.schedule[t] || 0;
     cash -= spend; ccash -= spend;
@@ -1075,13 +1182,15 @@ function rePlanSimulate(p, prj, plan) {
       }
       pays[f.key] = pay; pays[f.key + "Int"] = int; pays[f.key + "Extra"] = extra;
     });
-    const value = prj.valueAt(t);
-    const ownerCost = occupied ? value * p.maintPct / 100 / 12 + p.insurance / 12 : 0;
+    const value = landSale !== null ? 0 : prj.valueAt(t);   // land sold: no longer yours
+    const ownerCost = occupied && !prj.isLand ? value * p.maintPct / 100 / 12 + p.insurance / 12 : 0;   // (land: no upkeep — its holding costs are below)
+    // land only: the white-land fee and zakat on land held to sell, while you own it (out of your cash in both measures)
+    const holding = prj.isLand && landSale === null ? prj.holdingAt(t) : 0;
     // your spouse's personal loans (تضامن) count with yours in the household's personal-loan figures
     const splPay = byB ? pays.spl + pays.spl2 : 0;
     const newPay = pays.lm + pays.eq + pays.pl + pays.pl2 + pays.co + pays.rf + splPay;
     const extraPay = pays.lmExtra + pays.eqExtra + pays.plExtra + pays.pl2Extra + pays.coExtra + pays.rfExtra;
-    cash -= existInst + newPay + ownerCost;
+    cash -= existInst + newPay + ownerCost + holding; ccash -= holding; holdingCum += holding;
     // your option: pay off the mortgages early from your own cash N months after move-in (after that month's instalments),
     // most expensive first, while the cash above your safety cushion covers the payoff and the early-settlement fee
     if (plan.prepayAfter != null && plan.prepayAfter !== "" && t === prj.occupy + Math.max(0, Math.round(plan.prepayAfter))) {
@@ -1128,7 +1237,7 @@ function rePlanSimulate(p, prj, plan) {
     if (occupied && econBreakEven === null && econAdv >= 0) econBreakEven = t;
     if (debtFreeT === null && t > 0 && debt < 0.5) debtFreeT = t;
     dbrOverA = Math.max(dbrOverA, (existInst + newPay - extraPay) / inc * 100 - capPctA);   // how far over your limit that month (samaBands: the band of that month's income)
-    months.push({ t, year: yearOf(t), cash, avail: av, rCash, rRet, econNW, econBase, econAdv, bcash, ccash, bRet, cRet, cRetCum, renterSettle: renterSettle[t], oldDebtGap, rentIn, partIn, ownIn, ownGone, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? inc : 0, liv: t >= 1 ? liv : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2 + splPay, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt + (byB ? pays.splInt + pays.spl2Int : 0), bridgeInt, ownerCost, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0) + (byB ? (spl.settledAt === null ? spl.bal : 0) + (spl2.settledAt === null ? spl2.bal : 0) : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, extraPay, dbr: (existInst + newPay - extraPay) / inc * 100, ...(jm || {}) });
+    months.push({ t, year: yearOf(t), cash, avail: av, rCash, rRet, econNW, econBase, econAdv, bcash, ccash, bRet, cRet, cRetCum, renterSettle: renterSettle[t], oldDebtGap, rentIn, partIn, ownIn, ownGone, newInstCum, oldSavedCum, rentSavedCum, rentInCum, upkeepCum, debtNew, ret, inc: t >= 1 ? inc : 0, liv: t >= 1 ? liv : 0, spend, rentPaid, rentEq, existInst, existInterest, lmPay: pays.lm, eqPay: pays.eq, plPay: pays.pl + pays.pl2 + splPay, coPay: pays.co, rfPay: pays.rf, newInt: pays.lmInt + pays.eqInt + pays.plInt + pays.pl2Int + pays.coInt + pays.rfInt + (byB ? pays.splInt + pays.spl2Int : 0), bridgeInt, ownerCost, holding, value, liqValue, debt, debtExisting, debtLm: lm.bal, debtEq: eq.bal, debtPl: (pl.settledAt === null ? pl.bal : 0) + (pl2.settledAt === null ? pl2.bal : 0) + (byB ? (spl.settledAt === null ? spl.bal : 0) + (spl2.settledAt === null ? spl2.bal : 0) : 0), debtCo: co.bal, debtRf: rf.bal, netWorth, renterNW, advantage, extraPay, dbr: (existInst + newPay - extraPay) / inc * 100, ...(jm || {}) });
   }
   const nY = yearOf(H), years = [];
   for (let y = 0; y <= nY; y++) {
@@ -1139,7 +1248,7 @@ function rePlanSimulate(p, prj, plan) {
       instMo: (sum("existInst") + sum("lmPay") + sum("eqPay") + sum("plPay") + sum("coPay") + sum("rfPay")) / (y === 0 ? 1 : 12) });
   }
   const end = months[H];
-  const newDebtInterest = facs.reduce((a, f) => a + f.interestPaid + f.fees, 0) + settleFees + prepayFees + (ownSale ? ownSale.fee : 0) + bridgeCum;   // profit + bank fees + early-settlement fees + bridge money
+  const newDebtInterest = facs.reduce((a, f) => a + f.interestPaid + f.fees, 0) + settleFees + prepayFees + (ownSale ? ownSale.fee : 0) + (landSale ? landSale.fee : 0) + bridgeCum;   // profit + bank fees + early-settlement fees + bridge money
   const totalInterest = newDebtInterest + loans.reduce((a, l) => a + l.interestPaid, 0);
   const peakDbr = Math.max(...months.map((m) => m.dbr));
   // تضامن: each of you against your own limit
@@ -1149,11 +1258,14 @@ function rePlanSimulate(p, prj, plan) {
   // a bridge rerun works with bridge money when every gap is closed by one of the plan's loans (or the sale of your home)
   let bridged = false, bridges = null;
   if (bridging && !feasible) {
-    const gs = reGaps(months, facs, ownSale);
+    const gs = reGaps(months, facs, ownSale, landSale);
     if (gs.length && gs.every((g) => g.closedBy.length)) { bridged = true; bridges = gs.map((g) => ({ ...g, cost: months.filter((m) => m.t > g.from && m.t <= g.to).reduce((a, m) => a + m.bridgeInt, 0) })); }
   }
   const recoveryMonths = cashRestoredT != null ? cashRestoredT - prj.occupy : null;
   const recoveryOk = (feasible || bridged) && recoveryMonths != null && recoveryMonths <= p.recoveryMonths;
+  // "move-in" below is prj.occupy: the month you move into the new home — or, for land and for a building let out entirely, the
+  // month the project is paid for (the land, or the finished building). onHandAtMoveIn, recoveryOk and moveInOk keep their
+  // meaning at that month: the cash you have once the project is paid for, and whether it is back at your cushion in time.
   // your rule: the cash you have when you move in, with NO return on cash counted — what is left from your own cash and the
   // loans after every cost so far (the rule-6 figure, ccash − cRetCum) + what your salary saved after living costs, rent and
   // every instalment, month 1 to move-in — must be at least minCashMoveIn. A plan below it ranks after plans that meet the
@@ -1165,12 +1277,12 @@ function rePlanSimulate(p, prj, plan) {
   const moveInLine = p.minCashMoveIn == null ? 0 : p.minCashMoveIn, moveInOk = onHandAtMoveIn >= moveInLine - 0.5;
   const after = Math.min(H, prj.occupy + p.recoveryMonths);
   // liquidity: what the low point covers, and how thin the monthly surplus gets (salary − living − rent − instalments − upkeep + rent received)
-  const outgo = (m) => m.liv + m.rentPaid + m.existInst + m.lmPay + m.eqPay + m.plPay + m.coPay + m.rfPay - m.extraPay + m.ownerCost;
+  const outgo = (m) => m.liv + m.rentPaid + m.existInst + m.lmPay + m.eqPay + m.plPay + m.coPay + m.rfPay - m.extraPay + m.ownerCost + m.holding;
   const lowM = months[Math.max(1, Math.min(H, minCashT))];
   const reserveMonths = lowM && outgo(lowM) > 0 ? Math.max(0, minCash) / outgo(lowM) : null;
   let thinMonths = 0, tightest = null;
   months.forEach((m) => { if (m.t < 1) return; const surplus = m.inc - outgo(m) + m.rentIn; if (surplus < 0.05 * m.inc) thinMonths++; if (!tightest || surplus < tightest.surplus) tightest = { t: m.t, surplus }; });
-  if (prj.occupy > H) flags.push(`The home is not finished before the end of the comparison (move-in month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.`);
+  if (prj.occupy > H) flags.push(prj.isLand ? `The land is not paid for before the end of the comparison (month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.` : `The ${prj.isBuilding ? "building" : "home"} is not finished before the end of the comparison (${livesIn ? "move-in" : "completion"} month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.`);
   if (shortfall > 0 && !bridged) {
     // computeRE adds how much more cash the plan needs (reAddNeed); the most you are short is not that figure
     flags.unshift(`Your cash runs out in month ${shortFrom} and no loan in this plan covers it in time. At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.`);
@@ -1189,12 +1301,13 @@ function rePlanSimulate(p, prj, plan) {
     netWorthEnd: end.netWorth, renterEnd: end.renterNW, advantage: end.advantage,
     econEnd: end.econNW, econBaseEnd: end.econBase, econAdv: end.econAdv, econPV: end.econAdv / Math.pow(1 + alt, H), econBreakEven, endDebt: end.debt, endValue: end.value, start: prj.start, landMonth: prj.landMonth, occupy: prj.occupy,
     netReturn: (Math.pow(1 + alt, 12) - 1) * 100, reserveMonths, thinMonths, tightest, partRentTotal: partRentCum, ownRentTotal: ownRentCum, ownPlan, ownSale,
+    kind: prj.kind, livesIn, lettingOut, landSale, holdingCost: holdingCum,   // the project kind; whether you move in; land: the sale and what holding it cost
     dbrOk: J ? months.every((m) => m.dbrA <= m.capA + 0.5 && m.dbrB <= m.capB + 0.5) : dbrOverA <= 0.5, ...(jointPeak || {}) };
 }
 
 // the months your cash is short, and what ends each gap: the new loans (or the sale of the home you lived in) that land in the
 // month the cash is back at zero or above. A gap nothing lands in to close, or one still open at the end, has closedBy []
-function reGaps(months, facilities, ownSale) {
+function reGaps(months, facilities, ownSale, landSale) {
   const out = [];
   let g = null;
   months.forEach((m) => {
@@ -1203,7 +1316,7 @@ function reGaps(months, facilities, ownSale) {
     else if (g) { g.to = m.t; out.push(g); g = null; }
   });
   if (g) out.push(g);
-  out.forEach((x) => { x.closedBy = x.to == null ? [] : facilities.filter((f) => f.amount > 0 && f.startedAt === x.to && f.key !== "rf").map((f) => f.key).concat(ownSale && ownSale.t === x.to ? ["sale"] : []); });
+  out.forEach((x) => { x.closedBy = x.to == null ? [] : facilities.filter((f) => f.amount > 0 && f.startedAt === x.to && f.key !== "rf").map((f) => f.key).concat(ownSale && ownSale.t === x.to ? ["sale"] : [], landSale && landSale.t === x.to ? ["landSale"] : []); });
   return out;
 }
 // how a plan stands: 2 = works every month, 1 = works with bridge money, 0 = runs out of cash
@@ -1221,7 +1334,7 @@ const RE_PL_STEP = { pl: "pl", spl: "pl", pl2: "pl2", spl2: "pl2" };
 function reCarryOut(p, prj, plan) {
   const r = rePlanSimulate(p, prj, plan);
   if (r.feasible) return r;
-  const gaps = reGaps(r.months, r.facilities, r.ownSale);
+  const gaps = reGaps(r.months, r.facilities, r.ownSale, r.landSale);
   if (!gaps.length || gaps.some((g) => !g.closedBy.length)) return r;
   const J = !!(p.joint && p.joint.on);
   // whose personal loans (named only with تضامن): "the personal loans in your spouse's name …"
@@ -1282,13 +1395,14 @@ function reCarryOut(p, prj, plan) {
   if (split && (split.r.feasible || !rb.bridged || split.r.bridgePeak < rb.bridgePeak - 1)) return reSplitNote(split, plan, J);
   if (!rb.bridged) return r;
   rb.plan = plan;
-  const label = (k) => k === "sale" ? "sale of the home you live in" : k === "pl2" || k === "spl2" ? (plan._split && k === "pl2" ? `second part of the personal loans${whose([k])}` : `personal loans${whose([k])} at move-in`) : k === "pl" || k === "spl" ? `personal loans${whose([k])}` : (rb[k] && rb[k].label ? rb[k].label.toLowerCase() : k);
+  const label = (k) => k === "sale" ? "sale of the home you live in" : k === "landSale" ? "sale of the land" : k === "pl2" || k === "spl2" ? (plan._split && k === "pl2" ? `second part of the personal loans${whose([k])}` : `personal loans${whose([k])} at move-in`) : k === "pl" || k === "spl" ? `personal loans${whose([k])}` : (rb[k] && rb[k].label ? rb[k].label.toLowerCase() : k);
   rb.bridges.forEach((b) => {
     const why = b.closedBy.map((k) => {
       const x = tried.find((y) => y.key === k && y.gap.from === b.from);
       if (k === "co") return "the cash-out needs the finished home";
       if (k === "lm") return "the land mortgage comes only with the land";
       if (k === "sale") return "the home you live in is sold only at move-in";
+      if (k === "landSale") return "the land is sold only in the month you planned";
       if (x && x.later) return "your other personal loan is taken later";
       if (!x || !x.f) return null;
       const f = x.f, young = f.refiTooYoung && f.refiTooYoung.length ? `; ${f.refiTooYoung.join(" + ")} can't be refinanced yet (not ${p.refiMinMonths} months old)` : "";
@@ -1445,7 +1559,8 @@ function computeRE(inp, opts) {
   // borrowing-capacity timeline from the existing loans alone (planned settlements honoured): when does room open up?
   // (تضامن: your room and your spouse's; a joint mortgage may use both, personal loans only yours)
   const capTimeline = (() => {
-    const H = Math.round(p.horizon * 12), n = Math.max(1, Math.round(p.lmTenure * 12)), r = reEffRate(p, p.lmRate, n), nPl = Math.max(1, Math.round(p.plTenure * 12)), rPl = reEffRate(p, p.plRate, nPl);
+    // (the mortgage room is priced at the purchase mortgage's terms — land finance for land only)
+    const H = Math.round(p.horizon * 12), n = Math.max(1, Math.round((prj.isLand ? p.landTenure : p.lmTenure) * 12)), r = reEffRate(p, p.lmRate + (prj.isLand ? +p.landRateAdd || 0 : 0), n), nPl = Math.max(1, Math.round(p.plTenure * 12)), rPl = reEffRate(p, p.plRate, nPl);
     const run = (list) => list.filter((l) => l.balance > 0 && l.installment > 0).map((l) => { const left = Math.max(1, Math.round(l.monthsLeft)); return { bal: l.balance, inst: Math.max(l.installment, rePmt(l.balance, l.rate, left)), rate: l.rate, settleAt: l.settleAt, mort: l.type === "mortgage" }; });
     const ls = run(p.existingLoans), lsB = run(jLoans);
     const mortInst = (list) => list.reduce((a, l) => a + (l.bal > 0.5 && l.mort ? l.inst : 0), 0);   // existing mortgages running
@@ -1481,7 +1596,9 @@ function computeRE(inp, opts) {
   else if (home) {
     // judged on the strategy you can actually carry out (the recommendation), not on one that runs out of cash;
     // the baseline is renting only if you pay rent today, otherwise it is not building (or not buying) and keeping the cash invested
-    const lead = bestFeasible, renting = p.rentNow > 0, act = prj.build ? "BUILDING" : "BUYING";
+    // the words: land — BUYING LAND; a villa or a building — BUILDING (built) or BUYING (ready); OWNING / RENTING only when you
+    // pay rent today AND move in (a building let out entirely or land: you keep renting either way, so it is BUYING vs NOT)
+    const lead = bestFeasible, renting = p.rentNow > 0 && prj.moveIn, act = prj.isLand ? "BUYING LAND" : prj.build ? "BUILDING" : "BUYING";
     if (!lead) { verdict = "NO EXECUTABLE STRATEGY"; vColor = C.neg; }
     else if (lead.econAdv > 0) { verdict = renting ? "OWNING WINS" : `${act} WINS`; vColor = C.pos; } else { verdict = renting ? "RENTING WINS" : `NOT ${act} WINS`; vColor = C.neg; }
   } else {
@@ -1506,16 +1623,16 @@ function tornadoRE(inp, idx) {
   const home = p.mode === "home";
   const metric = (q) => { const { r } = reRunOne(q, idx); if (!r) return 0; return home ? r.econAdv : (r.irr == null ? 0 : r.irr * 100); };
   const base = metric(p);
-  const build = p.acquire === "build";
+  const prj0 = reProject(p), build = prj0.build, construct = prj0.construct;   // land only: the land price, no construction drivers
   const drivers = [
-    build ? ["Construction cost / m²", "buildCost"] : ["Property price", "propertyPrice"],
+    construct ? ["Construction cost / m²", "buildCost"] : !build ? ["Property price", "propertyPrice"] : null,
     build ? ["Land price / m²", "landPrice"] : null,
     ["Financing rates (all)", "__rate"],
     ["Appreciation", "appreciation"],
     home ? ["Rent of equivalent home", "rentNow"] : ["Rent achieved", "rentMo"],
     home ? ["Alternative return on cash", "altReturn"] : ["Vacancy", "vacancyPct"],
     home ? [p.joint && p.joint.on ? "Your incomes (both of you)" : "Your income", "income"] : null,
-    build ? ["Construction duration", "buildMonths"] : null,
+    construct ? ["Construction duration", "buildMonths"] : null,
   ].filter(Boolean);
   const vary = (k, f) => {
     if (k === "__rate") return { ...p, options: p.options.map((o) => ({ ...o, rate: o.rate * f })), lmRate: p.lmRate * f, plRate: p.plRate * f, eqRate: p.eqRate * f, coRate: p.coRate * f };
@@ -1531,7 +1648,7 @@ function tornadoRE(inp, idx) {
 const reBrief = (r) => r && { feasible: r.feasible, bridged: !!r.bridged, bridgePeak: r.bridgePeak || 0, covered: r.covered || null, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHand: r.onHandAtMoveIn, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, econAdv: r.econAdv, econPV: r.econPV, advantage: r.advantage, netWorth: r.netWorthEnd, peakDbr: r.peakDbr };
 // stress tests: each shock on its own, then a combined one; "passes" = the cash never goes below zero
 function stressRE(inp, idx) {
-  const p = mergeRE(inp), build = p.acquire === "build";
+  const p = mergeRE(inp), build = reProject(p).construct;   // overrun and delay only where there is a construction (not land, not a ready asset)
   const tests = [
     ["base", "As you entered it", (q) => q],
     ["rates", "Loan rates +2 points (APR)", (q) => ({ ...q, rateShock: 2 })],
@@ -1549,7 +1666,8 @@ function stressRE(inp, idx) {
 function breakEvenRE(inp, idx, keys) {
   const p = mergeRE(inp), base = reRunOne(p, idx);
   if (!base.r || p.mode !== "home") return null;
-  const lettingOut = (p.rentOutFixed || 0) > 0 || (p.rentOutPct || 0) > 0;
+  const prj = base.prj, units = prj.isBuilding && prj.letting.netAnnual > 0;   // a building with units: the rent driver is the unit rent
+  const lettingOut = (p.rentOutFixed || 0) > 0 || (p.rentOutPct || 0) > 0 || (prj.isBuilding && p.occupancy === "let");
   const solve = (set, lo, hi, metric) => {
     const f = (x) => { const { r } = reRunOne(set(x), idx); return r ? r[metric] : NaN; };
     let flo = f(lo), fhi = f(hi);
@@ -1558,11 +1676,13 @@ function breakEvenRE(inp, idx, keys) {
     return (lo + hi) / 2;
   };
   const drivers = [
-    // a rent you receive from move-in (an annex let, or the whole home if you let it) — the "rent equivalent" of living there
-    ["rent", lettingOut ? "Rent for the whole home (SAR a year)" : "Rent you would need to receive from move-in, e.g. an annex (SAR a year)", lettingOut ? (p.rentOutFixed > 0 ? p.rentOutFixed : base.prj.total * p.rentOutPct / 100) : (p.partRentAnnual || 0), (x) => lettingOut ? { ...p, rentOutFixed: x } : { ...p, partRentAnnual: x }, 0, Math.max(3000000, base.prj.value0 * 0.3)],
+    // a rent you receive from move-in (an annex let, or the whole home if you let it) — the "rent equivalent" of living there;
+    // a building with units: the rent per unit; land: none
+    prj.isLand ? null : units ? ["rent", p.unitRentBasis === "sqm" ? "Rent per m² a year (SAR)" : "Rent per unit (SAR a month)", p.unitRent, (x) => ({ ...p, unitRent: x }), 0, Math.max(50000, (+p.unitRent || 0) * 5)]
+      : ["rent", lettingOut ? "Rent for the whole home (SAR a year)" : "Rent you would need to receive from move-in, e.g. an annex (SAR a year)", lettingOut ? (p.rentOutFixed > 0 ? p.rentOutFixed : base.prj.total * p.rentOutPct / 100) : (p.partRentAnnual || 0), (x) => lettingOut ? { ...p, rentOutFixed: x } : { ...p, partRentAnnual: x }, 0, Math.max(3000000, base.prj.value0 * 0.3)],
     ["appreciation", "Property appreciation (% a year)", p.appreciation, (x) => ({ ...p, appreciation: x }), -10, 30],
     ["return", "Return on cash (% a year)", p.altReturn, (x) => ({ ...p, altReturn: x }), 0, 40],
-    p.acquire === "build" ? ["uplift", "Value uplift of self-build (%)", p.devMarginPct, (x) => ({ ...p, devMarginPct: x }), -100, 500] : null,
+    prj.construct ? ["uplift", "Value uplift of self-build (%)", p.devMarginPct, (x) => ({ ...p, devMarginPct: x }), -100, 500] : null,
   ].filter(Boolean).filter(([key]) => !keys || keys.includes(key));   // keys: only these drivers (the page fills the panel one at a time)
   return drivers.map(([key, label, current, set, lo, hi]) => ({ key, label, current, econ: solve(set, lo, hi, "econAdv"), rule7: solve(set, lo, hi, "advantage") }));
 }
@@ -1570,7 +1690,7 @@ function breakEvenRE(inp, idx, keys) {
 // financed with the same strategy. The most you could pay for it and still do as well as building (on each measure).
 function readyBreakEvenRE(inp, idx) {
   const p = mergeRE(inp);
-  if (p.mode !== "home" || p.acquire !== "build") return null;
+  if (p.kind !== "landVilla") return null;   // only against the villa you would build
   const { prj, r } = reRunOne(p, idx);
   if (!r) return null;
   const g = p.appreciation / 100, buyAt = prj.landMonth;
@@ -1611,9 +1731,10 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
   const rows = [];
   // every step from today, plus your planned start so "start as planned" is always tested
   const ds = []; for (let d = 0; d <= maxDelay; d += step) ds.push(d);
-  const cur = Math.max(p.buildStart || 0, p.landMonth || 0); if (!ds.includes(cur)) { ds.push(cur); ds.sort((a, b) => a - b); }
+  const isLand = p.kind === "land";   // land only: there is nothing to build, so a start date is the month the land is bought
+  const cur = isLand ? (p.landMonth || 0) : Math.max(p.buildStart || 0, p.landMonth || 0); if (!ds.includes(cur)) { ds.push(cur); ds.sort((a, b) => a - b); }
   for (const d of ds) {
-    const q = { ...p, buildStart: d, landMonth: landWithBuild ? d : Math.min(p.landMonth || 0, d) };
+    const q = isLand ? { ...p, landMonth: d } : { ...p, buildStart: d, landMonth: landWithBuild ? d : Math.min(p.landMonth || 0, d) };
     const { r, prj: m } = reRunOne(q, idx);
     if (!r) continue;
     rows.push({ delay: d, feasible: r.feasible, bridged: !!r.bridged, bridgePeak: r.bridgePeak || 0, covered: r.covered || null, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHand: r.onHandAtMoveIn, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakDbr: r.peakDbr, peakInst: r.peakInst, mortgage: r.lm.amount, eq: r.eq.amount, pl: r.pl.amount + (r.spl ? r.spl.amount : 0), co: r.co.amount, rf: r.rf.amount, newDebt: r.newDebtTotal, settled: r.settledTotal, newDebtInterest: r.newDebtInterest, netWorth: r.netWorthEnd, advantage: r.advantage, econAdv: r.econAdv, econPV: r.econPV, total: m.total, occupy: m.occupy, bufferOk: r.minCash >= p.cashBuffer });
@@ -1632,13 +1753,13 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
    completion) buy out old ones by the strategy's refinance rule ("Auto"). Every loan is priced with your Bank terms. For
    each start: the mix that is executable AND recovers cash within the window, then the highest "everything grows"
    result, then the lowest peak instalment. */
-function reAutoName(o) {
-  const s = [];
+function reAutoName(o, kind) {
+  const s = [], at = kind === "land" ? "when the land is bought" : "at build start";   // (land only: the first personal-loan step is at the purchase)
   s.push(o.lmUse ? "Land mortgage (max)" : "Land in cash");
   const eqW = reEqWhen(o);
   if (eqW !== "none") s.push(`existing-property mortgage (max) ${eqW === "start" ? "now" : eqW === "land" ? "when the land is bought" : "at build start"}`);
   const by = o.plBy === "spouse" ? "your spouse's " : o.plBy === "both" ? "your and your spouse's " : "";   // تضامن
-  if (o.plWhen !== "none") s.push(`${by}personal loan(s) (max) at build start`);
+  if (o.plWhen !== "none") s.push(`${by}personal loan(s) (max) ${at}`);
   if (o.coUse) s.push("cash-out (max) at completion");
   if (o.pl2Use) s.push(`${by}personal loan(s) (max) at completion`);
   s.push(o.settlePolicy === "none" ? "old loans kept" : o.settlePolicy === "forMax" ? "old loans paid off to unlock the full mortgage" : "old loans paid off only to make room for a mortgage");
@@ -1655,12 +1776,13 @@ function optimizeRE(inp, opts) {
   const eqOpts = eqProp0 ? ["none", "build", "start", "land"] : ["none"];
   // تضامن with a spouse who earns: the personal loans may be yours, your spouse's or both of yours (no restriction)
   const J0 = !!(p0.joint && p0.joint.on), byOpts = J0 && (+p0.joint.income || 0) > 0 ? ["me", "spouse", "both"] : ["me"];
+  const isLand = p0.kind === "land", coOpts = isLand ? [false] : [false, true];   // no cash-out on land (nothing finished to mortgage)
   // stage 1: every mix of land mortgage · personal loan(s) · existing-property mortgage · cash-out · settle policy
   const combos = [];
   // every loan at the bank's maximum; the choices are which loans, when, and how far to pay off old personal loans for a mortgage
-  for (const lmUse of [true, false]) for (const plWhen of ["build", "none"]) for (const eqWhen of eqOpts) for (const coUse of [false, true]) for (const pl2Use of [false, true]) for (const settlePolicy of ["asNeeded", "forMax", "none"]) for (const plBy of plWhen !== "none" || pl2Use ? byOpts : ["me"]) {
+  for (const lmUse of [true, false]) for (const plWhen of ["build", "none"]) for (const eqWhen of eqOpts) for (const coUse of coOpts) for (const pl2Use of [false, true]) for (const settlePolicy of ["asNeeded", "forMax", "none"]) for (const plBy of plWhen !== "none" || pl2Use ? byOpts : ["me"]) {
     const o = { ...base, enabled: true, lmUse, lmMode: "max", plWhen, plMode: "max", plSplit: true, mortgages: eqWhen === "none" ? {} : { [eqId0]: { when: eqWhen, month: 0 } }, eqMode: "max", coUse, coMode: "max", pl2Use, rfWhen: "none", settlePolicy, plBy };
-    o.name = reAutoName(o); combos.push(o);
+    o.name = reAutoName(o, p0.kind); combos.push(o);
   }
   const summarize = (r, prj) => ({ name: r.plan.name, plan: r.plan, feasible: r.feasible, bridged: !!r.bridged, bridgePeak: r.bridgePeak || 0, bridgeCost: r.bridgeCost || 0, covered: r.covered || null, notes: r.notes || [], recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHand: r.onHandAtMoveIn, ok: r.feasible && r.recoveryOk && r.moveInOk, recoveryMonths: r.recoveryMonths, minCash: r.minCash, minCashT: r.minCashT, peakInst: r.peakInst, peakDbr: r.peakDbr,
     lm: r.lm.amount, lmCap: r.lm.capacity ? r.lm.capacity.cap : 0, eq: r.eq.amount, eqCap: r.eq.capacity ? r.eq.capacity.cap : 0, pl: r.pl.amount, plCap: r.pl.capacity ? r.pl.capacity.cap : 0, plSplit: r.pl.split, co: r.co.amount, coCap: r.co.capacity ? r.co.capacity.cap : 0,
@@ -1698,7 +1820,7 @@ function optimizeRE(inp, opts) {
         if (!J0) return `${aSplit ? "two personal loans" : "personal loan"} (max) ${at}${aRefi.length ? ` refinancing ${aRefi.join(" + ")}` : ""}`;
         return `${[a > 0 && one(aSplit, aRefi, "your "), b > 0 && one(bSplit, bRefi, "your spouse's ")].filter(Boolean).join(" and ")} (max) ${at}`;
       };
-      if (x.pl > 0 || x.spl > 0) parts.push(pls(x.pl, x.plSplit, x.plRefi, x.spl, x.splSplit, x.splRefi || [], o.plWhen === "completion" ? "at completion" : "at build start"));
+      if (x.pl > 0 || x.spl > 0) parts.push(pls(x.pl, x.plSplit, x.plRefi, x.spl, x.splSplit, x.splRefi || [], o.plWhen === "completion" ? "at completion" : isLand ? "when the land is bought" : "at build start"));
       if (x.co > 0) parts.push("cash-out (max) at completion");
       if (x.pl2 > 0 || x.spl2 > 0) parts.push(pls(x.pl2, x.pl2Split, x.pl2Refi, x.spl2, x.spl2Split, x.spl2Refi || [], "at completion"));
       if (x.roomSettled > 0) parts.push(o.settlePolicy === "forMax" ? "old personal loans paid off to unlock the full mortgage" : "old loans paid off to make room for the mortgage");
@@ -1718,8 +1840,8 @@ function optimizeRE(inp, opts) {
     const refiBest = list.find((x) => (x.pl2 > 0 || x.spl2 > 0) && x.feasible);
     return { delay, planned, occupy: prj.occupy, total: prj.total, landMonth: prj.landMonth, best, alts, refiBest: refiBest ? lite(refiBest) : null, nOk: list.filter((x) => x.ok).length, nFeasible: list.filter((x) => x.feasible).length, nBridged: list.filter((x) => x.bridged).length, nCovered: list.filter((x) => x.feasible && x.covered).length, tried: list.length };
   };
-  const curStart = Math.max(p0.buildStart || 0, p0.landMonth || 0);
-  const at = (d) => ({ ...p0, buildStart: d, landMonth: landWithBuild ? d : Math.min(p0.landMonth || 0, d) });
+  const curStart = isLand ? (p0.landMonth || 0) : Math.max(p0.buildStart || 0, p0.landMonth || 0);
+  const at = (d) => isLand ? { ...p0, landMonth: d } : { ...p0, buildStart: d, landMonth: landWithBuild ? d : Math.min(p0.landMonth || 0, d) };   // (land only: a start date moves the purchase)
   if (opts.slice) { const d = opts.delays[0], planned = opts.planned != null ? !!opts.planned : d === curStart && !landWithBuild; return { part: evalSlice(planned ? p0 : at(d), opts.slice[0], opts.slice[1]).list, combos: combos.length }; }
   if (opts.merge) { const { delay, planned, parts } = opts.merge, q = planned ? p0 : at(delay), p = mergeRE(q); return { start: finishStart([].concat(...parts), delay, planned, reProject(p), p), combos: combos.length }; }
   if (opts.plannedOnly) { const planned = runStart(p0, curStart, true); return { starts: null, planned, earliest: null, richest: null, combos: tried }; }

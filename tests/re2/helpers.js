@@ -94,4 +94,22 @@ const FAMILY2 = { kind: 'landVilla', income: FAMILY.income, livingExpenses: FAMI
 const scenarios2 = (E, n = 60) => [{ label: 'defaults2', inp: { kind: 'landVilla' } }, { label: 'family2', inp: FAMILY2 }, { label: 'ready2', inp: { kind: 'readyVilla', propertyPrice: 2800000 } }]
   .concat(Array.from({ length: n }, (_, k) => ({ label: `random2#${k + 1}`, inp: randomScenario2(E, k + 1) })));
 
-module.exports = { ROOT, loadEngine, rng, randomScenario, randomScenario2, randomJoint, FAMILY, FAMILY2, scenarios, scenarios2, jointScenarios };
+// the same households on EVERY project kind (synthetic, round-robin over the five kinds): land only with its holding costs and a
+// planned sale, buildings you live in or let out entirely with their units (rent per unit or per m²), ready assets split into
+// land and an ageing building, the rent freeze on or off, a fixed as-of month
+const KINDS2 = ['landVilla', 'readyVilla', 'land', 'landBuilding', 'readyBuilding'];
+function kindScenarios(E, n = 48) {
+  return Array.from({ length: n }, (_, k) => {
+    const r = rng(k + 1 + 70000), pick = (a) => a[Math.floor(r() * a.length)], between = (a, b, step = 1) => a + Math.round((r() * (b - a)) / step) * step;
+    const kind = KINDS2[k % KINDS2.length], basis = pick(['unit', 'unit', 'sqm']);
+    const inp = { ...randomScenario2(E, k + 1), kind, asOf: pick(['2026-01', '2026-03', '2026-11']), rentFreezeUntil: pick([null, '2030-09', '2028-06']),
+      occupancy: pick(['liveLet', 'let']), unitCount: between(2, 12), unitRentBasis: basis, unitRent: basis === 'sqm' ? between(300, 900, 50) : between(1500, 8000, 250), netLettablePct: pick([80, 85]), vacancyPct: pick([0, 5, 10]), mgmtPct: pick([0, 5]),
+      landSellYear: pick([null, null, 3, 5, 8]), landSellCostPct: pick([2.5, 7.5]), landZakat: pick(['none', 'trade']), whiteLandPct: pick([0, 2.5, 5]), whiteLandOtherArea: pick([0, 0, 4000]),
+      readyLandShare: pick([null, 40, 60]), readyAge: pick([0, 5, 12]), floors: pick([1, 2, 3]) };
+    if (kind === 'land') inp.landArea = between(300, 8000, 100);
+    if (kind === 'readyBuilding') inp.propertyPrice = between(2000000, 12000000, 50000);
+    return { label: `kind#${k + 1} ${kind}`, inp };
+  });
+}
+
+module.exports = { ROOT, loadEngine, rng, randomScenario, randomScenario2, randomJoint, FAMILY, FAMILY2, scenarios, scenarios2, jointScenarios, kindScenarios, KINDS2 };
