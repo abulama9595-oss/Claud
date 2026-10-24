@@ -1,18 +1,25 @@
 // Optional features (annex rent, the home you live in today, zakat on cash, liquidity) and the one-strategy what-ifs
 // (stress, break-evens, ready villa, loan worth). Synthetic figures only.
 const test = require('node:test'), assert = require('node:assert');
-const { loadEngine, scenarios, FAMILY } = require('./helpers');
+const { loadEngine, scenarios, FAMILY, FAMILY2 } = require('./helpers');
 const E = loadEngine();
 const near = (a, b, tol = 1) => Math.abs(a - b) <= tol;
 const key = (m) => m.results.map((r) => r && [r.feasible, r.recoveryOk, Math.round(r.econAdv), Math.round(r.netWorthEnd), Math.round(r.minCash)].join('|')).join(' / ');
 
 test('the new settings change nothing while they are off', () => {
-  const off = { partRentAnnual: 0, ownHomePlan: 'keep', ownHomeYield: 5, ownHomeSellCostPct: 4, cashZakatPct: 0 };
+  // (v2: ownHomePlan / ownHomeYield / ownHomeSellCostPct are keys of the OLD shape — adding them to a new-shape scenario would
+  // make it an old one, so they are only added to scenarios that already are; the bare defaults get the new-shape keys)
   for (const { label, inp } of scenarios(E, 40)) {
+    const old = E.re2IsOld(inp), off = old ? { partRentAnnual: 0, ownHomePlan: 'keep', ownHomeYield: 5, ownHomeSellCostPct: 4, cashZakatPct: 0 } : { partRentAnnual: 0, cashZakatPct: 0, rentFreezeUntil: '2030-09' };
     assert.strictEqual(key(E.computeRE({ ...inp, ...off })), key(E.computeRE(inp)), label);
     // the current-home options only apply when you live in a home you own (no rent today)
-    if (inp.rentNow > 0) assert.strictEqual(key(E.computeRE({ ...inp, ownHomePlan: 'sell' })), key(E.computeRE(inp)), label + ' renting');
+    if (old && inp.rentNow > 0) assert.strictEqual(key(E.computeRE({ ...inp, ownHomePlan: 'sell' })), key(E.computeRE(inp)), label + ' renting');
   }
+  // the same in the new shape: a property's plan applies only when it is the home you live in and you pay no rent
+  const fam = { ...FAMILY2, properties: [{ ...FAMILY2.properties[0], plan: 'sell' }] };
+  assert.notStrictEqual(key(E.computeRE(fam)), key(E.computeRE(FAMILY2)), 'selling the home you live in changes the answer');
+  assert.strictEqual(key(E.computeRE({ ...fam, rentNow: 7000 })), key(E.computeRE({ ...FAMILY2, rentNow: 7000 })), 'not when you rent today');
+  assert.strictEqual(key(E.computeRE({ ...fam, properties: [{ ...fam.properties[0], isHome: false }] })), key(E.computeRE({ ...FAMILY2, properties: [{ ...FAMILY2.properties[0], isHome: false }] })), 'not for a property you do not live in (this phase)');
 });
 
 test('annex rent: received from the month after move-in, growing with rent growth, and added at face value to net worth', () => {
@@ -89,7 +96,7 @@ test('stress tests, break-evens, ready villa and loan worth agree with direct re
   const rb = E.readyBreakEvenRE(inp, idx);
   if (rb.price != null) assert.ok(Math.abs(rb.atPrice.econAdv - rb.build.econAdv) < rb.value * 1e-4, 'the villa at that price does as well as building');
   for (const w of E.loanWorthRE(inp, idx)) {
-    const off = { lm: { lmUse: false }, eq: { eqWhen: 'none' }, pl: { plWhen: 'none' }, pl2: { pl2Use: false }, co: { coUse: false } }[w.key];
+    const off = { lm: { lmUse: false }, eq: { mortgages: {} }, pl: { plWhen: 'none' }, pl2: { pl2Use: false }, co: { coUse: false } }[w.key];
     const p = E.mergeRE(inp), wo = E.reRunOne({ ...p, plans: p.plans.map((o, j) => j === idx ? { ...o, ...off } : o) }, idx).r;
     assert.ok(near(w.gain, r.econAdv - wo.econAdv, 1e-6) && near(w.perMillionPV, (r.econPV - wo.econPV) / w.amount * 1e6, 1e-6));
   }
