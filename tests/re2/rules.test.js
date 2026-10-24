@@ -135,7 +135,8 @@ test('everything grows: value in today\'s money = the extra flows discounted at 
 });
 
 test('strategies are ranked and judged by the everything-grows measure', () => {
-  const m = E.computeRE({});
+  const m = E.computeRE({ cashAvailable: 2000000 });   // (v2 defaults own no property, and with 1,000,000 cash no default plan works; with 2,000,000 some do)
+  assert.ok(m.bestFeasible, 'a plan works');
   const ok = m.ranked.filter((r) => r.feasible && r.recoveryOk);
   for (let k = 1; k < ok.length; k++) assert.ok(ok[k - 1].econAdv >= ok[k].econAdv);
   assert.equal(m.bestFeasible.econAdv > 0, m.verdict === 'OWNING WINS' || m.verdict === 'BUILDING WINS');

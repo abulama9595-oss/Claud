@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=5d393f36d9"></script>
-  <script src="re2-engine.js?v=5d393f36d9"></script>
-  <script src="re2-ui.js?v=5d393f36d9"></script>
+  <script src="engine.js?v=57ad419521"></script>
+  <script src="re2-engine.js?v=57ad419521"></script>
+  <script src="re2-ui.js?v=57ad419521"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -442,7 +442,12 @@
       const settled = optInp === inp;
       const m = useMemo(() => computeRE(inp, { extraPlans: toolPlan ? [toolPlan] : undefined, noNeed: !settled }), [inp, toolPlan, settled]);
       const econIrr = useMemo(() => m.results.map((r) => r && m.p.mode === "home" ? reEconIRR(r) : null), [m]);
-      const home = inp.mode === "home", build = inp.acquire === "build";
+      // v2: one project family for now (no rental mode); the kind decides build vs buy; P0 = the property you own (interim: one)
+      const home = true, build = !/^ready/.test(inp.kind || "landVilla");
+      const P0 = (inp.properties || [])[0] || null, P0v = P0 ? +P0.value || 0 : 0, P0ltv = P0 ? (P0.ltv == null ? inp.ownedLtv : P0.ltv) : inp.ownedLtv;
+      const setProp0 = (patch) => setInp((s) => { const ps = (s.properties || []).slice(); const cur = ps[0] || { id: "p1", name: "Property you own", value: 0, ltv: s.ownedLtv == null ? 70 : s.ownedLtv, canMortgage: true, rentNow: 0, isHome: !(s.rentNow > 0), plan: "keep", sellAt: "moveIn", letAfterMove: false, letYield: 3, sellCostPct: 2.5, existingLoanId: null }; const nx = { ...cur, ...patch }; if (!(nx.value > 0)) ps.splice(0, 1); else ps[0] = nx; return { ...s, properties: ps }; });
+      const P0plan = P0 ? (P0.plan === "sell" ? "sell" : P0.letAfterMove ? "let" : "keep") : "keep";
+      const mortP1 = (o) => (o.mortgages && o.mortgages.p1) || { when: "none", month: 0 };   // a plan's mortgage step on the property you own (interim: one property)
       const { prj, household } = m;
       // تضامن is on: your spouse's income and loans count (hj = the household figures for both of you)
       const jointOn = home && !!(inp.joint && inp.joint.on), hj = jointOn ? household.joint || null : null, jt = inp.joint || RE_BASE.joint;
@@ -684,7 +689,7 @@
             <Row k="Cash today" v={fM(inp.cashAvailable)} />
             <Row k="Safety cushion" v={fM(inp.cashBuffer)} />
             <Row k="Cash at move-in at least" v={fM(moveLine)} />
-            {inp.ownedValue > 0 && <Row k="Property you own" v={fM(inp.ownedValue)} sub={!renting && inp.ownHomePlan !== "keep" ? (inp.ownHomePlan === "let" ? `let at ${inp.ownHomeYield}% from move-in` : "sold at move-in") : null} />}
+            {P0v > 0 && <Row k="Property you own" v={fM(P0v)} sub={!renting && P0plan !== "keep" ? (P0plan === "let" ? `let at ${P0.letYield}% from move-in` : "sold at move-in") : null} />}
           </RailGroup>
           <RailGroup title={hj ? `Existing loans · you ${household.existingDbr.toFixed(0)}% · spouse ${hj.existingDbrB.toFixed(0)}%` : `Existing loans · ${household.existingDbr.toFixed(0)}% of income`} onEdit={() => go("loans")}>
             {inp.existingLoans.concat(spouseLoans).filter((l) => l.balance > 0).length === 0 ? <div style={{ fontSize: 12.5, color: K.sub }}>none</div> : inp.existingLoans.map((l) => ({ ...l, sp: false })).concat(spouseLoans.map((l) => ({ ...l, sp: true }))).filter((l) => l.balance > 0).map((l, k) => (
@@ -819,7 +824,7 @@
         </div>
       );
       const twoCol = { gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 14 };
-      const ownedAt = (t) => inp.ownedValue * Math.pow(1 + inp.appreciation / 100, t / 12);
+      const ownedAt = (t) => P0v * Math.pow(1 + inp.appreciation / 100, t / 12);
       const lettingOut = (inp.rentOutFixed || 0) > 0 || (inp.rentOutPct || 0) > 0;
 
       /* ---------- step 1: your money ---------- */
@@ -837,7 +842,7 @@
               <Field label="Cash today" value={inp.cashAvailable} min={0} max={8000000} step={50000} unit="SAR" onChange={(v) => set("cashAvailable", v)} />
               <Field label="Safety cushion to keep" value={inp.cashBuffer} min={0} max={1500000} step={25000} unit="SAR" onChange={(v) => set("cashBuffer", v)} hint="a plan that dips below it is flagged; one that goes below zero does not work" help={EXPL.recovery} />
               <Field label="Cash at move-in must be at least" value={moveLine} min={-2000000} max={3000000} step={50000} unit="SAR" onChange={(v) => set("minCashMoveIn", v)} hint="your cash, the loans and what your salary saved, less what the project cost, at move-in, no growth · 0 = never short · a plan below it ranks after plans that meet it" help={EXPL.moveIn} />
-              <Field label="Property you already own — its value" value={inp.ownedValue} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => set("ownedValue", v)} hint={inp.ownedValue > 0 ? `a bank would lend up to ${fM(inp.ownedValue * inp.ownedLtv / 100)} against it (${inp.ownedLtv}%)` : "0 if none"} />
+              <Field label="Property you already own — its value" value={P0v} min={0} max={15000000} step={100000} unit="SAR" onChange={(v) => setProp0({ value: v, isHome: !(inp.rentNow > 0) })} hint={P0v > 0 ? `a bank would lend up to ${fM(P0v * P0ltv / 100)} against it (${P0ltv}%)` : "0 if none"} />
             </Box>
           </div>
           <Box title="تضامن — a joint mortgage with your spouse" style={{ marginTop: 14 }} help={EXPL.joint}>
@@ -855,13 +860,13 @@
             {jointOn ? <div className="note">Your spouse's salary and their loans run through the household's money whether you build or not, so the comparison stays like for like. Add their loans in the next step.</div>
               : <div className="note" style={{ marginTop: 0 }}>Off: the bank tests your income alone.</div>}
           </Box>
-          {!renting && inp.ownedValue > 0 && <Box title="The home you live in today — once you move" style={{ marginTop: 14 }} help="You live in a home you own today. When you move into the new one you can keep it, let it, or sell it. Letting: the rent (net of its own costs) arrives every month from the month after move-in and rises with its value. Selling: it is sold at move-in; the price less selling costs, after repaying any mortgage a plan took on it, goes into your cash — and because the not-building side still owns it, its value is taken off your side in both measures.">
+          {!renting && P0v > 0 && <Box title="The home you live in today — once you move" style={{ marginTop: 14 }} help="You live in a home you own today. When you move into the new one you can keep it, let it, or sell it. Letting: the rent (net of its own costs) arrives every month from the month after move-in and rises with its value. Selling: it is sold at move-in; the price less selling costs, after repaying any mortgage a plan took on it, goes into your cash — and because the not-building side still owns it, its value is taken off your side in both measures.">
             {lettingOut ? <div className="note" style={{ marginTop: 0 }}>Not used while the new home is let out — you would stay where you are.</div> : <>
-              <Seg label="The home you live in today" value={inp.ownHomePlan || "keep"} onChange={(v) => set("ownHomePlan", v)} options={[["keep", "Keep it"], ["let", "Let it"], ["sell", "Sell it"]]} />
+              <Seg label="The home you live in today" value={P0plan} onChange={(v) => setProp0({ plan: v === "sell" ? "sell" : "keep", sellAt: "moveIn", letAfterMove: v === "let", isHome: true })} options={[["keep", "Keep it"], ["let", "Let it"], ["sell", "Sell it"]]} />
               <div style={{ marginTop: 12 }}>
-                {(inp.ownHomePlan || "keep") === "keep" && <div className="note" style={{ marginTop: 0 }}>Nothing changes: you own it whether you build or not, so it doesn't move the comparison.</div>}
-                {inp.ownHomePlan === "let" && <Field label="Rent you would get, net of its costs" value={inp.ownHomeYield} min={0} max={8} step={0.25} unit="% of its value a year" onChange={(v) => set("ownHomeYield", v)} hint={`≈ ${fSAR(ownedAt(prj.occupy) * inp.ownHomeYield / 100)} a year from ${fCal(prj.occupy + 1)} (it would be worth ${fM(ownedAt(prj.occupy))} then), rising with its value`} />}
-                {inp.ownHomePlan === "sell" && <Field label="Selling costs" value={inp.ownHomeSellCostPct} min={0} max={10} step={0.5} unit="% of its value" onChange={(v) => set("ownHomeSellCostPct", v)} hint={`sold at move-in (${fCal(prj.occupy)}) for about ${fM(ownedAt(prj.occupy))}, less ${fM(ownedAt(prj.occupy) * inp.ownHomeSellCostPct / 100)}; broker 2.5%, add 5% if you pay the transfer tax. A mortgage a plan took on it is repaid from the sale.`} />}
+                {P0plan === "keep" && <div className="note" style={{ marginTop: 0 }}>Nothing changes: you own it whether you build or not, so it doesn't move the comparison.</div>}
+                {P0plan === "let" && <Field label="Rent you would get, net of its costs" value={P0.letYield} min={0} max={8} step={0.25} unit="% of its value a year" onChange={(v) => setProp0({ letYield: v })} hint={`≈ ${fSAR(ownedAt(prj.occupy) * P0.letYield / 100)} a year from ${fCal(prj.occupy + 1)} (it would be worth ${fM(ownedAt(prj.occupy))} then), rising with its value`} />}
+                {P0plan === "sell" && <Field label="Selling costs" value={P0.sellCostPct} min={0} max={10} step={0.5} unit="% of its value" onChange={(v) => setProp0({ sellCostPct: v })} hint={`sold at move-in (${fCal(prj.occupy)}) for about ${fM(ownedAt(prj.occupy))}, less ${fM(ownedAt(prj.occupy) * P0.sellCostPct / 100)}; broker 2.5%, add 5% if you pay the transfer tax. A mortgage a plan took on it is repaid from the sale.`} />}
               </div>
             </>}
           </Box>}
@@ -991,7 +996,7 @@
       const StepHome = () => (
         <div>
           <Head id="home" title={build ? "What will you build, and when?" : "What will you buy, and when?"} sub={build ? `All amounts in SAR. Land carries no VAT; construction and finishing do. The land grows in value with the market; the building is worth what it costs to build (plus your uplift) and loses ${dep}% of that a year from move-in.` : "All amounts in SAR. Finishing carries VAT. The home's value grows with the market from the month you buy."} />
-          <div className="no-print" style={{ marginBottom: 14 }}><Seg label="Build or buy" value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land and build"], ["buy", "Buy a ready home"]]} /></div>
+          <div className="no-print" style={{ marginBottom: 14 }}><Seg label="Build or buy" value={build ? "build" : "buy"} onChange={(v) => set("kind", v === "build" ? "landVilla" : "readyVilla")} options={[["build", "Buy land and build"], ["buy", "Buy a ready home"]]} /></div>
           <div className="grid" style={twoCol}>
             <Box title={build ? "Land and construction" : "The purchase"}>
               {build ? <>
@@ -1075,7 +1080,7 @@
       const TERM_ROWS = [["lm", build ? "Land mortgage" : "Purchase mortgage", "lmRate", "lmTenure", "lmFeesPct", 30, 12], ["eq", "Mortgage on the property you own", "eqRate", "eqTenure", "eqFeesPct", 30, 12], ["co", "Cash-out mortgage on the new home", "coRate", "coTenure", "coFeesPct", 30, 12], ["pl", "Personal loans", "plRate", "plTenure", null, 7, 15]];
       const aprOf = (rk, tk) => reEffRate(inp, inp[rk], Math.max(1, Math.round(inp[tk] * 12)));
       const TermsBox = () => {
-        const showEq = inp.ownedValue > 0 || inp.plans.some((o) => o.enabled && o.eqWhen !== "none");
+        const showEq = P0v > 0 || inp.plans.some((o) => o.enabled && mortP1(o).when !== "none");
         return (
           <More title={`Bank terms for every plan and for the tool: ${TERM_ROWS.filter(([k]) => k !== "eq" || showEq).map(([k, , rk, tk]) => `${{ lm: build ? "land" : "purchase", eq: "own property", co: "cash-out", pl: "personal" }[k]} ${inp[rk]}%${inp.rateQuote === "flat" ? " flat" : ""}/${inp[tk]}y`).join(" · ")}`}>
             <div className="flex items-center flex-wrap" style={{ gap: 10, marginBottom: 10 }}>
@@ -1270,8 +1275,8 @@
             <input type="text" value={o.name} onChange={(e) => setPlan(i, "name", e.target.value)} style={{ width: "100%", marginBottom: 12 }} aria-label="Plan name" />
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 250px), 1fr))", gap: "0 18px" }}>
               <Pick label={`${build ? "Mortgage the land" : "Mortgage the purchase"} (${fCal(prj.landMonth)})`} value={o.lmUse ? "yes" : "no"} onChange={(v) => setPlan(i, "lmUse", v === "yes")} options={[["no", "No — pay in cash"], ["yes", `Yes — up to ${inp.landLtv}% of the price`]]} />
-              <Pick label="Mortgage the property you own" value={o.eqWhen} onChange={(v) => setPlan(i, "eqWhen", v)} options={[["none", "No"], ["start", "Now"], ["land", "When the land is bought"], ["build", "When construction starts"], ["completion", "At move-in"], ["month", "In a month I choose"]]} hint={inp.ownedValue > 0 ? `up to ${fM(inp.ownedValue * inp.ownedLtv / 100)} (${inp.ownedLtv}% of its value)${inp.ownHomePlan === "sell" && !renting ? " · not after you sell it" : ""}` : "set its value in step 1 first"} />
-              {o.eqWhen === "month" && <MonthField label="…in" value={o.eqMonth} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setPlan(i, "eqMonth", v)} />}
+              <Pick label="Mortgage the property you own" value={mortP1(o).when} onChange={(v) => setPlan(i, "mortgages", { ...(o.mortgages || {}), p1: { when: v, month: mortP1(o).month } })} options={[["none", "No"], ["start", "Now"], ["land", "When the land is bought"], ["build", "When construction starts"], ["completion", "At move-in"], ["month", "In a month I choose"]]} hint={P0v > 0 ? `up to ${fM(P0v * P0ltv / 100)} (${P0ltv}% of its value)${P0plan === "sell" && !renting ? " · not after you sell it" : ""}` : "set its value in step 1 first"} />
+              {mortP1(o).when === "month" && <MonthField label="…in" value={mortP1(o).month} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setPlan(i, "mortgages", { ...(o.mortgages || {}), p1: { when: "month", month: v } })} />}
               <Pick label="Personal loans" value={plT} onChange={(v) => { const x = RE_PL_TIMING.find((y) => y[0] === v); if (x) setPlanMany(i, x[2]); }} options={RE_PL_TIMING.filter((x) => x[0] !== "completion" || plT === "completion").map(([k, l]) => [k, l])} help={EXPL.refi} hint={plZero ? `${plZero.label}: nothing — ${plZero.capacity ? plZero.capacity.limitedBy : "no room"}` : `the bank's maximum: one or two loans, each up to ${inp.perLoanCap}% of ${jointOn ? "the borrower's income" : "income"}; never more than two at once`} />
               {o.plWhen === "month" && <MonthField label="…in" value={o.plMonth} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setPlan(i, "plMonth", v)} />}
               {jointOn && plT !== "none" && <div style={{ marginBottom: 12 }}>
@@ -1967,7 +1972,7 @@
       const StepProperty = () => (
         <div>
           <Head id="property" title="What will you let, and what does it cost?" sub="All amounts in SAR. Land carries no VAT; construction and finishing do. The land grows in value with the market; a building you put up is worth what it costs (plus your uplift) and ages from completion." />
-          <div className="no-print" style={{ marginBottom: 14 }}><Seg label="Build or buy" value={inp.acquire} onChange={(v) => set("acquire", v)} options={[["build", "Buy land and build"], ["buy", "Buy a ready property"]]} /></div>
+          <div className="no-print" style={{ marginBottom: 14 }}><Seg label="Build or buy" value={build ? "build" : "buy"} onChange={(v) => set("kind", v === "build" ? "landVilla" : "readyVilla")} options={[["build", "Buy land and build"], ["buy", "Buy a ready property"]]} /></div>
           <div className="grid" style={twoCol}>
             <Box title={build ? "Land and construction" : "The purchase"}>
               {build ? <>
@@ -2261,7 +2266,7 @@
               </div>
               <div style={{ fontSize: 13, color: "#ECE4D3" }} title={dirty ? "changes not saved" : "saved"}>{loadedName ? <>“{loadedName}”{dirty && <span style={{ color: "#D9B36A" }} aria-label="unsaved changes"> ● unsaved</span>}</> : <span style={{ color: "#C8D3DF" }}>Working copy <span style={{ color: "#D9B36A" }}>● not saved</span></span>}</div>
               <div className="flex flex-wrap items-center no-print" style={{ gap: 8 }}>
-                <Seg dark label="What are you deciding" value={inp.mode} onChange={(v) => { set("mode", v); setStep(0); setFocus(-1); setEditIdx(-1); }} options={[["home", "My home"], ["rental", "Rental"]]} />
+                <span className="tag" style={{ background: "#B0823A", color: "#0E1A2B", letterSpacing: ".04em" }}>NEW VERSION · IN PROGRESS</span>
                 <button className="hbtn gold" onClick={saveCurrent} disabled={clean} title={loadedName ? `Save your changes to "${loadedName}"` : "Save this scenario"}>{clean ? "Saved ✓" : "Save"}</button>
                 <button className="hbtn" onClick={saveAsNew} title="Save under a new name">Save as…</button>
                 <button className="hbtn" onClick={() => setShowScen(!showScen)} aria-expanded={showScen}>Scenarios</button>

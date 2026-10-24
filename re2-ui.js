@@ -111,10 +111,11 @@ function describePlan(o, inp, prj, build) {
   const s = [], add = (t, k, text) => s.push({ t, k, text });
   const tw = (w, m) => w === "start" ? 0 : w === "land" ? prj.landMonth : w === "build" ? prj.start : w === "completion" ? prj.occupy : Math.max(0, Math.round(m || 0));
   (inp.existingLoans || []).filter((l) => l.balance > 0 && l.settleAt != null && l.settleAt > 0).forEach((l) => add(l.settleAt, 0, `settle ${l.name} in ${fCal(l.settleAt)} from your cash`));
-  const mortT = [o.lmUse ? prj.landMonth : null, o.eqWhen !== "none" ? tw(o.eqWhen, o.eqMonth) : null, o.coUse ? prj.occupy : null].filter((x) => x != null);
+  const eqs = rePlanMorts(o);   // mortgages on properties you own (v2: plan.mortgages)
+  const mortT = [o.lmUse ? prj.landMonth : null, ...eqs.map((m) => tw(m.when, m.month)), o.coUse ? prj.occupy : null].filter((x) => x != null);
   if (mortT.length && o.settlePolicy !== "none") add(Math.min(...mortT), 1, o.settlePolicy === "forMax" ? "first pay off as many old personal loans as it takes for the mortgage to reach the most the property allows (from your own cash, before the bank grants it)" : "first pay off old personal loans only if a mortgage would not fit in the bank's test otherwise (from your own cash, before the bank grants it)");
   if (o.lmUse) add(prj.landMonth, 2, `mortgage the ${build ? "land" : "purchase"} when it is bought (${fCal(prj.landMonth)}) for the maximum the bank allows — paid to the seller`);
-  if (o.eqWhen !== "none") add(tw(o.eqWhen, o.eqMonth), 2.1, `mortgage the property you already own ${whenTxt(o.eqWhen, o.eqMonth, prj)} for the maximum the bank allows`);
+  eqs.forEach((m) => add(tw(m.when, m.month), 2.1, `mortgage the property you already own ${whenTxt(m.when, m.month, prj)} for the maximum the bank allows`));
   // تضامن: whose name the personal loans are in
   const plWho = !(inp.joint && inp.joint.on) ? "take personal loan(s)" : o.plBy === "spouse" ? "your spouse takes personal loan(s) in their name" : o.plBy === "both" ? "each of you takes personal loan(s) in your own name" : "take personal loan(s) in your name";
   if (o.plWhen !== "none") add(tw(o.plWhen, o.plMonth), 2.2, `${plWho} ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows, ${refiTxt(o)}`);
@@ -259,12 +260,13 @@ function planTitle(o, build, r, joint) {
   const J = joint != null ? !!joint : !!(r && (r.spl != null || (r.months && r.months[0] && r.months[0].incB != null)));
   const pls = !J ? "personal loans" : o.plBy === "spouse" ? "your spouse's personal loans" : o.plBy === "both" ? "personal loans for both of you" : "your personal loans";
   if (o.lmUse) parts.push(build ? "mortgage the land" : "mortgage the purchase");
-  if (o.eqWhen && o.eqWhen !== "none") parts.push(`mortgage the property you own ${cov === "eq" ? short : when[o.eqWhen] || ""}`.trim());
+  const eqW = reEqWhen(o);   // v2: the plan's mortgage on a property you own (plan.mortgages)
+  if (eqW !== "none") parts.push(`mortgage the property you own ${cov === "eq" ? short : when[eqW] || ""}`.trim());
   if (pl || pl2) parts.push(pl && pl2 ? `${pls} ${plW} and ${pl2W}` : pl ? `${pls} ${plW}` : `${pls} ${pl2W}`);
   if (o.coUse) parts.push("a cash-out mortgage on the new home at move-in");
   if (!parts.length) return "Pay from your cash — no new loans";
   const t = parts.join(", then ");
-  return o.lmUse || (o.eqWhen && o.eqWhen !== "none") || o.coUse ? t.charAt(0).toUpperCase() + t.slice(1) : "No mortgage: " + t;
+  return o.lmUse || eqW !== "none" || o.coUse ? t.charAt(0).toUpperCase() + t.slice(1) : "No mortgage: " + t;
 }
 
 // what a strategy actually does, in date order, as short steps (from its result)
