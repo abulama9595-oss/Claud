@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=7700c78600"></script>
-  <script src="re2-engine.js?v=7700c78600"></script>
-  <script src="re2-ui.js?v=7700c78600"></script>
+  <script src="engine.js?v=5d393f36d9"></script>
+  <script src="re2-engine.js?v=5d393f36d9"></script>
+  <script src="re2-ui.js?v=5d393f36d9"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -893,11 +893,12 @@
         return <>
               <div className="scroll-x">
                 <table className="tbl">
-                  <thead><tr><th>Loan</th><th>Balance</th><th>Monthly</th><th>Months left</th><th>Rate</th>{loanMore && <><th>Months since it started</th><th>Settle in month</th><th>May be paid off from cash?</th><th>May be refinanced?</th></>}<th className="no-print" style={{ width: 36 }}></th></tr></thead>
+                  <thead><tr><th>Loan</th><th>Type</th><th>Balance</th><th>Monthly</th><th>Months left</th><th>Rate</th>{loanMore && <><th>Months since it started</th><th>Settle in month</th><th>May be paid off from cash?</th><th>May be refinanced?</th></>}<th className="no-print" style={{ width: 36 }}></th></tr></thead>
                   <tbody>
                     {loans.map((l, i) => (
                       <tr key={l.id || i}>
                         <td className="l"><input type="text" aria-label={`${word} name`} value={l.name} onChange={(e) => upd(i, "name", e.target.value)} style={{ width: "100%", minWidth: 120 }} /></td>
+                        <td><select aria-label={`${l.name}: type`} value={l.type === "mortgage" ? "mortgage" : "personal"} onChange={(e) => upd(i, "type", e.target.value)} style={{ minHeight: 30, padding: "3px 4px", fontSize: 12 }}><option value="personal">Personal</option><option value="mortgage">Mortgage</option></select></td>
                         <td><NumIn v={l.balance} on={(v) => upd(i, "balance", v)} w={108} label={`${l.name}: balance`} /></td>
                         <td><NumIn v={l.installment} on={(v) => upd(i, "installment", v)} w={86} label={`${l.name}: monthly instalment`} /></td>
                         <td><NumIn v={l.monthsLeft} on={(v) => upd(i, "monthsLeft", Math.round(v))} w={56} label={`${l.name}: months left`} /><div style={{ fontSize: 12, color: K.sub }}>ends {fCal(loanEnds(l))}</div></td>
@@ -914,10 +915,11 @@
                         <td className="no-print"><button aria-label={`Remove ${l.name}`} title="Remove" onClick={() => withUndo(`Removed ${l.name}`, () => setList(loans.filter((_, j) => j !== i)))} style={{ ...iconBtn, padding: 6 }}><Trash2 size={16} color={K.neg} /></button></td>
                       </tr>
                     ))}
-                    <tr style={{ background: SOFT, fontWeight: 700 }}><td className="l">Total ({loans.length})</td><td>{fSAR(bal)}</td><td>{fSAR(inst)}</td><td></td><td></td>{loanMore && <><td></td><td></td><td></td><td></td></>}<td className="no-print"></td></tr>
+                    <tr style={{ background: SOFT, fontWeight: 700 }}><td className="l">Total ({loans.length})</td><td></td><td>{fSAR(bal)}</td><td>{fSAR(inst)}</td><td></td><td></td>{loanMore && <><td></td><td></td><td></td><td></td></>}<td className="no-print"></td></tr>
                   </tbody>
                 </table>
               </div>
+              {loans.length > 0 && <div style={{ fontSize: 12, color: K.sub, marginTop: 6, lineHeight: 1.45 }}>Type: a <b>personal</b> loan counts as one of the two personal loans the bank allows at once and may be bought out by a new personal loan or paid off to make room for a mortgage; a <b>mortgage</b> never does — it counts in the {inp.mortgageCap}% mortgage limit instead.</div>}
               <div className="flex flex-wrap no-print" style={{ gap: 8, marginTop: 10 }}>
                 <button className="btn small" onClick={() => setList([...loans, { id: spouse ? `s${Date.now()}` : Date.now(), name: `${word} ${loans.length + 1}`, balance: 100000, installment: 2500, monthsLeft: 48, rate: 6 }])}>+ Add a loan</button>
                 {loans.length > 0 && <button className="btn small" onClick={() => withUndo(spouse ? "Removed all your spouse's loans" : "Removed all loans", () => setList([], true))}>Remove all</button>}
