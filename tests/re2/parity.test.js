@@ -6,9 +6,11 @@ const { loadEngine, scenarios, jointScenarios } = require('./helpers.js');
 const NEW = loadEngine(), OLD = loadEngine(true);
 
 const toNew = (inp) => (NEW.re2Import ? NEW.re2Import(inp) : inp);
+// a mortgage on a property you own is eq:<id> in the new engine (one property: the old engine's eq) — the same loan, compared by the old name
+const fk = (k) => String(k).replace(/^eq:.*$/, 'eq');
 const key = (m) => JSON.stringify({ v: m.verdict, t: Math.round(m.prj.total), r: m.results.map((r) => r && (m.p.mode === 'home'
-  ? { f: r.feasible, b: !!r.bridged, e: r.econAdv, a: r.advantage, mc: r.minCash, oh: r.onHandAtMoveIn, pk: r.peakInst, nd: r.newDebtTotal, ni: r.newDebtInterest, cov: r.covered ? [r.covered.key, r.covered.at, r.covered.amount] : null,
-      fac: r.facilities.filter((f) => f.amount > 0).map((f) => [f.key, f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.length, fl: r.flags.length, m: r.months.map((x) => [x.cash, x.avail, x.debt, x.econAdv, x.netWorth, x.plPay, x.eqPay]) }
+  ? { f: r.feasible, b: !!r.bridged, e: r.econAdv, a: r.advantage, mc: r.minCash, oh: r.onHandAtMoveIn, pk: r.peakInst, nd: r.newDebtTotal, ni: r.newDebtInterest, cov: r.covered ? [fk(r.covered.key), r.covered.at, r.covered.amount] : null,
+      fac: r.facilities.filter((f) => f.amount > 0).map((f) => [fk(f.key), f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.length, fl: r.flags.length, m: r.months.map((x) => [x.cash, x.avail, x.debt, x.econAdv, x.netWorth, x.plPay, x.eqPay]) }
   : { irr: r.irr, npv: r.npv, pay: r.monthlyPayment })), h: m.household.capTimeline.map((c) => [c.t, c.room, c.maxMortgage, c.maxTwoPl]) });
 
 test('fork parity: every synthetic scenario gives the old engine\'s numbers (imported into the new model)', { skip: !OLD && 'old engine deleted' }, () => {

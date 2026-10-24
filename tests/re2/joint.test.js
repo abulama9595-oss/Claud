@@ -175,8 +175,8 @@ test("a cash gap closed by both of your personal loans: they are taken together 
     E.computeRE(inp, { noNeed: true }).results.forEach((r, i) => {
       if (!r || !r.covered || r.covered.split) return;
       const c = r.covered, ks = c.keys || [c.key];
-      for (const k of ks) assert.equal(r[k].startedAt, c.at, `${label} S${i + 1}: ${k} taken when the cash runs short`);
-      assert.ok(Math.abs(c.amount - ks.reduce((a, k) => a + r[k].amount, 0)) < 1e-6);
+      for (const k of ks) assert.equal(E.reFacOf(r, k).startedAt, c.at, `${label} S${i + 1}: ${k} taken when the cash runs short`);   // (a mortgage on a property is eq:<id>)
+      assert.ok(Math.abs(c.amount - ks.reduce((a, k) => a + E.reFacOf(r, k).amount, 0)) < 1e-6);
       assert.ok(r.events.some((e) => e.kind === 'cover' && e.t === c.at && e.text.includes(`lends ${E.fS(c.amount)}`) && e.text.includes(`${E.fS(c.gap.peak)} deficit`)), `${label} S${i + 1}: the row`);
       n++;
     });

@@ -9,9 +9,11 @@ const near = (a, b, tol = 1) => Math.abs(a - b) <= tol;
 // JSON with sorted keys, so two objects that mean the same compare equal whatever the order their keys were written in
 const stable = (v) => JSON.stringify(v, (k, x) => x && typeof x === 'object' && !Array.isArray(x) ? Object.keys(x).sort().reduce((o, kk) => { o[kk] = x[kk]; return o; }, {}) : x);
 // what a scenario's answer is made of (the parity test's key, plus the home you live in and the household's room)
+// (a mortgage on a property you own is eq:<id> in the new engine; the old engine's eq is the same loan, compared by the old name)
+const fk = (k) => String(k).replace(/^eq:.*$/, 'eq');
 const key = (m) => JSON.stringify({ v: m.verdict, t: Math.round(m.prj.total), d: m.household.dbrRoom, h: m.household.capTimeline.map((c) => [c.t, c.room, c.maxMortgage, c.maxTwoPl]),
   r: m.results.map((r) => r && { f: r.feasible, b: !!r.bridged, e: r.econAdv, a: r.advantage, mc: r.minCash, oh: r.onHandAtMoveIn, pk: r.peakInst, nd: r.newDebtTotal, ni: r.newDebtInterest, ok: r.dbrOk, op: r.ownPlan, os: r.ownSale ? [r.ownSale.t, r.ownSale.net, r.ownSale.payoff] : null,
-    cov: r.covered ? [r.covered.key, r.covered.at, r.covered.amount] : null, fac: r.facilities.filter((f) => f.amount > 0).map((f) => [f.key, f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.length, fl: r.flags.length,
+    cov: r.covered ? [fk(r.covered.key), r.covered.at, r.covered.amount] : null, fac: r.facilities.filter((f) => f.amount > 0).map((f) => [fk(f.key), f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.length, fl: r.flags.length,
     m: r.months.map((x) => [x.cash, x.avail, x.debt, x.econAdv, x.netWorth, x.plPay, x.eqPay, x.ownIn, x.ownGone]) }) });
 
 test('mergeRE: idempotent; mode and acquire follow the kind; properties and a plan\'s mortgages are normalised', () => {
@@ -124,22 +126,29 @@ test('propertyValueBasis: "market" sizes the mortgage on a property you own on i
   // the first property you may mortgage is the collateral; one you may not is skipped
   const two = run({ properties: [{ id: 'p1', value: V, canMortgage: false }, { id: 'p2', value: 2000000, ltv: 60 }], plans: [{ ...base.plans[0], mortgages: { p2: { when: 'build', month: 0 } } }] });
   assert.equal(two.eq.propId, 'p2'); assert.ok(near(two.eq.capacity.byLtv, 2000000 * Math.pow(1 + g / 100, 2) * 0.6, 0.01));
-  const none = run({ properties: [{ id: 'p1', value: V, canMortgage: false }] });
-  assert.equal(none.eq.startedAt, null); assert.equal(none.eq.amount, 0); assert.equal(none.eq.propId, null);
-  assert.ok(none.events.some((e) => e.kind === 'eq' && /nothing available/.test(e.text)), 'a step on a property you may not mortgage lends nothing, and says so');
+  const none = run({ properties: [{ id: 'p1', name: 'Flat', value: V, canMortgage: false }] });
+  assert.equal(none.eq.startedAt, null); assert.equal(none.eq.amount, 0); assert.equal(none.eq.propId, 'p1'); assert.equal(none.eq.key, 'eq:p1');
+  assert.match(none.eq.capacity.limitedBy, /^Flat cannot be mortgaged$/);
+  assert.ok(none.events.some((e) => e.kind === 'eq' && /nothing available \(Flat cannot be mortgaged/.test(e.text)), 'a step on a property you may not mortgage lends nothing, and says why');
   assert.ok(!run({ properties: [{ id: 'p1', value: V }], plans: [{ ...base.plans[0], mortgages: {} }] }).events.some((e) => e.kind === 'eq'), 'no step, no row');
-  // across the random suite: every such mortgage stays within its property's LTV on the basis chosen
+  // across the random suite: every such mortgage (eq:<id>, one per property the plan mortgages) stays within its property's
+  // LTV on the basis chosen, and is on a property you own and may mortgage
+  let nEq = 0;
   for (const { label, inp } of scenarios2(E, 40)) {
     const m = E.computeRE(inp, { noNeed: true });
-    const P = m.p.properties.find((x) => x.canMortgage && x.value > 0);
     m.results.forEach((r, i) => {
-      if (!r || !(r.eq.amount > 0)) return;
-      assert.ok(P, `${label} S${i + 1}: a mortgage on a property you own`);
-      const basis = m.p.propertyValueBasis === 'today' ? P.value : P.value * Math.pow(1 + m.p.appreciation / 100, r.eq.startedAt / 12);
-      assert.ok(r.eq.amount <= basis * P.ltv / 100 + 1, `${label} S${i + 1}: ${r.eq.amount} > ${basis * P.ltv / 100}`);
-      assert.equal(r.eq.propId, P.id);
+      if (!r) return;
+      assert.equal(r.eq.key, r.eqs.length ? r.eqs[0].key : 'eq', `${label} S${i + 1}: r.eq is the first mortgage on a property, or a blank eq`);
+      r.eqs.filter((f) => f.amount > 0).forEach((f) => {
+        const P = m.p.properties.find((x) => x.id === f.propId);
+        assert.ok(P && P.canMortgage && P.value > 0 && f.key === `eq:${P.id}`, `${label} S${i + 1}: ${f.key} on a property you own and may mortgage`);
+        const basis = m.p.propertyValueBasis === 'today' ? P.value : P.value * Math.pow(1 + m.p.appreciation / 100, f.startedAt / 12);
+        assert.ok(f.amount <= basis * P.ltv / 100 + 1, `${label} S${i + 1}: ${f.amount} > ${basis * P.ltv / 100}`);
+        nEq++;
+      });
     });
   }
+  assert.ok(nEq > 20, `${nEq} mortgages on properties checked`);
 });
 
 test('samaBands: SAMA\'s bands cap a single borrower too (55% up to 15,000 — 65% with REDF support —, 65% below 25,000, then your bank\'s cap)', () => {

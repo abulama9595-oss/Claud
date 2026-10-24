@@ -70,10 +70,13 @@ function reExpl(inp) {
     whiteLand: `White-land fee (رسوم الأراضي البيضاء): a yearly % of the land's market value on undeveloped land inside the city, charged monthly from the first January after the purchase while your undeveloped plots there (this one plus the others you own) add up to ${fSAR(RE_WHITE_LAND_MIN_AREA)} m² or more. Riyadh charges by zone (10 / 7.5 / 5 / 2.5%); 0 outside those zones. A villa plot is below the threshold and pays nothing.`,
     landZakat: `Land held to sell is trade goods: zakat of ${RE_LAND_ZAKAT_PCT}% of its market value a year (ZATCA), charged monthly here. Land you hold for yourself: none.`,
     landSale: `Selling the land in that year: its market value then less ${inp.landSellCostPct}% selling costs (broker and RETT) lands in your cash; the mortgage on the land is repaid first, with the early-settlement fee; from then on the land is no longer counted as yours.`,
+    properties: "The properties you already own. A plan may mortgage one (the bank lends up to its LTV × its value — today's or the market value at the time, see Bank terms — less what you still owe on a loan secured on it; nothing once it is sold). The rent a property earns today goes into your cash whether you build or not (the bank does not count it as income). A property sold at move-in pays for the project — only the building side sells it, and its value leaves the comparison; one sold in a month you set is sold whether you build or not, so both sides get the proceeds. Any mortgage on it, and any loan secured on it, is repaid from the sale with the early-settlement fee. The home you live in today can be let after you move (a yearly % of its value) or sold at move-in; the not-building side keeps it as it is.",
     terms: "One set of terms per loan type, used by every strategy and by the optimizer. Rates are entered as your bank quotes them (flat \"hamish\" or APR — the switch on this card); the tool converts a flat rate to the APR it amortises with, and shows the effective yearly rate (monthly compounding) next to it.",
   };
 }
 
+// a result's property sales (r.sales; an older result's ownSale alone)
+const reSalesOf = (r) => (r && r.sales) || (r && r.ownSale ? [{ isHome: true, ...r.ownSale }] : []);
 /* ---------- "how did you get this number": project money only (presentation; adds up exactly to the engine) ----------
    Your own cash + every loan, minus what the project and the payoffs cost — no salary, living costs, instalments or
    investment return. `total` is the rule-6 cash on hand WITHOUT growth; `ret` is the growth on it up to `upto`. */
@@ -88,14 +91,15 @@ function fundingBridgeRows(r, upto, inp, prj) {
   const spend = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.spend, 0);
   add(build ? `Land price + ${inp.rettPct}% transfer tax${prj.landBroker > 0 ? ` + ${inp.landBrokerPct}% broker` : ""}` : "Purchase price, tax, broker and finishing", -landPart, fCal(prj.landMonth), prj.landMonth + 0.5);
   r.facilities.filter((f) => inRange(f.startedAt) && f.amount > 0 && f.key !== "rf").forEach((f) => {
-    add(f.key === "lm" ? (build ? "Land mortgage, paid to the seller" : "Purchase mortgage, paid to the seller") : f.refi ? `${f.owner === "B" ? "Your spouse's new" : "New"} personal loan(s), bank's maximum` : `Loan paid to you: ${f.label.toLowerCase()}`, f.amount, f.key === "lm" ? `${fCal(f.startedAt)} · never passes through your hands` : fCal(f.startedAt), f.startedAt);
+    add(f.key === "lm" ? (build ? "Land mortgage, paid to the seller" : "Purchase mortgage, paid to the seller") : f.refi ? `${f.owner === "B" ? "Your spouse's new" : "New"} personal loan(s), bank's maximum` : `Loan paid to you: ${f.labelLc || f.label.toLowerCase()}`, f.amount, f.key === "lm" ? `${fCal(f.startedAt)} · never passes through your hands` : fCal(f.startedAt), f.startedAt);
     if (f.refi) add(`The bank clears ${f.refi.names.join(" + ")} with it (refinance)`, -f.refi.payoff, `${fCal(f.startedAt)} · paid by the bank directly, incl. early-settlement fees`, f.startedAt);
   });
   add("Construction and finishing", -(spend - landPart), `${fCal(prj.start + 1)} → ${fCal(Math.min(upto, prj.start + prj.bm))}`, prj.start + 1);
   const feeFacs = r.facilities.filter((f) => inRange(f.startedAt) && f.key !== "rf" && f.fees > 0.5);
   add("Bank fees on new loans", -feeFacs.reduce((a, f) => a + f.fees, 0), null, feeFacs.length ? Math.min(...feeFacs.map((f) => f.startedAt)) : 0);
-  (r.prepaid || []).filter((x) => inRange(x.t)).forEach((x) => add(`Mortgage paid off early: ${x.name.toLowerCase()}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`, x.t));
-  if (r.ownSale && inRange(r.ownSale.t)) add("Sale of the home you lived in, net", r.ownSale.net, `${fCal(r.ownSale.t)} · after selling costs${r.ownSale.payoff > 0 ? " and repaying its mortgage" : ""}`, r.ownSale.t);
+  (r.prepaid || []).filter((x) => inRange(x.t)).forEach((x) => add(`Mortgage paid off early: ${x.nameLc || x.name.toLowerCase()}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`, x.t));
+  // the properties you sold (the home you lived in, or another one), net of selling costs and of the loans repaid from the sale
+  reSalesOf(r).filter((s) => inRange(s.t)).forEach((s) => add(s.isHome ? "Sale of the home you lived in, net" : `Sale of ${s.name}, net`, s.net, `${fCal(s.t)} · after selling costs${s.payoff > 0 ? " and repaying its mortgage" : ""}${s.oldPayoff > 0 ? ` and ${(s.oldNames || []).join(" + ")}` : ""}${s.side === "both" ? " · sold whether or not you build" : ""}`, s.t));
   if (r.landSale && inRange(r.landSale.t)) add("Sale of the land, net", r.landSale.net, `${fCal(r.landSale.t)} · after selling costs${r.landSale.payoff > 0 ? " and repaying the land mortgage" : ""}`, r.landSale.t);
   const holdMs = r.months.filter((x) => x.t <= upto && x.holding > 0);
   add("Holding the land (white-land fee, zakat)", -holdMs.reduce((a, x) => a + x.holding, 0), holdMs.length ? `${fCal(holdMs[0].t)} → ${fCal(holdMs[holdMs.length - 1].t)}` : null, holdMs.length ? holdMs[0].t : 0);
@@ -123,7 +127,14 @@ function describePlan(o, inp, prj, build) {
   const mortT = [o.lmUse ? prj.landMonth : null, ...eqs.map((m) => tw(m.when, m.month)), o.coUse ? prj.occupy : null].filter((x) => x != null);
   if (mortT.length && o.settlePolicy !== "none") add(Math.min(...mortT), 1, o.settlePolicy === "forMax" ? "first pay off as many old personal loans as it takes for the mortgage to reach the most the property allows (from your own cash, before the bank grants it)" : "first pay off old personal loans only if a mortgage would not fit in the bank's test otherwise (from your own cash, before the bank grants it)");
   if (o.lmUse) add(prj.landMonth, 2, `mortgage the ${build ? "land" : "purchase"} when it is bought (${fCal(prj.landMonth)}) for the maximum the bank allows — paid to the seller`);
-  eqs.forEach((m) => add(tw(m.when, m.month), 2.1, `mortgage the property you already own ${whenTxt(m.when, m.month, prj)} for the maximum the bank allows`));
+  const props = inp.properties || [], nameOf = (id) => { const P = props.find((x) => String(x.id) === String(id)); return P ? P.name : eqs.length === 1 ? "the property you already own" : `property ${id}`; };
+  eqs.forEach((m) => add(tw(m.when, m.month), 2.1, `mortgage ${nameOf(m.id)} ${whenTxt(m.when, m.month, prj)} for the maximum the bank allows`));
+  // the properties you sell (the home you live in at move-in on this side; another at move-in on this side, or in a month you set on both)
+  const livesIn = prj.moveIn !== false && !((+inp.rentOutFixed || 0) > 0 || (+inp.rentOutPct || 0) > 0);
+  props.filter((P) => P.plan === "sell" && P.value > 0 && (!P.isHome || (livesIn && !(inp.rentNow > 0)))).forEach((P) => {
+    const t = P.isHome ? (P.sellAt === "moveIn" ? prj.occupy : Math.max(prj.occupy, P.sellAt)) : P.sellAt === "moveIn" ? prj.occupy : Math.max(1, P.sellAt), both = !P.isHome && P.sellAt !== "moveIn";
+    add(t, 8.1, `sell ${P.isHome ? "the home you live in" : P.name} ${t === prj.occupy ? `at move-in (${fCal(t)})` : `in ${fCal(t)}`} — its value then less ${P.sellCostPct}% selling costs, any mortgage on it repaid${both ? "; you would sell it whether or not you build, so the comparison does too" : ""}`);
+  });
   // تضامن: whose name the personal loans are in
   const plWho = !(inp.joint && inp.joint.on) ? "take personal loan(s)" : o.plBy === "spouse" ? "your spouse takes personal loan(s) in their name" : o.plBy === "both" ? "each of you takes personal loan(s) in your own name" : "take personal loan(s) in your name";
   if (o.plWhen !== "none") add(tw(o.plWhen, o.plMonth), 2.2, `${plWho} ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows, ${refiTxt(o)}`);
@@ -149,7 +160,7 @@ function describeOption(o, inp, prj) {
   return s.join(", then ") + ".";
 }
 const newDebtOf = (r) => r.newDebtTotal || 0;
-const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two new loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}${f.prepaidAt != null ? ` · paid off early ${fCal(f.prepaidAt)}` : ""}${f.part ? ` · ${f.part === 1 ? "first" : "second"} part of the step` : ""}${f.takenEarly != null ? ` · taken when your cash ran short (planned ${fCal(f.takenEarly)})` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
+const facTxt = (f) => f.startedAt !== null && f.amount > 0 ? `${fS(f.amount)} ${fMon(f.startedAt)} · ${fSAR(f.pmt)}/mo (bank max ${fS(f.capacity ? f.capacity.cap : 0)})${f.split ? ` as two new loans (${fS(f.split[0])} + ${fS(f.split[1])})` : ""}${f.refi ? ` · buys out ${f.refi.names.join(" + ")} · ${fS(f.refi.net)} to you` : ""}${f.prepaidAt != null ? ` · paid off early ${fCal(f.prepaidAt)}` : ""}${f.soldAt != null ? ` · repaid ${fCal(f.soldAt)} when ${f.propName || "the property"} was sold` : ""}${f.part ? ` · ${f.part === 1 ? "first" : "second"} part of the step` : ""}${f.takenEarly != null ? ` · taken when your cash ran short (planned ${fCal(f.takenEarly)})` : ""}` : f.capacity ? (f.key === "rf" ? `not taken — ${f.capacity.limitedBy}` : `refused — ${f.capacity.limitedBy}`) : "not used";
 
 /* ---------- one-time notice when an older scenario's per-strategy bank terms were merged into one set ---------- */
 const RE_LOAN_NAME = { lm: "land mortgage", eq: "owned-property mortgage", pl: "personal loan", co: "cash-out mortgage" };
@@ -188,7 +199,7 @@ const fSARm = (n) => n == null || isNaN(n) ? "—" : (Math.round(n) < 0 ? "−" 
 function cashReconcile(r, upto, inp, prj) {
   const fb = fundingBridgeRows(r, upto, inp, prj);
   const ms = r.months.filter((x) => x.t >= 1 && x.t <= upto), sum = (f) => ms.reduce((a, x) => a + f(x), 0);
-  const salary = sum((x) => x.inc - x.liv - x.rentPaid + x.rentIn - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost);
+  const salary = sum((x) => x.inc - x.liv - x.rentPaid + x.rentIn + (x.propRentIn || 0) - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost);
   // what your salary did up to that month, line by line (no return on cash); the lines add up to `salary`
   const extra = sum((x) => x.extraPay || 0);
   const salaryRows = [
@@ -196,6 +207,7 @@ function cashReconcile(r, upto, inp, prj) {
     ["Living costs", -sum((x) => x.liv), null],
     ["Rent you pay until you move in", -sum((x) => x.rentPaid), null],
     ["Rent received", sum((x) => x.rentIn), null],
+    ["Rent your properties earn", sum((x) => x.propRentIn || 0), "what they earn today, until one is sold"],
     ["Old-loan instalments", -sum((x) => x.existInst), "while your old loans run"],
     ["New-loan instalments", -sum((x) => x.lmPay + x.eqPay + x.plPay + x.coPay + x.rfPay), extra > 0.5 ? `incl. ${fSAR(extra)} of extra payments` : null],
     ["Upkeep", -sum((x) => x.ownerCost), "maintenance and insurance from move-in"],
@@ -262,7 +274,8 @@ function rePayoffRows(f, extraMo, feeMonths) {
 // r (optional, a result or a tool summary): a loan the tool took early because your cash would run short (r.covered) is
 // named "when your cash runs short". joint (optional): تضامن is on — the personal loans then say whose they are (taken from r
 // when not given)
-function planTitle(o, build, r, joint) {
+// props (optional): your properties (inp.properties), to name the one a mortgage step is on (else the result's facilities name it)
+function planTitle(o, build, r, joint, props) {
   const when = { start: "now", land: "when the land is bought", build: "at build start", completion: "at move-in", month: "in a month you chose" };
   const cov = r && r.covered ? RE_PL_STEP[r.covered.key] || r.covered.key : null, short = r && r.covered && r.covered.split ? "in two parts, when your cash runs short" : "when your cash runs short";
   const pl = o.plWhen && o.plWhen !== "none", pl2 = !!o.pl2Use, parts = [];
@@ -270,8 +283,10 @@ function planTitle(o, build, r, joint) {
   const J = joint != null ? !!joint : !!(r && (r.spl != null || (r.months && r.months[0] && r.months[0].incB != null)));
   const pls = !J ? "personal loans" : o.plBy === "spouse" ? "your spouse's personal loans" : o.plBy === "both" ? "personal loans for both of you" : "your personal loans";
   if (o.lmUse) parts.push(build ? "mortgage the land" : "mortgage the purchase");
-  const eqW = reEqWhen(o);   // v2: the plan's mortgage on a property you own (plan.mortgages)
-  if (eqW !== "none") parts.push(`mortgage the property you own ${cov === "eq" ? short : when[eqW] || ""}`.trim());
+  // the plan's mortgages on properties you own (plan.mortgages), each named
+  const eqs = rePlanMorts(o), eqW = eqs.length ? eqs[0].when : "none";
+  const nameOf = (id) => { const P = props && props.find((x) => String(x.id) === String(id)); if (P) return P.name; const f = r && (r.eqs || []).find((x) => x.propId === id); if (f && f.propName) return f.propName; return eqs.length === 1 ? "the property you own" : `property ${id}`; };
+  eqs.forEach((m) => parts.push(`mortgage ${nameOf(m.id)} ${cov === `eq:${m.id}` ? short : when[m.when] || ""}`.trim()));
   if (pl || pl2) parts.push(pl && pl2 ? `${pls} ${plW} and ${pl2W}` : pl ? `${pls} ${plW}` : `${pls} ${pl2W}`);
   if (o.coUse) parts.push("a cash-out mortgage on the new home at move-in");
   if (!parts.length) return "Pay from your cash — no new loans";
@@ -285,12 +300,12 @@ function planSteps(r, build) {
   (r.payoffs || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off ${x.name}`, amount: x.cost, note: "from your cash" }));
   r.facilities.filter((f) => f.startedAt != null && f.amount > 0 && f.key !== "rf").forEach((f) => {
     const who = !J ? "" : f.owner === "B" ? "Your spouse's " : "Your ", P = who ? "personal loan" : "Personal loan";
-    const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : f.key === "eq" ? "Mortgage on your property" : f.key === "co" ? "Cash-out mortgage" : f.split ? `${who}${who ? "two new personal loans" : "Two new personal loans"}` : f.part ? `${who}${P}, ${f.part === 1 ? "first" : "second"} part` : `${who}${P}`;
+    const label = f.key === "lm" ? (build ? "Land mortgage" : "Purchase mortgage") : /^eq/.test(f.key) ? `Mortgage on ${f.propName || "your property"}` : f.key === "co" ? "Cash-out mortgage" : f.split ? `${who}${who ? "two new personal loans" : "Two new personal loans"}` : f.part ? `${who}${P}, ${f.part === 1 ? "first" : "second"} part` : `${who}${P}`;
     const note = (f.key === "lm" ? "paid to the seller" : f.refi ? `the bank clears ${f.refi.names.join(" + ")}; ${fS(f.refi.net)} to you` : "paid to you") + (f.takenEarly != null ? " · taken when your cash runs short" : "");
     s.push({ t: f.startedAt, kind: f.key, label, amount: f.amount, note });
   });
-  (r.prepaid || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off the ${x.name.toLowerCase()} early`, amount: x.cost, note: "from your cash" }));
-  if (r.ownSale) s.push({ t: r.ownSale.t, kind: "cash", label: "Sell the home you lived in", amount: r.ownSale.net, note: "net, into your cash" });
+  (r.prepaid || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off the ${x.nameLc || x.name.toLowerCase()} early`, amount: x.cost, note: "from your cash" }));
+  reSalesOf(r).forEach((x) => s.push({ t: x.t, kind: "cash", label: x.isHome ? "Sell the home you lived in" : `Sell ${x.name}`, amount: x.net, note: `net, into your cash${x.payoff > 0 || x.oldPayoff > 0 ? `, after repaying ${[x.payoff > 0 ? "its mortgage" : null, x.oldPayoff > 0 ? (x.oldNames || []).join(" + ") : null].filter(Boolean).join(" and ")}` : ""}${x.side === "both" ? " · sold whether or not you build" : ""}` }));
   if (r.landSale) s.push({ t: r.landSale.t, kind: "cash", label: "Sell the land", amount: r.landSale.net, note: r.landSale.payoff > 0 ? "net, into your cash, after repaying the land mortgage" : "net, into your cash" });
   return s.sort((a, b) => a.t - b.t);
 }
@@ -321,7 +336,11 @@ function reWealthParts(r) {
   const ms = r.months, end = ms[ms.length - 1], sum = (k) => ms.reduce((a, m) => a + (m[k] || 0), 0);
   const refi = [r.pl, r.pl2, r.spl, r.spl2].filter((f) => f && f.refi && f.refi.items).flatMap((f) => f.refi.items);
   const oldPaid = (r.payoffs || []).filter((x) => x.old !== false).reduce((a, x) => a + x.cost, 0) + refi.filter((x) => x.old).reduce((a, x) => a + x.cost, 0);
-  const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + (r.ownSale ? r.ownSale.fee : 0) + (r.landSale ? r.landSale.fee : 0);
+  // the properties you sold: a sale repays the plan's mortgage on it (its fee is a new-loan cost) and any old loan secured on it
+  // (its payoff is an old-loan cost); what only this side sold counts against what it would be worth (ownGone); a property sold
+  // on both sides drops out
+  const sales = reSalesOf(r), oldSold = sales.reduce((a, s) => a + (s.oldPayoff || 0), 0);
+  const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + sales.reduce((a, s) => a + (s.fee || 0), 0) + (r.landSale ? r.landSale.fee : 0);
   const land = r.kind === "land";   // v2: land only — the land sold (its price after costs; its value is 0 after) and what holding it cost
   const parts = [
     { key: "value", label: land ? "The land's value at the end" : "The home's value at the end", v: end.value },
@@ -329,11 +348,12 @@ function reWealthParts(r) {
     { key: "cost", label: "What the project cost (land, taxes, fees, construction)", v: -sum("spend") },
     { key: "newLoans", label: "Profit and fees on the new loans", v: -(sum("newInt") + newFees) },
     { key: "bridge", label: "Bridge money while your cash was short (profit)", v: -sum("bridgeInt") },
-    { key: "oldLoans", label: "Old loans: profit and fees, compared with not building", v: end.oldSavedCum + sum("renterSettle") + end.oldDebtGap - oldPaid },
+    { key: "oldLoans", label: "Old loans: profit and fees, compared with not building", v: end.oldSavedCum + sum("renterSettle") + end.oldDebtGap - oldPaid - oldSold },
     { key: "rent", label: "Rent you stop paying", v: end.rentSavedCum },
     { key: "rentIn", label: "Rent you receive", v: end.rentInCum },
+    { key: "propRent", label: "Rent your properties earn, compared with not building", v: sum("propRentIn") - sum("propRentBase") },
     { key: "upkeep", label: "Upkeep of the new home", v: -end.upkeepCum },
-    { key: "sold", label: "The home you sold (price after costs, less what it would be worth)", v: r.ownSale ? r.ownSale.value - r.ownSale.costs - end.ownGone : -end.ownGone },
+    { key: "sold", label: sales.length > 1 || (sales.length === 1 && !sales[0].isHome) ? "Properties you sold (price after costs, less what they would be worth)" : "The home you sold (price after costs, less what it would be worth)", v: sales.filter((s) => s.side !== "both").reduce((a, s) => a + s.value - s.costs, 0) - end.ownGone },
     { key: "growth", label: "Growth on your cash, compared with not building", v: sum("ret") - sum("rRet") },
   ];
   return { parts, total: parts.reduce((a, x) => a + x.v, 0) };
