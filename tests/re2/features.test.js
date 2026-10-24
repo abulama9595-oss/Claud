@@ -19,7 +19,10 @@ test('the new settings change nothing while they are off', () => {
   const fam = { ...FAMILY2, properties: [{ ...FAMILY2.properties[0], plan: 'sell' }] };
   assert.notStrictEqual(key(E.computeRE(fam)), key(E.computeRE(FAMILY2)), 'selling the home you live in changes the answer');
   assert.strictEqual(key(E.computeRE({ ...fam, rentNow: 7000 })), key(E.computeRE({ ...FAMILY2, rentNow: 7000 })), 'not when you rent today');
-  assert.strictEqual(key(E.computeRE({ ...fam, properties: [{ ...fam.properties[0], isHome: false }] })), key(E.computeRE({ ...FAMILY2, properties: [{ ...FAMILY2.properties[0], isHome: false }] })), 'not for a property you do not live in (this phase)');
+  // a property you do not live in with plan "sell" is sold at move-in too (v2): to pay for the project, on the building side only
+  const other = E.computeRE({ ...fam, properties: [{ ...fam.properties[0], isHome: false }] });
+  assert.notStrictEqual(key(other), key(E.computeRE({ ...FAMILY2, properties: [{ ...FAMILY2.properties[0], isHome: false }] })), 'a property you do not live in is sold at move-in too');
+  other.results.forEach((r) => { if (r) { assert.strictEqual(r.sales.length, 1); assert.strictEqual(r.sales[0].side, 'strategy'); assert.strictEqual(r.sales[0].t, r.occupy); assert.strictEqual(r.ownSale, null); } });
 });
 
 test('annex rent: received from the month after move-in, growing with rent growth, and added at face value to net worth', () => {
@@ -96,7 +99,8 @@ test('stress tests, break-evens, ready villa and loan worth agree with direct re
   const rb = E.readyBreakEvenRE(inp, idx);
   if (rb.price != null) assert.ok(Math.abs(rb.atPrice.econAdv - rb.build.econAdv) < rb.value * 1e-4, 'the villa at that price does as well as building');
   for (const w of E.loanWorthRE(inp, idx)) {
-    const off = { lm: { lmUse: false }, eq: { mortgages: {} }, pl: { plWhen: 'none' }, pl2: { pl2Use: false }, co: { coUse: false } }[w.key];
+    // (a mortgage on a property you own is eq:<id>; the family owns one property, so leaving its step out leaves no mortgage step)
+    const off = /^eq/.test(w.key) ? { mortgages: {} } : { lm: { lmUse: false }, pl: { plWhen: 'none' }, pl2: { pl2Use: false }, co: { coUse: false } }[w.key];
     const p = E.mergeRE(inp), wo = E.reRunOne({ ...p, plans: p.plans.map((o, j) => j === idx ? { ...o, ...off } : o) }, idx).r;
     assert.ok(near(w.gain, r.econAdv - wo.econAdv, 1e-6) && near(w.perMillionPV, (r.econPV - wo.econPV) / w.amount * 1e6, 1e-6));
   }
@@ -235,11 +239,11 @@ test("paying a loan off early: each loan's schedule is the engine's, and so is t
         if (!pr) continue;
         pr.rows.forEach((x) => { assert.ok(x.fee >= -1e-6 && near(x.total, x.bal + x.fee, 1e-6), `${at} ${k} row`); rows++; });
         assert.strictEqual(pr.rows[pr.rows.length - 1].bal, 0, `${at} ${k}: the last row is paid off`);
-        (r.prepaid || []).filter((x) => x.key === k).forEach((x) => { const a = pr.at(x.t); assert.ok(a && near(a.total, x.cost, 0.01), `${at} ${k}: the engine's payoff ${x.cost} vs ${a && a.total}`); prepays++; });
+        (r.prepaid || []).filter((x) => x.key === r[k].key).forEach((x) => { const a = pr.at(x.t); assert.ok(a && near(a.total, x.cost, 0.01), `${at} ${k}: the engine's payoff ${x.cost} vs ${a && a.total}`); prepays++; });
         // the plan's own payoff, whatever ended the loan early, costs what the engine booked
         const e = pr.early;
         if (!e) { assert.ok(r[k].settledAt == null, `${at} ${k}: ended early without an early payoff`); continue; }
-        const booked = e.kind === "prepaid" ? r.prepaid.find((x) => x.key === k && x.t === e.t).cost
+        const booked = e.kind === "prepaid" ? r.prepaid.find((x) => x.key === r[k].key && x.t === e.t).cost
           : e.kind === "refinanced" ? [r.pl, r.pl2].map((g) => g.refi && g.refi.items.find((x) => x.id === k && !x.old)).find(Boolean).cost
           : e.kind === "sold" ? r.ownSale.payoff
           : r.payoffs.find((x) => x.t === e.t && !x.old && x.name === r[k].label).cost;
@@ -276,7 +280,7 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
         // the personal-loan step was taken in two parts: one loan in the month the gap began, the rest later but by its
         // planned month; the plan then works every month, or needs less bridge money than with the step taken whole
         const c = r.covered, g = gaps.find((x) => x.from === c.at);
-        assert.ok(g && g.closedBy.includes(c.key) && d[c.key].startedAt === g.to && c.plannedAt === g.to, `${at}: split gap`);
+        assert.ok(g && g.closedBy.includes(c.key) && E.reFacOf(d, c.key).startedAt === g.to && c.plannedAt === g.to, `${at}: split gap`);
         assert.ok(r.pl.startedAt === c.at && r.pl.part === 1 && !r.pl.split && r.pl2.part === 2 && r.pl2.startedAt > c.at && r.pl2.startedAt <= c.plannedAt, `${at}: split parts`);
         const whole = E.rePlanSimulate(p, prj, { ...(r.refiFallback ? { ...r.plan, refiMode: 'cash' } : r.plan), _bridge: true });
         assert.ok(r.feasible || (r.bridged && c.partial && (!whole.bridged || r.bridgePeak < whole.bridgePeak)), `${at}: works, or less bridge money`);
@@ -289,7 +293,7 @@ test("a cash gap that one of the plan's loans closes: covered by taking that loa
       if (r.covered && !r.covered.split) {
         // the loan that closed a gap is taken in the month that gap began, and the plan then works every month
         const c = r.covered, g = gaps.find((x) => x.from === c.at);
-        assert.ok(r.feasible && g && g.closedBy.includes(c.key) && d[c.key].startedAt === g.to && r[c.key].startedAt === c.at, `${at}: covered`);
+        assert.ok(r.feasible && g && g.closedBy.includes(c.key) && E.reFacOf(d, c.key).startedAt === g.to && E.reFacOf(r, c.key).startedAt === c.at, `${at}: covered`);
         assert.ok(r.notes.length && r.events.some((e) => e.kind === 'cover' && e.t === c.at), `${at}: noted`);
         // the "covered by a loan" row says how short the cash would be and how much the loan brings
         assert.ok(r.events.some((e) => e.kind === 'cover' && e.t === c.at && e.text.includes(`${E.fS(c.gap.peak)} deficit is covered`) && e.text.includes(`lends ${E.fS(c.amount)}`)), `${at}: amounts in the row`);

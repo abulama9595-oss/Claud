@@ -43,23 +43,26 @@ function randomScenario(E, seed) {
   };
 }
 
-// the same household in the NEW shape (v2): the project as a kind, 0–2 properties you own (one of them the home you live in
-// when you pay no rent), a plan's mortgages on them, a loan secured on one, the new settings. For the new tests —
-// randomScenario keeps the OLD shape for the fork-parity tests.
+// the same household in the NEW shape (v2): the project as a kind, 0–3 properties you own (one of them the home you live in
+// when you pay no rent — kept, let after you move or sold; the others earning rent today or not, kept, sold at move-in or sold in a
+// month you set), old loans secured on some of them (an existing mortgage), each plan's mortgages on 0–2 of them, the new
+// settings. For the new tests — randomScenario keeps the OLD shape for the fork-parity tests.
 function randomScenario2(E, seed) {
   const r = rng(seed + 90000), pick = (a) => a[Math.floor(r() * a.length)], between = (a, b, step = 1) => a + Math.round((r() * (b - a)) / step) * step;
   const { mode, acquire, ownedValue, ownedLtv, ...rest } = randomScenario(E, seed);
-  const props = [];
-  for (let k = 0, n = pick([0, 1, 1, 2]); k < n; k++) {
-    const home = k === 0 && rest.rentNow === 0 && r() < 0.7;
-    props.push({ id: `p${k + 1}`, name: `Property ${k + 1}`, value: between(1000000, 8000000, 50000), ltv: pick([60, 70, 70]), canMortgage: r() > 0.15, rentNow: !home && r() < 0.3 ? between(2000, 10000, 500) : 0, isHome: home,
-      plan: pick(['keep', 'keep', 'sell']), sellAt: 'moveIn', letAfterMove: r() < 0.3, letYield: pick([3, 4]), sellCostPct: pick([2.5, 7.5]) });
+  const props = [], names = ['Villa A', 'Flat B', 'Plot C'];
+  for (let k = 0, n = pick([0, 1, 1, 2, 3]); k < n; k++) {
+    const home = k === 0 && rest.rentNow === 0 && r() < 0.7, plan = pick(['keep', 'keep', 'keep', 'sell']);
+    props.push({ id: `p${k + 1}`, name: names[k], value: between(500000, 8000000, 50000), ltv: pick([50, 60, 70, 70]), canMortgage: r() > 0.15, rentNow: !home && r() < 0.35 ? between(2000, 12000, 500) : 0, isHome: home,
+      plan, sellAt: plan === 'sell' && r() < 0.5 ? between(1, 60) : 'moveIn', letAfterMove: home && r() < 0.4, letYield: pick([3, 4]), sellCostPct: pick([2.5, 7.5]) });
   }
+  // an existing mortgage secured on one of them: the loan names the property, or the property names the loan
   const loans = rest.existingLoans.map((l) => ({ ...l }));
-  if (props.length && loans.length && r() < 0.3) loans[0].securedOn = props[0].id;   // an existing mortgage on it
+  loans.forEach((l) => { if (props.length && r() < 0.25) { const P = pick(props); if (r() < 0.5) l.securedOn = P.id; else P.existingLoanId = l.id; } });
   const plans = rest.plans.map((o) => {
-    const { eqWhen, eqMonth, ...q } = o, when = pick(['none', 'none', 'start', 'land', 'build', 'completion', 'month']);
-    return { ...q, mortgages: when === 'none' || !props.length ? {} : { [pick(props).id]: { when, month: when === 'month' ? between(0, 36) : 0 } }, prepayAfter: r() < 0.15 ? pick([0, 12, 24]) : null };
+    const { eqWhen, eqMonth, ...q } = o, ids = props.map((P) => P.id), morts = {};
+    for (let k = 0, n = ids.length ? pick([0, 0, 1, 1, 2]) : 0; k < n && ids.length; k++) { const id = ids.splice(Math.floor(r() * ids.length), 1)[0], when = pick(['start', 'land', 'build', 'completion', 'month']); morts[id] = { when, month: when === 'month' ? between(0, 36) : 0 }; }
+    return { ...q, mortgages: morts, prepayAfter: r() < 0.15 ? pick([0, 12, 24]) : null };
   });
   return { ...rest, kind: acquire === 'buy' ? 'readyVilla' : 'landVilla', properties: props, existingLoans: loans, plans, propertyValueBasis: pick(['market', 'market', 'today']), samaBands: r() < 0.7,
     partRentAnnual: r() < 0.2 ? between(20000, 80000, 5000) : 0, cashZakatPct: r() < 0.2 ? 2.5 : 0, bridgeRate: r() < 0.2 ? between(5, 9, 0.5) : null, rentFreezeUntil: pick([null, '2030-09']) };
@@ -91,6 +94,12 @@ const jointScenarios = (E, n = 40) => Array.from({ length: n }, (_, k) => ({ lab
 // the fixed household in the new shape: the home it lives in is one of its properties
 const FAMILY2 = { kind: 'landVilla', income: FAMILY.income, livingExpenses: FAMILY.livingExpenses, cashAvailable: FAMILY.cashAvailable, rentNow: 0, existingLoans: FAMILY.existingLoans,
   properties: [{ id: 'p1', name: 'Our home', value: 3500000, ltv: 70, canMortgage: true, isHome: true }] };
+// a synthetic household with three properties: the home it lives in (let after the move), a flat that earns rent today and carries an
+// existing mortgage (a plan mortgages it too), and a plot sold in month 30 (on both sides — it would be sold anyway)
+const FAMILY3 = { kind: 'landVilla', asOf: '2026-10', income: 90000, livingExpenses: 25000, cashAvailable: 1200000, rentNow: 0, landMonth: 3, buildStart: 6, buildMonths: 18, horizon: 15,
+  existingLoans: [{ id: 1, name: 'Car', balance: 120000, installment: 3900, monthsLeft: 34, rate: 6.5, ageMonths: 26 }, { id: 2, name: 'Flat mortgage', balance: 900000, installment: 8200, monthsLeft: 150, rate: 4.5, ageMonths: 30, securedOn: 'p2' }],
+  properties: [{ id: 'p1', name: 'Our home', value: 3000000, ltv: 70, isHome: true, letAfterMove: true, letYield: 3.5 }, { id: 'p2', name: 'Flat B', value: 2500000, ltv: 70, rentNow: 7000 }, { id: 'p3', name: 'Plot C', value: 1500000, ltv: 60, plan: 'sell', sellAt: 30, sellCostPct: 7.5 }],
+  plans: [{ enabled: true, lmUse: true, mortgages: { p2: { when: 'build', month: 0 } } }, { enabled: true, lmUse: true, mortgages: { p3: { when: 'land', month: 0 }, p2: { when: 'build', month: 0 } }, plWhen: 'build' }, { enabled: true, mortgages: { p1: { when: 'start', month: 0 } }, pl2Use: true }, { enabled: true, lmUse: true, coUse: true, mortgages: { p3: { when: 'month', month: 36 } } }] };
 const scenarios2 = (E, n = 60) => [{ label: 'defaults2', inp: { kind: 'landVilla' } }, { label: 'family2', inp: FAMILY2 }, { label: 'ready2', inp: { kind: 'readyVilla', propertyPrice: 2800000 } }]
   .concat(Array.from({ length: n }, (_, k) => ({ label: `random2#${k + 1}`, inp: randomScenario2(E, k + 1) })));
 
@@ -112,4 +121,4 @@ function kindScenarios(E, n = 48) {
   });
 }
 
-module.exports = { ROOT, loadEngine, rng, randomScenario, randomScenario2, randomJoint, FAMILY, FAMILY2, scenarios, scenarios2, jointScenarios, kindScenarios, KINDS2 };
+module.exports = { ROOT, loadEngine, rng, randomScenario, randomScenario2, randomJoint, FAMILY, FAMILY2, FAMILY3, scenarios, scenarios2, jointScenarios, kindScenarios, KINDS2 };

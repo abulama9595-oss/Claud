@@ -67,7 +67,8 @@ test('تضامن: each of you stays within your own limit when a loan is taken; 
         if (forA && mo.payA > incA * capA / 100 + 1e-6) flag('your limit', `${label} M${t}: ${mo.payA} > ${incA * capA / 100}`);
         const jointWithB = facs.some((f) => ((f.key === 'lm' || f.key === 'co') && f.shareA < 1 - 1e-9 || f.key === 'spl' || f.key === 'spl2') && f.startedAt === t0);
         if (jointWithB && mo.payB > incB * capB / 100 + 1e-6) flag("your spouse's limit", `${label} M${t}: ${mo.payB} > ${incB * capB / 100}`);
-        const mortA = facs.filter((f) => ['lm', 'eq', 'co'].includes(f.key) && f.startedAt < t && (f.settledAt == null || f.settledAt > t)).reduce((a, f) => a + (mo[f.key + 'Pay'] - (f.key === 'lm' ? mo.extraPay : 0)) * share(f), 0);
+        // (every mortgage on a property you own is yours: months.eqPay sums them all)
+        const mortA = facs.filter((f) => ['lm', 'co'].includes(f.key) && f.startedAt < t && (f.settledAt == null || f.settledAt > t)).reduce((a, f) => a + (mo[f.key + 'Pay'] - (f.key === 'lm' ? mo.extraPay : 0)) * share(f), 0) + mo.eqPay;
         if (mortA > incA * mortPct / 100 + 1e-6) flag('your mortgage limit', `${label} M${t}: ${mortA} > ${incA * mortPct / 100}`);
       }
     });
