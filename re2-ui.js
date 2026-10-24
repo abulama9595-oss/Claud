@@ -65,6 +65,11 @@ function reExpl(inp) {
     cost: "Land (grown at the appreciation rate to the purchase month) + RETT + the broker's fee on the land + construction (built-up m² × SAR/m², inflated to the start month) + soft costs + contingency + extras + any cost overrun + VAT.",
     value: `The home's market value = land + building. The land grows at the appreciation rate (${inp.appreciation}% a year) from the month it is bought. The building is worth what it costs to build (construction + soft costs + extras) × (1 + self-build uplift ${inp.devMarginPct}%) — the uplift is on what you build, not on the land — added as it is built, then it loses ${inp.buildDeprPct == null ? 2 : inp.buildDeprPct}% of that value a year from move-in (straight-line, never below zero). VAT, RETT, fees, contingency and overruns add no value. A ready home you buy keeps its price + finishing growing with the market.`,
     buildDepr: "Wear and age: each year from move-in the building loses this % of what it was worth when finished (straight-line, so 2% means it is worth nothing after 50 years). The land is not affected — it keeps growing at the appreciation rate. 0 keeps the building's value flat.",
+    letting: `A building's units. Let out entirely: every unit is let from the month after completion and you do not move in (you keep paying the rent you pay today). You live in one: the other units are let like an annex of your home. Rent per unit a month as entered — or a rent per m² a year on ${inp.netLettablePct}% of the built area, spread over the units. Net of ${inp.vacancyPct}% vacancy and a ${inp.mgmtPct}% management fee (+ VAT). The rent goes into your cash; the bank does not count it as income.`,
+    rentFreeze: inp.rentFreezeUntil ? `Riyadh rent freeze: no rent increase — on the rent you receive or the rent you pay — until ${inp.rentFreezeUntil}; from then on rents take their yearly steps (${inp.rentGrowth}% a year, the first a year after the freeze ends). Blank for a city without the freeze.` : `No rent freeze: rents grow ${inp.rentGrowth}% a year in yearly steps.`,
+    whiteLand: `White-land fee (رسوم الأراضي البيضاء): a yearly % of the land's market value on undeveloped land inside the city, charged monthly from the first January after the purchase while your undeveloped plots there (this one plus the others you own) add up to ${fSAR(RE_WHITE_LAND_MIN_AREA)} m² or more. Riyadh charges by zone (10 / 7.5 / 5 / 2.5%); 0 outside those zones. A villa plot is below the threshold and pays nothing.`,
+    landZakat: `Land held to sell is trade goods: zakat of ${RE_LAND_ZAKAT_PCT}% of its market value a year (ZATCA), charged monthly here. Land you hold for yourself: none.`,
+    landSale: `Selling the land in that year: its market value then less ${inp.landSellCostPct}% selling costs (broker and RETT) lands in your cash; the mortgage on the land is repaid first, with the early-settlement fee; from then on the land is no longer counted as yours.`,
     terms: "One set of terms per loan type, used by every strategy and by the optimizer. Rates are entered as your bank quotes them (flat \"hamish\" or APR — the switch on this card); the tool converts a flat rate to the APR it amortises with, and shows the effective yearly rate (monthly compounding) next to it.",
   };
 }
@@ -91,6 +96,9 @@ function fundingBridgeRows(r, upto, inp, prj) {
   add("Bank fees on new loans", -feeFacs.reduce((a, f) => a + f.fees, 0), null, feeFacs.length ? Math.min(...feeFacs.map((f) => f.startedAt)) : 0);
   (r.prepaid || []).filter((x) => inRange(x.t)).forEach((x) => add(`Mortgage paid off early: ${x.name.toLowerCase()}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`, x.t));
   if (r.ownSale && inRange(r.ownSale.t)) add("Sale of the home you lived in, net", r.ownSale.net, `${fCal(r.ownSale.t)} · after selling costs${r.ownSale.payoff > 0 ? " and repaying its mortgage" : ""}`, r.ownSale.t);
+  if (r.landSale && inRange(r.landSale.t)) add("Sale of the land, net", r.landSale.net, `${fCal(r.landSale.t)} · after selling costs${r.landSale.payoff > 0 ? " and repaying the land mortgage" : ""}`, r.landSale.t);
+  const holdMs = r.months.filter((x) => x.t <= upto && x.holding > 0);
+  add("Holding the land (white-land fee, zakat)", -holdMs.reduce((a, x) => a + x.holding, 0), holdMs.length ? `${fCal(holdMs[0].t)} → ${fCal(holdMs[holdMs.length - 1].t)}` : null, holdMs.length ? holdMs[0].t : 0);
   const bridgeMs = r.months.filter((x) => x.t <= upto && x.bridgeInt > 0);
   add("Bridge money while your cash was short (profit)", -bridgeMs.reduce((a, x) => a + x.bridgeInt, 0), "until the loan that closes the gap lands", bridgeMs.length ? bridgeMs[0].t : 0);
   const total = rows.reduce((a, x) => a + x.v, 0);
@@ -121,10 +129,12 @@ function describePlan(o, inp, prj, build) {
   if (o.plWhen !== "none") add(tw(o.plWhen, o.plMonth), 2.2, `${plWho} ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows, ${refiTxt(o)}`);
   add(prj.landMonth, 3, build ? `buy the land (${fCal(prj.landMonth)})${o.lmUse ? " with that mortgage and your cash" : " in cash — no mortgage on it"}` : `buy the home (${fCal(prj.landMonth)})${o.lmUse ? " with that mortgage and your cash" : " in cash — no mortgage on it"}`);
   if (o.extraMo > 0) add(prj.landMonth, 3.1, `pay ${fSAR(o.extraMo)} a month extra on the land mortgage`);
-  if (build) add(prj.start, 4, `build (${fCal(prj.start + 1)} → ${fCal(prj.start + prj.bm)}), paid from your cash, your salary and those loans`);
-  if (o.coUse) add(prj.occupy, 5, `when the home is finished (${fCal(prj.occupy)}), take a cash-out mortgage on it for the maximum the bank allows`);
-  if (o.pl2Use) add(prj.occupy, 6, `${plWho} at move-in (${fCal(prj.occupy)}) for the maximum the bank allows, ${refiTxt(o)}`);
-  if (o.prepayAfter != null && o.prepayAfter !== "") add(prj.occupy + Math.round(o.prepayAfter), 7, `pay the mortgages off early from your cash ${o.prepayAfter} months after move-in (${fCal(prj.occupy + Math.round(o.prepayAfter))}) if the cash above your cushion covers it`);
+  const isLand = !!prj.isLand, done = isLand ? "when the land is paid for" : prj.moveIn === false ? "at completion" : "at move-in";   // (v2 kinds: land has no build and no move-in; a building let out entirely has no move-in)
+  if (build && prj.bm > 0) add(prj.start, 4, `build (${fCal(prj.start + 1)} → ${fCal(prj.start + prj.bm)}), paid from your cash, your salary and those loans`);
+  if (o.coUse && !isLand) add(prj.occupy, 5, `when the ${prj.isBuilding ? "building" : "home"} is finished (${fCal(prj.occupy)}), take a cash-out mortgage on it for the maximum the bank allows`);
+  if (o.pl2Use) add(prj.occupy, 6, `${plWho} ${done} (${fCal(prj.occupy)}) for the maximum the bank allows, ${refiTxt(o)}`);
+  if (o.prepayAfter != null && o.prepayAfter !== "") add(prj.occupy + Math.round(o.prepayAfter), 7, `pay the mortgages off early from your cash ${o.prepayAfter} months after ${isLand ? "the land is paid for" : prj.moveIn === false ? "completion" : "move-in"} (${fCal(prj.occupy + Math.round(o.prepayAfter))}) if the cash above your cushion covers it`);
+  if (prj.saleAt != null) add(prj.saleAt, 8, `sell the land in ${fCal(prj.saleAt)} (its value then less ${inp.landSellCostPct}% selling costs; the land mortgage is repaid from it)`);
   const steps = s.sort((a, b) => a.t - b.t || a.k - b.k).map((x) => x.text);
   if (o.settlePolicy === "none" || !mortT.length) steps.push("keep your other old loans running");
   steps.push("if your cash would run short before a planned loan, that loan is taken when the cash runs short (if the bank can lend enough then)");
@@ -281,6 +291,7 @@ function planSteps(r, build) {
   });
   (r.prepaid || []).forEach((x) => s.push({ t: x.t, kind: "settle", label: `Pay off the ${x.name.toLowerCase()} early`, amount: x.cost, note: "from your cash" }));
   if (r.ownSale) s.push({ t: r.ownSale.t, kind: "cash", label: "Sell the home you lived in", amount: r.ownSale.net, note: "net, into your cash" });
+  if (r.landSale) s.push({ t: r.landSale.t, kind: "cash", label: "Sell the land", amount: r.landSale.net, note: r.landSale.payoff > 0 ? "net, into your cash, after repaying the land mortgage" : "net, into your cash" });
   return s.sort((a, b) => a.t - b.t);
 }
 
@@ -310,9 +321,11 @@ function reWealthParts(r) {
   const ms = r.months, end = ms[ms.length - 1], sum = (k) => ms.reduce((a, m) => a + (m[k] || 0), 0);
   const refi = [r.pl, r.pl2, r.spl, r.spl2].filter((f) => f && f.refi && f.refi.items).flatMap((f) => f.refi.items);
   const oldPaid = (r.payoffs || []).filter((x) => x.old !== false).reduce((a, x) => a + x.cost, 0) + refi.filter((x) => x.old).reduce((a, x) => a + x.cost, 0);
-  const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + (r.ownSale ? r.ownSale.fee : 0);
+  const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + (r.ownSale ? r.ownSale.fee : 0) + (r.landSale ? r.landSale.fee : 0);
+  const land = r.kind === "land";   // v2: land only — the land sold (its price after costs; its value is 0 after) and what holding it cost
   const parts = [
-    { key: "value", label: "The home's value at the end", v: end.value },
+    { key: "value", label: land ? "The land's value at the end" : "The home's value at the end", v: end.value },
+    ...(land ? [{ key: "landSold", label: "The land you sold (price after selling costs)", v: r.landSale ? r.landSale.value - r.landSale.costs : 0 }, { key: "holding", label: "Holding the land (white-land fee, zakat)", v: -sum("holding") }] : []),
     { key: "cost", label: "What the project cost (land, taxes, fees, construction)", v: -sum("spend") },
     { key: "newLoans", label: "Profit and fees on the new loans", v: -(sum("newInt") + newFees) },
     { key: "bridge", label: "Bridge money while your cash was short (profit)", v: -sum("bridgeInt") },
