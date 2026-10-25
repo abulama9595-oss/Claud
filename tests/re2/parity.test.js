@@ -10,7 +10,9 @@ const toNew = (inp) => (NEW.re2Import ? NEW.re2Import(inp) : inp);
 const fk = (k) => String(k).replace(/^eq:.*$/, 'eq');
 const key = (m) => JSON.stringify({ v: m.verdict, t: Math.round(m.prj.total), r: m.results.map((r) => r && (m.p.mode === 'home'
   ? { f: r.feasible, b: !!r.bridged, e: r.econAdv, a: r.advantage, mc: r.minCash, oh: r.onHandAtMoveIn, pk: r.peakInst, nd: r.newDebtTotal, ni: r.newDebtInterest, cov: r.covered ? [fk(r.covered.key), r.covered.at, r.covered.amount] : null,
-      fac: r.facilities.filter((f) => f.amount > 0).map((f) => [fk(f.key), f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.length, fl: r.flags.length, m: r.months.map((x) => [x.cash, x.avail, x.debt, x.econAdv, x.netWorth, x.plPay, x.eqPay]) }
+      fac: r.facilities.filter((f) => f.amount > 0).map((f) => [fk(f.key), f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.length, fl: r.flags.length, m: r.months.map((x) => [x.cash, x.avail, x.debt, x.econAdv, x.netWorth, x.plPay, x.eqPay]),
+      // what the refinance step weighed, to the bit (its PV maths moved into rePvPayments in P4)
+      rv: [r.pl, r.pl2].map((f) => (f && f.refiOptions ? f.refiOptions.map((o) => [o.ids.join(','), o.amount, o.net, o.value]) : null)) }
   : { irr: r.irr, npv: r.npv, pay: r.monthlyPayment })), h: m.household.capTimeline.map((c) => [c.t, c.room, c.maxMortgage, c.maxTwoPl]) });
 
 test('fork parity: every synthetic scenario gives the old engine\'s numbers (imported into the new model)', { skip: !OLD && 'old engine deleted' }, () => {
