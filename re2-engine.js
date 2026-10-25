@@ -89,6 +89,10 @@
                    room for), dearer, rate. household.capTimeline rows carry props[] { id, name, ltvRoom, maxMortgage, secured,
                    sold } (each property's room left that month and the mortgage it carries at the eq terms; 0 once sold in a
                    month you set — a row is added then) and propRoom; household.propertyRoom = today's row.
+   Review fixes: the ready kinds write their own milestones ("Home/Building bought for …", "Move in" or "ready — let
+                   from month …"). reSaveAndBuy(inp, {maxWait, landWithBuild}) runs the all-cash plan at every month from the
+                   planned start up to maxWait (default 12) months later and returns the earliest start that works with no new
+                   loan (found), or the cash still needed at the last start (need); the page stores the wait as saveWaitMax.
    Keys with no engine effect yet (later phases): invLtv, invTenure, invRateAdd, dscrMin (income-property finance for a
                    building let out entirely), legacyRental (an imported old rental scenario: a building let out entirely whose
                    one unit earns the old rentMo).
@@ -2109,6 +2113,29 @@ function timingSweepRE(inp, idx, maxDelay, step, landWithBuild) {
   const top = Math.max(0, ...rows.map(reStanding)), ok = top > 0 ? rows.filter((r) => reStanding(r) === top) : [], met = (r) => (r.recoveryOk ? 1 : 0) + (r.moveInOk ? 1 : 0);
   const best = ok.length ? ok.reduce((b, r) => met(r) > met(b) ? r : b) : null;
   return { rows, best };
+}
+
+/* ---------- SAVE AND BUY (reSaveAndBuy): wait, save, and buy with no new loan. The "all cash · no new borrowing" plan
+   (RE_PLAN_PRESETS.allCash) run at every month from your planned start (reAtStart) up to opts.maxWait months later (default
+   12): while you wait you keep renting and your salary savings build up, exactly as a later start on "When" counts them.
+   found = the EARLIEST start at which it works every month without bridge money (null when none does within the wait); its
+   figures (cash at move-in, the rules, how far ahead of not doing it at the end) sit on found. At the last start tried, need
+   = how much more cash it would still need (reNeedMore), so the page can say how far off waiting the full time leaves you.
+   Pure: it changes nothing in the scenario and does not affect computeRE. ---------- */
+function reSaveAndBuy(inp, opts) {
+  opts = opts || {};
+  const p = mergeRE(inp), cur = reProject(p).start, maxWait = Math.max(0, Math.round(opts.maxWait == null ? 12 : +opts.maxWait));
+  const plan = { ...RE_PLAN_PRESETS.allCash, enabled: true };
+  const rows = []; let found = null, last = null;
+  for (let w = 0; w <= maxWait; w++) {
+    const q = mergeRE(reAtStart(p, cur + w, opts.landWithBuild)), prj = reProject(q), r = reRunPlan(q, prj, plan);
+    const row = { wait: w, delay: cur + w, feasible: !!r.feasible, minCash: r.minCash, minCashT: r.minCashT, occupy: prj.occupy, onHand: r.onHandAtMoveIn, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, econAdv: r.econAdv, total: prj.total };
+    rows.push(row); last = { q, prj, r, row };
+    if (r.feasible) { found = { ...row, newDebt: r.newDebtTotal, peakInst: r.peakInst, rulesMet: (r.recoveryOk ? 1 : 0) + (r.moveInOk ? 1 : 0) }; break; }
+  }
+  let need = null;
+  if (!found && last) { const n = reNeedMore(last.q, last.prj, plan, last.r); need = n.needMore == null ? null : n.needMore; }
+  return { cur, maxWait, found, rows, need, plan };
 }
 
 /* ---------- OPTIMIZER: fill the debt-burden bucket the best way, for every start month ----------

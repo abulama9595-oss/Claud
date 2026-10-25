@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=8cae00fa32"></script>
-  <script src="re2-engine.js?v=8cae00fa32"></script>
-  <script src="re2-ui.js?v=8cae00fa32"></script>
+  <script src="engine.js?v=a70a7f462f"></script>
+  <script src="re2-engine.js?v=a70a7f462f"></script>
+  <script src="re2-ui.js?v=a70a7f462f"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -580,6 +580,9 @@
       const sweepRec = useMemo(() => recE >= 0 ? timingSweepRE(eInp, recE, 60, 3, lwb) : null, [eInp, recE, lwb]);
       const sweepF = useMemo(() => focusE >= 0 && focusE !== recE && cur === "when" ? timingSweepRE(eInp, focusE, 60, 3, lwb) : null, [eInp, focusE, recE, lwb, cur]);
       const sweep = focusE >= 0 && focusE === recE ? sweepRec : sweepF;
+      // save and buy: the earliest start, within the wait you accept, at which your cash and savings pay for it with no new loan
+      const saveWait = inp.saveWaitMax == null ? 12 : +inp.saveWaitMax;
+      const saveBuy = useMemo(() => cur === "answer" ? reSaveAndBuy(optInp, { maxWait: saveWait, landWithBuild: lwb }) : null, [optInp, saveWait, lwb, cur]);
       const tornado = useMemo(() => focusE >= 0 && openDis.sens ? tornadoRE(eInp, focusE) : [], [eInp, focusE, openDis.sens]);
       const startBest = sweepRec && sweepRec.best, startNow = startBest && startBest.delay <= curStart;
       // a mix the tool found becomes a NEW plan (never in place of one of yours); the start moves if it was found for another date
@@ -1951,6 +1954,32 @@
           </table></div>
         );
       };
+      // save and buy: wait, keep renting, save, and pay with no new loan
+      const SaveAndBuy = () => {
+        const sb = saveBuy; if (!sb) return null;
+        const f = sb.found, verb = build ? "start" : "buy", lastStart = sb.cur + sb.maxWait;
+        const addPlan = () => { if (!f || inp.plans.length >= MAX_PLANS) return; const k = inp.plans.length; withUndo(`Added "save and buy" as Plan ${k + 1}`, () => setInp((s0) => { const q = { ...s0, plans: [...s0.plans, { ...sb.plan, enabled: true }] }; if (f.delay !== curStart) Object.assign(q, reAtStart(q, f.delay, lwb)); return q; })); };
+        const d = f && lead ? f.econAdv - lead.econAdv : null;
+        const head = !f ? <>Paying from your cash and savings alone does not work within {sb.maxWait} months.</>
+          : f.wait === 0 ? <>You can {verb} as planned in <b>{fCal(f.delay)}</b> from your cash, with no new loan.</>
+          : <>Wait <b>{f.wait} month{f.wait === 1 ? "" : "s"}</b> and {verb} in <b>{fCal(f.delay)}</b> from your cash and savings, with no new loan.</>;
+        return (
+          <Box title="Save and buy — no new loan" style={{ marginTop: 14 }}>
+            <p style={{ fontSize: 14, margin: "0 0 8px", lineHeight: 1.5 }}>{head}</p>
+            {f ? <>
+              <Row k={`Cash at ${W.doneShort}`} v={fCash(f.onHand)} sub={`${W.doneShort} in ${fCal(f.occupy)} · no growth counted`} />
+              <Row k={`vs ${baseLbl} in ${endDate}`} v={fM(f.econAdv)} tone={f.econAdv >= 0 ? K.pos : K.neg} />
+              {d != null && <Row k={`Against ${planRef(recIdx)}, the recommended plan`} v={`${d >= 0 ? "+" : "−"}${fM(Math.abs(d))}`} tone={d >= 0 ? K.pos : K.neg} sub={Math.abs(d) < 0.5 ? "the same at the end" : d > 0 ? `richer in ${endDate}` : `poorer in ${endDate} — the price of borrowing nothing`} />}
+              <div style={{ fontSize: 12.5, color: K.sub, margin: "6px 0 8px", lineHeight: 1.5 }}>{f.wait > 0 ? `While you wait you keep paying rent and your savings build up; the price keeps rising at ${inp.appreciation}%/yr. ` : ""}{f.rulesMet === 2 ? "It meets both of your rules." : `It works every month but meets ${f.rulesMet === 1 ? "one" : "none"} of your two rules.`}</div>
+            </> : <div style={{ fontSize: 13, color: K.sub, margin: "0 0 8px", lineHeight: 1.5 }}>{sb.need != null ? <>Even {verb === "start" ? "starting" : "buying"} in {fCal(lastStart)} you would need <b style={{ color: K.neg }}>{fS(sb.need)}</b> more cash. </> : null}While you wait the price keeps rising at {inp.appreciation}%/yr, so savings close the gap slowly. Try a longer wait, or a plan with a loan.</div>}
+            <div className="flex items-center flex-wrap no-print" style={{ gap: 10, fontSize: 13 }}>
+              <label className="flex items-center" style={{ gap: 6 }}>Willing to wait up to <select aria-label="Willing to wait up to" value={saveWait} onChange={(e) => setInp((s0) => ({ ...s0, saveWaitMax: +e.target.value }))}>{[6, 12, 18, 24, 36].map((n) => <option key={n} value={n}>{n} months</option>)}</select></label>
+              {f && (() => { const k = inp.plans.findIndex((x) => x && x.enabled && x.name === sb.plan.name); return k >= 0 ? <span style={{ color: K.sub }}>Already in your plans as Plan {k + 1}</span> : null; })()}
+              {f && !inp.plans.some((x) => x && x.enabled && x.name === sb.plan.name) && <button className="btn small" disabled={inp.plans.length >= MAX_PLANS} onClick={addPlan}>Add it as a plan{f.delay !== curStart ? ` (moves the start to ${fCal(f.delay)})` : ""}</button>}
+            </div>
+          </Box>
+        );
+      };
       // the answer in one line, on the recommended plan
       const AnswerLine = ({ one }) => {
         const adv = lead ? lead.econAdv : 0;
@@ -2303,6 +2332,7 @@
           <div>
             {AnswerLine({ one: false })}
             <div style={{ marginTop: 14 }}>{LensCards({ print: false })}</div>
+            {SaveAndBuy()}
             {LiabilityCard({ r, i, print: false })}
             {letAll && InvestmentView({ r, i })}
             {WatchOut({ items: watchOut(r) })}
