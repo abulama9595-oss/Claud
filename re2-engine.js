@@ -104,6 +104,8 @@
    coverAny (default on; re2Import off): when no planned loan closes a cash gap, the plan's later movable loans are still
                    tried in the gap's first month; if none makes the plan work, the one that shrinks the shortfall most is kept
                    (r.coveredPart, a "cover" event saying it is not enough on its own).
+   joint.myShare (null = in proportion to your two rooms): your % of a joint mortgage's instalment; the bank then lends the
+                   most that keeps each of you within your own room at that split (capacityJoint and the borrowing power alike).
    Keys with no engine effect yet (later phases): invLtv, invTenure, invRateAdd, dscrMin (income-property finance for a
                    building let out entirely), legacyRental (an imported old rental scenario: a building let out entirely whose
                    one unit earns the old rentMo).
@@ -196,7 +198,7 @@ const RE_BASE = {
   // تضامن (optional, off by default): the new mortgages taken jointly with your spouse (one household). Your spouse's salary
   // and loans run through the household cash on both sides; each of you is tested on your own income (SAMA, see reSamaCap);
   // the land / purchase mortgage and the cash-out use both of your room; personal loans stay yours.
-  joint: { on: false, income: 0, incomeGrowth: null, redf: false, loans: [] },   // incomeGrowth null = the same as yours; redf = MoH / REDF-supported mortgage
+  joint: { on: false, income: 0, incomeGrowth: null, redf: false, loans: [], myShare: null },   // incomeGrowth null = the same as yours; redf = MoH / REDF-supported mortgage; myShare = your % of a joint mortgage's instalment (null = in proportion to your rooms)
   coverAny: true,          // a gap no planned loan closes still tries the plan's later loans early (re2Import: off — the old tool's cover)
   refiStyle: "topup",      // a personal-loan step refinances each old personal loan with its own bank ("topup"), or buys several out into new loans ("consolidate", the old tool's way; a new loan buys loans out under "topup" only when it is cheaper than they are)
   settleFeeMonths: 3,      // SAMA: early-settlement cost capped at the next 3 months' term cost
@@ -1017,18 +1019,24 @@ function rePlanSimulate(p, prj, plan) {
     const capName = totalRoom <= facCap ? `${capPctA}% total debt-burden cap` : f.key === "pl" ? `${p.perLoanCap}% per personal loan${plan.plSplit ? " (two loans)" : ""}` : `${p.mortgageCap}% mortgage cap${mortRunning > 0 ? " (all mortgages together)" : ""}`;
     return { cap, byDbr, byLtv: ltvCap, byProduct: productCap, room, totalRoom, facCap, limitedBy: cap <= 0 ? (ltvCap <= 0 ? "nothing to mortgage (value 0)" : "no debt-burden room") : cap === byDbr && byDbr < Math.min(ltvCap, productCap) ? capName : cap === ltvCap ? "LTV" : "bank cap" };
   }
-  // تضامن: each of you has room under your own limit (all debts) and your own mortgage limit; a joint mortgage may use both
-  // rooms and its instalment is split in proportion to them; a mortgage on the property you own uses only yours
+  // تضامن: your share of a joint mortgage's instalment. Default (joint.myShare null): in proportion to your two rooms, so both
+  // are used in full. A share you set (0–100%): the instalment the bank allows is the most that keeps each of you within your
+  // own room at that split — min(your room ÷ your share, your spouse's room ÷ theirs)
+  const myShare = J && J.myShare != null && J.myShare !== "" && isFinite(+J.myShare) ? Math.min(1, Math.max(0, +J.myShare / 100)) : null;
+  const jointSplit = (roomA, roomB) => myShare == null ? { room: roomA + roomB, shareA: roomA + roomB > 0 ? roomA / (roomA + roomB) : 1 }
+    : { room: myShare >= 1 ? roomA : myShare <= 0 ? roomB : Math.min(roomA / myShare, roomB / (1 - myShare)), shareA: myShare };
+  // each of you has room under your own limit (all debts) and your own mortgage limit; a joint mortgage may use both rooms,
+  // split as above; a mortgage on the property you own uses only yours
   function capacityJoint(f, ltvCap, productCap) {
     const roomOf = (who) => Math.max(0, Math.min((who === "A" ? dbrTarget : dbrTargetB) - instFor(who), (who === "A" ? mortgageTarget : mortgageTargetB) - mortFor(who, f)));
     // you are the borrower: while your own debts take more than your limit the bank lends you nothing, jointly or not (your
     // spouse over their limit simply adds no room)
     const overA = dbrTarget - instFor("A") < -0.5;
-    const roomA = roomOf("A"), roomB = isJoint(f) && !overA ? roomOf("B") : 0, room = roomA + roomB;
+    const roomA = roomOf("A"), roomB = isJoint(f) && !overA ? roomOf("B") : 0, split = isJoint(f) && !overA ? jointSplit(roomA, roomB) : { room: roomA, shareA: 1 }, room = split.room;
     const byDbr = rePrincipalFor(room, f.rate, f.n);
     const cap = Math.max(0, Math.min(byDbr, ltvCap, productCap));
-    const capName = overA ? `your debts already take more than your ${capPctA}% limit` : isJoint(f) ? `room left to you and your spouse (تضامن): ${fSAR(roomA)}/mo under your ${capPctA}% limit + ${fSAR(roomB)}/mo under your spouse's ${capPctB}%` : `room left to you under your ${capPctA}% limit`;
-    return { cap, byDbr, byLtv: ltvCap, byProduct: productCap, room, totalRoom: room, facCap: room, roomA, roomB, shareA: room > 0 ? roomA / room : 1, limitedBy: cap <= 0 ? (ltvCap <= 0 ? "nothing to mortgage (value 0)" : overA ? capName : "no debt-burden room") : cap === byDbr && byDbr < Math.min(ltvCap, productCap) ? capName : cap === ltvCap ? "LTV" : "bank cap" };
+    const capName = overA ? `your debts already take more than your ${capPctA}% limit` : isJoint(f) ? `room left to you and your spouse (تضامن): ${fSAR(roomA)}/mo under your ${capPctA}% limit + ${fSAR(roomB)}/mo under your spouse's ${capPctB}%${myShare != null ? `, at the split you set (${Math.round(myShare * 100)}% yours)` : ""}` : `room left to you under your ${capPctA}% limit`;
+    return { cap, byDbr, byLtv: ltvCap, byProduct: productCap, room, totalRoom: room, facCap: room, roomA, roomB, shareA: split.shareA, myShare, limitedBy: cap <= 0 ? (ltvCap <= 0 ? "nothing to mortgage (value 0)" : overA ? capName : "no debt-burden room") : cap === byDbr && byDbr < Math.min(ltvCap, productCap) ? capName : cap === ltvCap ? "LTV" : "bank cap" };
   }
   // a payoff from your cash carries why: "planned" (a settlement date you set) or "room" (before a mortgage, to free room in the
   // bank's test — forKey / forLabel name that mortgage; dearer = chosen because its rate is above the mortgage's)
@@ -1285,9 +1293,10 @@ function rePlanSimulate(p, prj, plan) {
     let ltv = 0;
     props.forEach((P) => { if (!P.canMortgage || !(P.value > 0)) return; const f = eqs.find((x) => x.propId === P.id); ltv += Math.max(0, propLtvCap(P, t) - (f && f.settledAt === null ? f.bal : 0)); });
     if (!prj.isLand && t >= prj.occupy - 1) ltv += Math.max(0, value * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0) - (co.settledAt === null ? co.bal : 0));
-    const roomA = Math.max(0, Math.min(RA.dbr, RA.mort)), roomB = RB && RA.dbr >= -0.5 ? Math.max(0, Math.min(RB.dbr, RB.mort)) : 0, room = roomA + roomB;
+    const roomA = Math.max(0, Math.min(RA.dbr, RA.mort)), roomB = RB && RA.dbr >= -0.5 ? Math.max(0, Math.min(RB.dbr, RB.mort)) : 0;
+    const split = RB && RA.dbr >= -0.5 ? jointSplit(roomA, roomB) : { room: roomA, shareA: 1 }, room = split.room;
     const mortgage = Math.max(0, Math.min(ltv, room * eqPerInst));
-    const inst = mortgage > 0 ? mortgage / eqPerInst : 0, shareA = room > 0 ? roomA / room : 1;
+    const inst = mortgage > 0 ? mortgage / eqPerInst : 0, shareA = split.shareA;
     const personal = twoPl(RA.dbr, RA) + (RB ? twoPl(RB.dbr, RB) : 0);
     const left = twoPl(RA.dbr - inst * shareA, RA) + (RB ? twoPl(RB.dbr - inst * (1 - shareA), RB) : 0);
     return { personal, mortgage, borrowable: mortgage + left, ltv, room, inst };

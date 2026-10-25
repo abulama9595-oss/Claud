@@ -26,7 +26,7 @@ test('your spouse\'s loans are merged like yours: flat rate converted once, ids 
   assert.ok(Math.abs(p.joint.loans[0].rate - E.reFlatToApr(3, 36)) < 1e-12);
   assert.deepEqual([p.joint.loans[0].id, p.joint.loans[1].id], ['s1', 's2']);
   assert.equal(JSON.stringify(q.joint), JSON.stringify(p.joint));
-  assert.equal(JSON.stringify(E.mergeRE({}).joint), JSON.stringify({ on: false, income: 0, incomeGrowth: null, redf: false, loans: [] }));
+  assert.equal(JSON.stringify(E.mergeRE({}).joint), JSON.stringify({ on: false, income: 0, incomeGrowth: null, redf: false, loans: [], myShare: null }));
 });
 
 test('SAMA band per person (Responsible Lending Principles ¶15–17), never above your bank\'s limit; it follows the income', () => {
@@ -209,4 +209,25 @@ test("the tool's pick tries personal loans in your name, your spouse's and both 
   // the pick, run as a plan, gives the same result
   const m = E.computeRE(inp, { extraPlans: [b.cleanPlan], noNeed: true }), r = m.results[m.results.length - 1];
   assert.ok(r.tool && Math.abs(r.econAdv - b.econAdv) < 1e-6 && r.spl2.amount === b.spl2);
+});
+
+// your share of a joint mortgage (joint.myShare): null = in proportion to your rooms (as before); a share you set splits the
+// instalment that way and the bank lends only what each of you can carry at it. Synthetic.
+test('joint mortgage share: proportional by default, a set share splits the instalment and caps the loan at what each can carry', () => {
+  const base = { asOf: '2026-10', kind: 'readyVilla', propertyPrice: 6000000, finishExtra: 0, income: 30000, livingExpenses: 10000, cashAvailable: 900000, existingLoans: [],
+    joint: { on: true, income: 20000, loans: [] }, plans: [{ ...E.RE_PLAN_PRESETS.landMortgage, enabled: true }] };
+  const lm = (s) => E.computeRE({ ...base, joint: { ...base.joint, myShare: s } }).results[0].lm;
+  const auto = lm(null), same = lm(undefined);
+  assert.equal(auto.amount, same.amount, 'not set = proportional');
+  const c = auto.capacity, prop = c.roomA / (c.roomA + c.roomB);
+  assert.ok(Math.abs(auto.shareA - prop) < 1e-9, 'default split in proportion to the rooms');
+  for (const s of [100, 80, 50, 20, 0]) {
+    const f = lm(s), x = s / 100;
+    assert.ok(Math.abs(f.shareA - x) < 1e-9, `share ${s}`);
+    // each of you within your own room at that split
+    assert.ok(f.pmt * x <= c.roomA + 1 && f.pmt * (1 - x) <= c.roomB + 1, `share ${s}: ${f.pmt * x} ≤ ${c.roomA}, ${f.pmt * (1 - x)} ≤ ${c.roomB}`);
+    // never more than the proportional split allows
+    assert.ok(f.amount <= auto.amount + 1);
+  }
+  assert.ok(lm(100).amount < auto.amount && lm(0).amount < auto.amount, 'a lopsided split lowers the mortgage');
 });
