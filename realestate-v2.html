@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=5a28f9f4d5"></script>
-  <script src="re2-engine.js?v=5a28f9f4d5"></script>
-  <script src="re2-ui.js?v=5a28f9f4d5"></script>
+  <script src="engine.js?v=409ccbe5ef"></script>
+  <script src="re2-engine.js?v=409ccbe5ef"></script>
+  <script src="re2-ui.js?v=409ccbe5ef"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -2390,7 +2390,7 @@
                 {after != null && <Row k="Your instalments, % of income" v={`${(+before).toFixed(0)}% → ${(+after).toFixed(0)}%`} sub={`before and after this loan · your limit ${hj ? `${hj.capPctA}% (yours)` : `${inp.dbrCap}%`}`} />}
               </Sec>
               <Sec title="Where the money goes">
-                {d.topups ? d.topups.map((x) => <Row key={x.id} k={`${x.name}: its own bank refinances it`} v={`${fSAR(x.net)} to you`} sub={`${fSAR(x.payoff)} clears the old loan (incl. the early-settlement fee) · new loan ${fSAR(x.amount)} at ${fSAR(x.inst)}/mo instead of ${fSAR(x.oldInst)}/mo`} />)
+                {d.topups ? d.topups.map((x) => <Row key={x.id} k={`${x.name}: its own bank refinances it`} v={`${fSAR(x.net)} to you`} sub={`${fSAR(x.payoff)} clears the old loan (incl. the early-settlement fee) · new loan ${fSAR(x.amount)} at ${fSAR(x.inst)}/mo instead of ${fSAR(x.oldInst)}/mo${x.why ? ` · ${x.why}` : ""}`} />)
                   : d.refi ? d.refi.items.map((x) => <Row key={x.id} k={`Clears ${x.name}`} v={fSAR(x.cost)} sub={x.fee > 0.5 ? `incl. a ${fSAR(x.fee)} early-settlement fee` : null} />) : null}
                 <Row k={f.key === "lm" ? "Paid to the seller for you" : "Lands in your cash"} v={fSAR(d.net)} tone={K.pos} sub={f.key === "lm" ? "the bank pays the seller directly; you pay the rest of the price from your cash" : null} />
               </Sec>

@@ -1186,8 +1186,12 @@ function rePlanSimulate(p, prj, plan) {
         for (const l of T) {
           const oldInst = instOfAny(l), payoff = settleCost(l), inst = Math.min(capInstT, oldInst + free), amount = inst > 1 ? onePl(inst) : 0;
           if (amount < payoff + 1) { ok = false; break; }
-          const newInst = rePmt(amount, f.rate, f.n); free = Math.max(0, free - Math.max(0, newInst - oldInst));
-          parts.push({ l, id: idOf(l), name: l.name, oldBal: l.bal, oldInst, payoff, amount, inst: newInst, net: amount - payoff });
+          const newInst = rePmt(amount, f.rate, f.n), freeBefore = free; free = Math.max(0, free - Math.max(0, newInst - oldInst));
+          // why its instalment is what it is: the room still free, or the per-loan limit (the amount still grows: the term restarts)
+          const pctTxt = who === "B" ? capPctB : capPctA;
+          const why = newInst - oldInst < 1 ? (freeBefore < 1 ? `instalment kept at ${fSAR(newInst)}/mo — your ${pctTxt}% limit (${fSAR(capTarget)}/mo) is already full with your other instalments; the amount grows because the term restarts at ${f.tenure} years` : `instalment kept at ${fSAR(newInst)}/mo — the most one personal loan may take; the amount grows because the term restarts at ${f.tenure} years`)
+            : `instalment ${fSAR(oldInst)} → ${fSAR(newInst)}/mo — ${newInst >= capInstT - 1 ? "the most one personal loan may take" : `all the room left under your ${pctTxt}% limit`}`;
+          parts.push({ l, id: idOf(l), name: l.name, oldBal: l.bal, oldInst, payoff, amount, inst: newInst, net: amount - payoff, why });
         }
         if (!ok) continue;
         const amount = parts.reduce((a, x) => a + x.amount, 0), payoff = parts.reduce((a, x) => a + x.payoff, 0), freed = parts.reduce((a, x) => a + x.oldInst, 0), net = amount - payoff;
@@ -1226,7 +1230,7 @@ function rePlanSimulate(p, prj, plan) {
     f.capacity = { t, cap: best.amount, room: best.room, limitedBy: best.limitedBy, want: best.amount, mode: "max", taken: best.amount, gap: 0 };
     f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed, items: cleared } : null;
     // the NEW loans (one or two) — not to be read as the old loans bought out, which are named after
-    const loans = best.topups ? `${fS(best.amount)} by refinancing ${best.topups.length === 1 ? "an old loan with its own bank" : `${best.topups.length} old loans, each with its own bank`} (${best.topups.map((x) => `${x.name}: ${fS(x.payoff)} cleared, ${fS(x.amount)} new, ${fS(x.net)} to your cash`).join("; ")})` : best.split ? `${fS(best.amount)} as two new personal loans: ${fS(best.split[0])} (${best.whys[0]}) + ${fS(best.split[1])} (${best.whys[1]})` : `one new personal loan of ${fS(best.amount)}`;
+    const loans = best.topups ? `${fS(best.amount)} by refinancing ${best.topups.length === 1 ? "an old loan with its own bank" : `${best.topups.length} old loans, each with its own bank`} (${best.topups.map((x) => `${x.name}: ${fS(x.payoff)} cleared, ${fS(x.amount)} new, ${fS(x.net)} to your cash — ${x.why}`).join("; ")})` : best.split ? `${fS(best.amount)} as two new personal loans: ${fS(best.split[0])} (${best.whys[0]}) + ${fS(best.split[1])} (${best.whys[1]})` : `one new personal loan of ${fS(best.amount)}`;
     const nOld = f.refi ? f.refi.names.length : 0;
     const basis = refiMode === "pick" ? "the loans you chose" : refiMode === "cash" ? "the most cash in hand" : "the best value";
     let note = "";

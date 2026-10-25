@@ -18,6 +18,8 @@ test('top-ups: each old loan is refinanced by its own bank, nothing is combined 
   assert.ok(r.pl.topups && r.pl.topups.length >= 1, 'the step tops loans up');
   // every part clears its own loan in full and pays the rest to you; the parts add up to the step
   for (const x of r.pl.topups) assert.ok(x.amount >= x.payoff - 1 && Math.abs(x.net - (x.amount - x.payoff)) < 1);
+  // each part says why its instalment is what it is
+  for (const x of r.pl.topups) assert.match(x.why, /instalment/);
   assert.ok(Math.abs(r.pl.topups.reduce((a, x) => a + x.amount, 0) - r.pl.amount) < 1);
   // the same rate and tenure: the parts' instalments add up to the step's one instalment
   assert.ok(Math.abs(r.pl.topups.reduce((a, x) => a + x.inst, 0) - r.pl.pmt) < 1);
