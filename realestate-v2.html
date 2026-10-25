@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=409ccbe5ef"></script>
-  <script src="re2-engine.js?v=409ccbe5ef"></script>
-  <script src="re2-ui.js?v=409ccbe5ef"></script>
+  <script src="engine.js?v=7d1a00c9e5"></script>
+  <script src="re2-engine.js?v=7d1a00c9e5"></script>
+  <script src="re2-ui.js?v=7d1a00c9e5"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -501,6 +501,8 @@
       const m = useMemo(() => computeRE(inp, { extraPlans: toolPlan ? [toolPlan] : undefined, noNeed: !settled }), [inp, toolPlan, settled]);
       const econIrr = useMemo(() => m.results.map((r) => r ? reEconIRR(r) : null), [m]);
       const { prj, household } = m, p2 = m.p;   // p2: your inputs with every default filled in (the properties and loans normalised)
+      // an older scenario with the rent entered per m²: converted once to the same rent as a % of the all-in cost (the page no longer offers per m²)
+      useEffect(() => { const L = prj.letting; if (inp.unitRentBasis === "sqm" && prj.total > 0 && L && L.units > 0) setInp((s) => ({ ...s, unitRentBasis: "pct", unitRentPct: +((L.perUnit * L.units * 12) / prj.total * 100).toFixed(2) })); }, [inp.unitRentBasis]);
       const home = true;                        // one engine for every project (the household simulation)
       // the project in words — one source: the kind and whether you move in (reKindWords)
       const W = useMemo(() => reKindWords(inp, prj), [inp, prj]);
@@ -1022,7 +1024,7 @@
 
       /* ---------- step 0: your project — the picker, then the project's fields in shared blocks ---------- */
       const KIND_CARDS = [["landVilla", "Buy land and build a villa", "You buy a plot, build, and move in when it is finished."], ["land", "Buy land only", "You buy a plot and hold it — to sell later, or to build on later."], ["landBuilding", "Buy land and build a residential building", "You build units to let; you may live in one of them."], ["readyBuilding", "Buy a ready residential building", "You buy a finished building with units; you may live in one."], ["readyVilla", "Buy a ready villa", "You buy a finished home and move in after finishing it."]];
-      const pickKind = (k) => setInp((s) => { const q = { ...s, kind: k }; if (/Building$/.test(k) && !(+s.unitCount > 0)) { q.unitCount = 4; q.unitRent = 3500; q.unitRentBasis = "unit"; } if ((s.buildStart || 0) < (s.landMonth || 0)) q.buildStart = s.landMonth; return q; });
+      const pickKind = (k) => setInp((s) => { const q = { ...s, kind: k }; if (/Building$/.test(k) && !(+s.unitCount > 0)) { q.unitCount = 4; q.unitRentBasis = "pct"; if (!(+s.unitRentPct > 0)) q.unitRentPct = 6; } if ((s.buildStart || 0) < (s.landMonth || 0)) q.buildStart = s.landMonth; return q; });
       // "Build later" is not a sixth kind: the villa, with construction 24 months after the land is bought
       const buildLater = () => setInp((s) => ({ ...s, kind: "landVilla", buildStart: (s.landMonth || 0) + 24 }));
       const laterGap = inp.kind === "landVilla" && prj.start > prj.landMonth ? prj.start - prj.landMonth : 0;
@@ -1111,12 +1113,12 @@
             {TaxFields()}
           </More>
         </Box>); };
-      const UnitsFields = () => { const L = prj.letting, sqm = inp.unitRentBasis === "sqm"; return (
+      const UnitsFields = () => { const L = prj.letting, pct = inp.unitRentBasis !== "unit"; return (
         <Box title="The units" help={EXPL.letting}>
           <Field label="Number of units" value={inp.unitCount || 0} min={1} max={40} step={1} unit="units" onChange={(v) => set("unitCount", Math.round(v))} />
-          <div style={{ marginBottom: 10 }}><Seg label="Rent entered as" value={sqm ? "sqm" : "unit"} onChange={(v) => set("unitRentBasis", v)} options={[["unit", "Rent per unit a month"], ["sqm", "Rent per m² a year"]]} /></div>
-          <Field label={sqm ? "Rent per m² a year" : "Rent per unit"} value={inp.unitRent || 0} min={0} max={sqm ? 2000 : 30000} step={sqm ? 10 : 250} unit={sqm ? "SAR/m²/yr" : "SAR/mo"} onChange={(v) => set("unitRent", v)} />
-          {sqm && <Field label="Lettable share of the built area" value={inp.netLettablePct} min={50} max={100} step={1} unit="%" onChange={(v) => set("netLettablePct", v)} hint={`${Math.round(prj.builtArea * inp.netLettablePct / 100)} m² let`} />}
+          <div style={{ marginBottom: 10 }}><Seg label="Rent entered as" value={pct ? "pct" : "unit"} onChange={(v) => setInp((s) => ({ ...s, unitRentBasis: v, ...(v === "pct" && !(+s.unitRentPct > 0) ? { unitRentPct: 6 } : {}), ...(v === "unit" && !(+s.unitRent > 0) ? { unitRent: Math.round(L.perUnit / 50) * 50 || 3500 } : {}) }))} options={[["pct", "% of the all-in cost a year"], ["unit", "Rent per unit a month"]]} /></div>
+          {pct ? <Field label="Rent, as % of the all-in cost" value={+inp.unitRentPct || 0} min={0} max={15} step={0.25} unit="%/yr" onChange={(v) => set("unitRentPct", v)} hint={`the whole building's rent a year = ${fSAR(prj.total * (+inp.unitRentPct || 0) / 100)} on the all-in cost of ${fM(prj.total)} · ${fSAR(L.perUnit)} per unit a month`} />
+            : <Field label="Rent per unit" value={inp.unitRent || 0} min={0} max={30000} step={250} unit="SAR/mo" onChange={(v) => set("unitRent", v)} hint={prj.total > 0 ? `= ${((L.perUnit * L.units * 12) / prj.total * 100).toFixed(2)}% of the all-in cost a year` : null} />}
           <div className="note" style={{ marginTop: 0, marginBottom: 10 }}><b>{L.letUnits} unit{L.letUnits === 1 ? "" : "s"} let</b>{letAll ? "" : " (you live in one)"} → <b className="mono">{fSAR(L.grossAnnual)}</b> a year, <b className="mono">{fSAR(L.netAnnual)}</b> after empty months and management · from {fCal(prj.occupy + 1)}{inp.rentFreezeUntil ? `, flat until ${inp.rentFreezeUntil} (rent freeze)` : ""}. The bank does not count this rent as income.</div>
           <Field label="Empty" value={inp.vacancyPct} min={0} max={30} step={1} unit="% of the year" onChange={(v) => set("vacancyPct", v)} />
           <Field label="Management" value={inp.mgmtPct} min={0} max={15} step={0.5} unit="% of rent" onChange={(v) => set("mgmtPct", v)} hint="+ VAT on the fee" />
@@ -1124,9 +1126,12 @@
         </Box>); };
       const LettingFields = () => (
         <Box title="Living in it — or letting it" help={EXPL.rentOut}>
-          <Seg label="Living in it or letting it" value={lettingOut ? "all" : (inp.partRentAnnual || 0) > 0 ? "part" : "live"} onChange={(v) => setInp((s) => v === "live" ? { ...s, partRentAnnual: 0, rentOutPct: 0, rentOutFixed: 0 } : v === "part" ? { ...s, rentOutPct: 0, rentOutFixed: 0, partRentAnnual: s.partRentAnnual > 0 ? s.partRentAnnual : 60000 } : { ...s, partRentAnnual: 0, rentOutPct: s.rentOutPct > 0 || s.rentOutFixed > 0 ? s.rentOutPct : 5 })} options={[["live", "Live in it"], ["part", "Live in it, let part"], ["all", "Let all of it"]]} />
+          <Seg label="Living in it or letting it" value={lettingOut ? "all" : (inp.partRentAnnual || 0) > 0 || (inp.partRentPct || 0) > 0 ? "part" : "live"} onChange={(v) => setInp((s) => v === "live" ? { ...s, partRentAnnual: 0, partRentPct: 0, rentOutPct: 0, rentOutFixed: 0 } : v === "part" ? { ...s, rentOutPct: 0, rentOutFixed: 0, partRentPct: s.partRentPct > 0 || s.partRentAnnual > 0 ? s.partRentPct || 0 : 1.5 } : { ...s, partRentAnnual: 0, partRentPct: 0, rentOutPct: s.rentOutPct > 0 || s.rentOutFixed > 0 ? s.rentOutPct : 5 })} options={[["live", "Live in it"], ["part", "Live in it, let part"], ["all", "Let all of it"]]} />
           <div style={{ marginTop: 12 }}>
-            {!lettingOut && (inp.partRentAnnual || 0) > 0 && <Field label="Rent for the part you let (annex, floor)" value={inp.partRentAnnual} min={0} max={400000} step={5000} unit="SAR/yr" onChange={(v) => set("partRentAnnual", v)} hint={`from ${fCal(prj.occupy + 1)}, rising with rent growth (${inp.rentGrowth}%/yr) · net of its own costs`} />}
+            {!lettingOut && ((inp.partRentAnnual || 0) > 0 || (inp.partRentPct || 0) > 0) && <>
+              <Field label="Rent for the part you let (annex, floor), as % of the all-in cost" value={inp.partRentPct || 0} min={0} max={8} step={0.25} unit="%/yr" onChange={(v) => set("partRentPct", v)} hint={(inp.partRentAnnual || 0) > 0 ? "not used — the fixed rent below is set" : `= ${fSAR(prj.total * (inp.partRentPct || 0) / 100)} a year from ${fCal(prj.occupy + 1)}, rising with rent growth (${inp.rentGrowth}%/yr) · net of its own costs`} />
+              <Field label="…or a fixed rent" value={inp.partRentAnnual || 0} min={0} max={400000} step={5000} unit="SAR/yr" onChange={(v) => set("partRentAnnual", v)} hint={(inp.partRentAnnual || 0) > 0 ? "overrides the %" : "0 = use the % above"} />
+            </>}
             {lettingOut && <>
               <Field label="Rent, as % of the all-in cost" value={inp.rentOutPct || 0} min={0} max={12} step={0.25} unit="%/yr" onChange={(v) => set("rentOutPct", v)} hint={(inp.rentOutFixed || 0) > 0 ? "not used — the fixed rent below is set" : `= ${fSAR(prj.total * (inp.rentOutPct || 0) / 100)} a year from ${fCal(prj.occupy + 1)}`} />
               <Field label="…or a fixed rent" value={inp.rentOutFixed || 0} min={0} max={1000000} step={5000} unit="SAR/yr" onChange={(v) => set("rentOutFixed", v)} hint={(inp.rentOutFixed || 0) > 0 ? "overrides the %" : "0 = use the % above"} />

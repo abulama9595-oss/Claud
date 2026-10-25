@@ -5,7 +5,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const { loadEngine } = require('./helpers.js');
 const E = loadEngine();
 const OLD = [{ id: 1, name: 'Loan A', balance: 900000, installment: 21000, monthsLeft: 46, rate: 2.7, canSettle: true, canRefi: true, type: 'personal' }];
-const base = { asOf: '2026-10', kind: 'landBuilding', occupancy: 'let', unitCount: 8, unitRent: 4000, landArea: 700, landPrice: 3000, builtPct: 60, floors: 3, buildCost: 2000, buildMonths: 24,
+const base = { asOf: '2026-10', kind: 'landBuilding', occupancy: 'let', unitCount: 8, unitRentBasis: 'unit', unitRent: 4000, landArea: 700, landPrice: 3000, builtPct: 60, floors: 3, buildCost: 2000, buildMonths: 24,
   landMonth: 6, buildStart: 9, income: 90000, dbrCap: 65, livingExpenses: 30000, cashBuffer: 150000, rentNow: 0, plRate: 4.5, rateQuote: 'flat', existingLoans: OLD, properties: [] };
 const plan0 = { lmUse: true, lmMode: 'max', plWhen: 'build', plMode: 'max', plSplit: true, pl2Use: true, coUse: false, mortgages: {}, settlePolicy: 'asNeeded', refiMode: 'auto', enabled: true, name: 'Land mortgage + personal loans' };
 const plan = { ...E.RE_PLAN_DEFAULTS, ...plan0 };

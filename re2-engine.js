@@ -17,7 +17,9 @@
                    villa kinds only. A ready asset with readyLandShare set is land + a building readyAge years old that ages.
    inp.occupancy   buildings: "liveLet" (you live in one unit, the rest is let — their rent joins the annex channel, partIn) |
                    "let" (let out entirely — the whole-home channel, letIn; you do not move in and keep paying your rent);
-                   unitCount, unitRent (SAR/mo per unit — or SAR/m²/yr with unitRentBasis "sqm" on builtArea × netLettablePct),
+                   unitCount, unitRentBasis "pct" (default: the building's rent a year = unitRentPct % of the all-in cost, spread over the
+                   units) or "unit" (unitRent SAR/mo per unit); "sqm" (SAR/m²/yr on builtArea × netLettablePct) is read for older saved
+                   scenarios only — the page converts them to "pct". The villa annex: partRentPct (% of the all-in cost) or partRentAnnual (fixed, overrides),
                    vacancyPct, mgmtPct (+ VAT): reLetting(p, prj) → { units, letUnits, perUnit, grossAnnual, netAnnual }. Rent
                    received never joins the bank's income test (cash only).
    rentFreezeUntil YYYY-MM (Riyadh rent freeze; blank / null = none): no rent growth — received (letIn, partIn, ownIn) or paid
@@ -152,7 +154,7 @@ const RE_BASE = {
   // the project (v2): mode and acquire are derived from the kind in mergeRE (see the data model above)
   kind: "landVilla",       // "landVilla" | "readyVilla" | "land" | "landBuilding" | "readyBuilding"
   occupancy: "liveLet",    // buildings: "liveLet" (you live in one unit, the rest is let) | "let" (let out entirely)
-  unitCount: 0, unitRentBasis: "unit", unitRent: 0, netLettablePct: 85, // buildings: units and their rent (SAR/mo per unit, or SAR/m²/yr on the net lettable share of the built area)
+  unitCount: 0, unitRentBasis: "pct", unitRentPct: 6, unitRent: 0, netLettablePct: 85, // buildings: units and their rent (SAR/mo per unit, or SAR/m²/yr on the net lettable share of the built area)
   landSellYear: null, landSellCostPct: 7.5, landZakat: "none",         // land only: sell in year … (null = hold); selling costs (2.5% broker + 5% RETT); zakat on land held to sell ("trade" = 2.5%/yr)
   whiteLandPct: 0, whiteLandOtherArea: 0,                                // white-land fee, %/yr of the land's value (Riyadh tiers; 0 outside) and your other undeveloped plots in the same city (m²)
   rentFreezeUntil: "2030-09",                                            // Riyadh rent freeze: no rent growth until this month (YYYY-MM; blank = none)
@@ -183,7 +185,8 @@ const RE_BASE = {
   incomeGrowth: 0, livingGrowth: 0, // optional yearly growth of income and living costs (%/yr, in yearly steps); the bank's limits follow your income
   // optional, all off by default: part of the new home let while you live in it, and zakat on the cash you keep invested
   // (the home you live in today is one of your `properties` below: isHome, with its keep / let / sell plan)
-  partRentAnnual: 0,       // annex / floor let while you live in the new home: SAR a year from the month after the project end, growing with rent growth
+  partRentPct: 0,          // annex / floor let while you live in the new home: its rent a year as % of the all-in cost…
+  partRentAnnual: 0,       // …or a fixed SAR a year (overrides the % when above zero); from the month after the project end, growing with rent growth
   cashZakatPct: 0,         // zakat on invested cash, %/yr: the return on cash becomes (1 + return) × (1 − zakat) − 1 (a home you live in is exempt)
   // existing debt (home mode) — EXAMPLES: replace with your real loans (or import from Qist)
   existingLoans: [
@@ -338,7 +341,7 @@ function mergeRE(inp) {
   if (!RE_KINDS[p.kind]) p.kind = RE_BASE.kind;
   p.mode = "home"; p.acquire = RE_KINDS[p.kind].acquire;
   if (p.occupancy !== "let") p.occupancy = "liveLet";
-  if (p.unitRentBasis !== "sqm") p.unitRentBasis = "unit";
+  if (p.unitRentBasis !== "sqm" && p.unitRentBasis !== "pct") p.unitRentBasis = "unit";
   if (p.landZakat !== "trade") p.landZakat = "none";
   // one set of bank terms per loan type: migrate an older scenario once, from its raw strategies; shared terms you already
   // have are never overwritten, and merging again changes nothing
@@ -414,7 +417,10 @@ function reLetting(p, prj) {
   const units = isB ? Math.max(0, Math.round(+p.unitCount || 0)) : 0;
   const letUnits = Math.max(0, units - (p.occupancy === "liveLet" ? 1 : 0));
   const rent = Math.max(0, +p.unitRent || 0);
-  const perUnit = units <= 0 ? 0 : p.unitRentBasis === "sqm" ? (+(prj && prj.builtArea) || 0) * (+p.netLettablePct || 0) / 100 * rent / units / 12 : rent;
+  // "pct" (the default): the whole building's rent a year as a % of the all-in cost, spread over the units; "unit": SAR a month
+  // per unit; "sqm" (older saved scenarios only — the page converts them to "pct"): SAR/m² a year on the net lettable area
+  const perUnit = units <= 0 ? 0 : p.unitRentBasis === "pct" ? (+(prj && prj.total) || 0) * Math.max(0, +p.unitRentPct || 0) / 100 / units / 12
+    : p.unitRentBasis === "sqm" ? (+(prj && prj.builtArea) || 0) * (+p.netLettablePct || 0) / 100 * rent / units / 12 : rent;
   const grossAnnual = letUnits * perUnit * 12;
   const netAnnual = grossAnnual * (1 - (+p.vacancyPct || 0) / 100) * (1 - (+p.mgmtPct || 0) / 100 * (1 + (+p.vatPct || 0) / 100));
   return { units, letUnits, perUnit, grossAnnual, netAnnual };
@@ -609,7 +615,7 @@ function reProject(p) {
   };
   const landValueAt = (t) => t < landMonth ? 0 : (ready ? ready.land : split ? split.land : build ? land : price + finish) * Math.pow(1 + g, (t - landMonth) / 12);
   // buildings: the units and their rent; land: the sale you planned and the holding costs (charged month by month in rePlanSimulate)
-  const letting = reLetting(p, { kind, isBuilding, builtArea });
+  const letting = reLetting(p, { kind, isBuilding, builtArea, total });
   const sellAt = isLand && +p.landSellYear > 0 ? Math.round(+p.landSellYear * 12) : null;
   const saleAt = sellAt != null && sellAt > landMonth ? sellAt : null;   // you cannot sell before you own it
   const area = (+p.landArea || 0) + (+p.whiteLandOtherArea || 0);
@@ -929,7 +935,8 @@ function rePlanSimulate(p, prj, plan) {
   // rent you pay today, and the home you live in now stays as it is)
   const livesIn = prj.moveIn && !lettingOut;
   // part of the new home let while you live in it (annex / floor) — not when the whole home is let; a building's let units join it
-  const partRent = livesIn && (p.partRentAnnual || 0) > 0 ? p.partRentAnnual : 0;
+  // (as % of the all-in cost a year — partRentPct — or a fixed SAR a year, which overrides the % when set)
+  const partRent = !livesIn ? 0 : (p.partRentAnnual || 0) > 0 ? p.partRentAnnual : (p.partRentPct || 0) > 0 ? prj.total * p.partRentPct / 100 : 0;
   const annexRent = partRent + (livesIn && prj.isBuilding && unitsNet > 0 ? unitsNet : 0);
   // your properties (reNormProps): each appreciates with the market; each may be mortgaged by this plan (eqs above), earns the
   // rent it earns today on both sides, and is kept or sold. The home you own and live in today (isHome, no rent today) is
@@ -2124,8 +2131,8 @@ function breakEvenRE(inp, idx, keys) {
   const drivers = [
     // a rent you receive from the project end (an annex let, or the whole home if you let it) — the "rent equivalent" of living there;
     // a building with units: the rent per unit; land: none
-    prj.isLand ? null : units ? ["rent", p.unitRentBasis === "sqm" ? "Rent per m² a year (SAR)" : "Rent per unit (SAR a month)", p.unitRent, (x) => ({ ...p, unitRent: x }), 0, Math.max(50000, (+p.unitRent || 0) * 5)]
-      : ["rent", lettingOut ? "Rent for the whole home (SAR a year)" : "Rent you would need to receive from the project end, e.g. an annex (SAR a year)", lettingOut ? (p.rentOutFixed > 0 ? p.rentOutFixed : base.prj.total * p.rentOutPct / 100) : (p.partRentAnnual || 0), (x) => lettingOut ? { ...p, rentOutFixed: x } : { ...p, partRentAnnual: x }, 0, Math.max(3000000, base.prj.value0 * 0.3)],
+    prj.isLand ? null : units && p.unitRentBasis === "pct" ? ["rentPct", "Rent as % of the all-in cost (a year)", +p.unitRentPct || 0, (x) => ({ ...p, unitRentPct: x }), 0, 40] : units ? ["rent", p.unitRentBasis === "sqm" ? "Rent per m² a year (SAR)" : "Rent per unit (SAR a month)", p.unitRent, (x) => ({ ...p, unitRent: x }), 0, Math.max(50000, (+p.unitRent || 0) * 5)]
+      : ["rent", lettingOut ? "Rent for the whole home (SAR a year)" : "Rent you would need to receive from the project end, e.g. an annex (SAR a year)", lettingOut ? (p.rentOutFixed > 0 ? p.rentOutFixed : base.prj.total * p.rentOutPct / 100) : ((p.partRentAnnual || 0) > 0 ? p.partRentAnnual : base.prj.total * (p.partRentPct || 0) / 100), (x) => lettingOut ? { ...p, rentOutFixed: x } : { ...p, partRentAnnual: x }, 0, Math.max(3000000, base.prj.value0 * 0.3)],
     ["appreciation", "Property appreciation (% a year)", p.appreciation, (x) => ({ ...p, appreciation: x }), -10, 30],
     ["return", "Return on cash (% a year)", p.altReturn, (x) => ({ ...p, altReturn: x }), 0, 40],
     prj.construct ? ["uplift", "Value uplift of self-build (%)", p.devMarginPct, (x) => ({ ...p, devMarginPct: x }), -100, 500] : null,

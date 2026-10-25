@@ -15,7 +15,7 @@ const key = (m) => JSON.stringify({ v: m.verdict, r: m.results.map((r) => r && [
   r.months.map((x) => [x.cash, x.avail, x.rentIn, x.rentPaid, x.value, x.debt])]) });
 
 test('every kind: the spend schedule adds up to the total; the value has no jump at completion; the project says what it is', () => {
-  for (const { label, inp } of kindScenarios(E, 48).concat(KINDS.map((kind) => ({ label: kind, inp: { ...HH, kind, unitCount: 6, unitRent: 3000, landSellYear: 6 } })))) {
+  for (const { label, inp } of kindScenarios(E, 48).concat(KINDS.map((kind) => ({ label: kind, inp: { ...HH, kind, unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, landSellYear: 6 } })))) {
     const m = E.computeRE(inp, { noNeed: true }), prj = m.prj, K = E.RE_KINDS[prj.kind];
     const spend = prj.schedule.reduce((a, b) => a + (b || 0), 0);
     assert.ok(Math.abs(spend - prj.total) < 1e-6, `${label}: schedule ${spend} vs total ${prj.total}`);
@@ -142,7 +142,7 @@ test('land only: the sale you planned — value × (1 − costs) into your cash,
 });
 
 test('reLetting: the units you let, the rent per unit (per unit or per m²), gross and net of vacancy and the management fee with VAT', () => {
-  const p = E.mergeRE({ kind: 'landBuilding', occupancy: 'let', unitCount: 8, unitRent: 3000, vacancyPct: 8, mgmtPct: 5, vatPct: 15, landArea: 1000, builtPct: 60, floors: 3, netLettablePct: 85 });
+  const p = E.mergeRE({ kind: 'landBuilding', occupancy: 'let', unitCount: 8, unitRentBasis: 'unit', unitRent: 3000, vacancyPct: 8, mgmtPct: 5, vatPct: 15, landArea: 1000, builtPct: 60, floors: 3, netLettablePct: 85 });
   const prj = E.reProject(p), L = prj.letting;
   assert.equal(L.units, 8); assert.equal(L.letUnits, 8); assert.equal(L.perUnit, 3000); assert.equal(L.grossAnnual, 8 * 3000 * 12);
   assert.ok(near(L.netAnnual, 8 * 3000 * 12 * 0.92 * (1 - 0.05 * 1.15), 1e-6));
@@ -153,14 +153,14 @@ test('reLetting: the units you let, the rent per unit (per unit or per m²), gro
   assert.equal(prj.builtArea, 1800);
   assert.ok(near(sqm.perUnit, 1800 * 0.85 * 400 / 8 / 12, 1e-9) && near(sqm.grossAnnual, 1800 * 0.85 * 400, 1e-6), 'per m² a year on the net lettable area, spread over the units');
   assert.equal(E.reLetting({ ...p, unitCount: 0 }, prj).netAnnual, 0);
-  assert.equal(E.reLetting(E.mergeRE({ kind: 'landVilla', unitCount: 8, unitRent: 3000 }), { builtArea: 500, isBuilding: false }).netAnnual, 0, 'a villa has no units');
-  assert.equal(E.reProject(E.mergeRE({ kind: 'land', unitCount: 8, unitRent: 3000 })).letting.netAnnual, 0);
+  assert.equal(E.reLetting(E.mergeRE({ kind: 'landVilla', unitCount: 8, unitRentBasis: 'unit', unitRent: 3000 }), { builtArea: 500, isBuilding: false }).netAnnual, 0, 'a villa has no units');
+  assert.equal(E.reProject(E.mergeRE({ kind: 'land', unitCount: 8, unitRentBasis: 'unit', unitRent: 3000 })).letting.netAnnual, 0);
   // mergeRE normalises the choices
   assert.equal(E.mergeRE({ unitRentBasis: 'x' }).unitRentBasis, 'unit'); assert.equal(E.mergeRE({ landZakat: 'yes' }).landZakat, 'none'); assert.equal(E.mergeRE({ landZakat: 'trade' }).landZakat, 'trade');
 });
 
 test('a building you live in: the let units are an annex of your home — the same numbers as a villa-style annex rent of the net figure', () => {
-  const units = { kind: 'landBuilding', occupancy: 'liveLet', unitCount: 6, unitRent: 3500, floors: 3, builtPct: 60, landArea: 900, rentNow: 9000 };
+  const units = { kind: 'landBuilding', occupancy: 'liveLet', unitCount: 6, unitRentBasis: 'unit', unitRent: 3500, floors: 3, builtPct: 60, landArea: 900, rentNow: 9000 };
   const a = run(units), net = a.prj.letting.netAnnual;
   assert.ok(net > 0 && a.prj.letting.letUnits === 5);
   const b = run({ ...units, unitCount: 0, partRentAnnual: net });
@@ -179,7 +179,7 @@ test('a building you live in: the let units are an annex of your home — the sa
 });
 
 test('a building let out entirely: the whole-home channel, no move-in — the same numbers as a fixed annual rent of the net figure', () => {
-  const units = { kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRent: 3000, propertyPrice: 5000000, rentNow: 9000 };
+  const units = { kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, propertyPrice: 5000000, rentNow: 9000 };
   const a = run(units), net = a.prj.letting.netAnnual;
   assert.ok(net > 0 && a.prj.letting.letUnits === 6 && a.prj.moveIn === false);
   assert.equal(key(a), key(run({ ...units, unitCount: 0, rentOutFixed: net })));
@@ -191,7 +191,7 @@ test('a building let out entirely: the whole-home channel, no move-in — the sa
     assert.ok(near(r.rentInTotal, r.months.reduce((s, x) => s + x.rentIn, 0), 1e-6));
   });
   assert.ok(['BUYING WINS', 'NOT BUYING WINS'].includes(a.verdict), 'you keep renting either way: buying vs not buying');
-  const built = run({ kind: 'landBuilding', occupancy: 'let', unitCount: 6, unitRent: 3000, rentNow: 9000 });
+  const built = run({ kind: 'landBuilding', occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, rentNow: 9000 });
   assert.ok(['BUILDING WINS', 'NOT BUILDING WINS'].includes(built.verdict));
   assert.ok(built.results[0].events.some((e) => e.kind === 'milestone' && e.t === built.prj.occupy && /^Building complete — let from month/.test(e.text)));
   // let, with no units set: still no move-in (and no rent)
@@ -269,22 +269,22 @@ test('the verdict\'s words per kind', () => {
   const words = (x) => run(x).verdict;
   const sets = { land: ['BUYING LAND WINS', 'NOT BUYING LAND WINS'], landBuilding: ['BUILDING WINS', 'NOT BUILDING WINS'], readyBuilding: ['BUYING WINS', 'NOT BUYING WINS'], landVilla: ['BUILDING WINS', 'NOT BUILDING WINS'], readyVilla: ['BUYING WINS', 'NOT BUYING WINS'] };
   for (const [kind, ok] of Object.entries(sets)) {
-    const m = run({ kind, rentNow: 0, occupancy: 'let', unitCount: 6, unitRent: 3000 });
+    const m = run({ kind, rentNow: 0, occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000 });
     assert.ok(ok.includes(m.verdict), `${kind}: ${m.verdict}`);
     assert.equal(m.verdict, m.bestFeasible.econAdv > 0 ? ok[0] : ok[1], `${kind}: judged on the recommendation`);
   }
   // paying rent today: owning vs renting only where you move in
   assert.ok(['OWNING WINS', 'RENTING WINS'].includes(words({ kind: 'landVilla', rentNow: 9000 })));
-  assert.ok(['OWNING WINS', 'RENTING WINS'].includes(words({ kind: 'landBuilding', occupancy: 'liveLet', unitCount: 6, unitRent: 3000, rentNow: 9000 })));
-  assert.ok(['BUILDING WINS', 'NOT BUILDING WINS'].includes(words({ kind: 'landBuilding', occupancy: 'let', unitCount: 6, unitRent: 3000, rentNow: 9000 })));
-  assert.ok(['BUYING WINS', 'NOT BUYING WINS'].includes(words({ kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRent: 3000, rentNow: 9000 })));
+  assert.ok(['OWNING WINS', 'RENTING WINS'].includes(words({ kind: 'landBuilding', occupancy: 'liveLet', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, rentNow: 9000 })));
+  assert.ok(['BUILDING WINS', 'NOT BUILDING WINS'].includes(words({ kind: 'landBuilding', occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, rentNow: 9000 })));
+  assert.ok(['BUYING WINS', 'NOT BUYING WINS'].includes(words({ kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, rentNow: 9000 })));
   assert.ok(['BUYING LAND WINS', 'NOT BUYING LAND WINS'].includes(words({ kind: 'land', rentNow: 9000, landArea: 800, landPrice: 1500 })));
   // land that cannot be paid for
   assert.equal(words({ kind: 'land', landArea: 20000, landPrice: 5000, cashAvailable: 100000 }), 'NO EXECUTABLE STRATEGY');
 });
 
 test('what-ifs on every kind: stress (overrun and delay only where there is a construction), break-evens, loan worth, start dates, the tool\'s pick; the ready villa only against the villa you would build', () => {
-  const inpOf = (kind) => ({ ...HH, kind, landArea: 800, landPrice: 1500, whiteLandPct: 2.5, landSellYear: 6, occupancy: 'liveLet', unitCount: 6, unitRent: 3000, floors: 2, builtPct: 60, propertyPrice: 4650000, readyLandShare: 50 });
+  const inpOf = (kind) => ({ ...HH, kind, landArea: 800, landPrice: 1500, whiteLandPct: 2.5, landSellYear: 6, occupancy: 'liveLet', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, floors: 2, builtPct: 60, propertyPrice: 4650000, readyLandShare: 50 });
   for (const kind of KINDS) {
     const inp = inpOf(kind), m = E.computeRE(inp, { noNeed: true }), idx = m.results.findIndex((r) => r && r.feasible), r = m.results[idx];
     assert.ok(r, `${kind}: a plan works`);
@@ -361,14 +361,14 @@ test('the villa kinds are untouched by the new choices: units, land keys and the
   for (let k = 0; k < 12; k++) {
     const inp = { ...randomScenario2(E, 500 + k), rentFreezeUntil: null };
     const a = E.computeRE(inp, { noNeed: true });
-    const b = E.computeRE({ ...inp, unitCount: 8, unitRent: 4000, landSellYear: 5, whiteLandPct: 10, landZakat: 'trade', ...(a.p.kind === 'readyVilla' ? {} : { readyLandShare: 50, readyAge: 7 }) }, { noNeed: true });
+    const b = E.computeRE({ ...inp, unitCount: 8, unitRentBasis: 'unit', unitRent: 4000, landSellYear: 5, whiteLandPct: 10, landZakat: 'trade', ...(a.p.kind === 'readyVilla' ? {} : { readyLandShare: 50, readyAge: 7 }) }, { noNeed: true });
     assert.equal(key(b), key(a), `random2#${500 + k} (${a.p.kind})`);
   }
   const v = run({ kind: 'landVilla', firstHomeExempt: false }), bld = run({ kind: 'landBuilding', occupancy: 'liveLet', unitCount: 0 });
   assert.equal(key(bld), key(v), 'a building you live in with no units set costs and behaves like the villa of the same area (RETT first-home relief is for a villa only, so none on either side)');
   assert.notEqual(key(run({ kind: 'landVilla' })), key(bld), 'with the relief the villa pays less RETT');
   // FAMILY2 on a building you live in: its home plan and property mortgage still apply; on land they do not (no move-in)
-  const fam = E.computeRE({ ...FAMILY2, asOf: '2026-03', properties: [{ ...FAMILY2.properties[0], plan: 'sell' }], kind: 'landBuilding', unitCount: 4, unitRent: 3000 }, { noNeed: true });
+  const fam = E.computeRE({ ...FAMILY2, asOf: '2026-03', properties: [{ ...FAMILY2.properties[0], plan: 'sell' }], kind: 'landBuilding', unitCount: 4, unitRentBasis: 'unit', unitRent: 3000 }, { noNeed: true });
   assert.ok(fam.results.some((r) => r && r.ownSale));
   const landFam = E.computeRE({ ...FAMILY2, asOf: '2026-03', properties: [{ ...FAMILY2.properties[0], plan: 'sell' }], kind: 'land' }, { noNeed: true });
   assert.ok(landFam.results.every((r) => !r || (r.ownPlan === 'keep' && !r.ownSale)), 'land: you stay where you live');
@@ -382,7 +382,7 @@ test('a ready home or building has its own milestones: bought (price with RETT, 
     assert.ok(r.events.some((e) => e.kind === 'milestone' && e.t === r.occupy && /^Move in\. Upkeep starts\./.test(e.text)), `S${i + 1}: move-in milestone`);
     assert.ok(!r.events.some((e) => /Land bought|Construction/.test(e.text)), `S${i + 1}: no build words`);
   });
-  const bld = run({ kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRent: 3000, propertyPrice: 5000000, finishExtra: 0, landMonth: 0 });
+  const bld = run({ kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, propertyPrice: 5000000, finishExtra: 0, landMonth: 0 });
   bld.results.forEach((r, i) => {
     const bought = r.events.find((e) => e.kind === 'milestone' && e.t === 0);
     assert.ok(bought && /^Building bought for .* incl\. RETT and the broker's fee\.$/.test(bought.text), `S${i + 1}: ${bought && bought.text}`);
