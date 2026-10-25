@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=d67c4fe6e0"></script>
-  <script src="re2-engine.js?v=d67c4fe6e0"></script>
-  <script src="re2-ui.js?v=d67c4fe6e0"></script>
+  <script src="engine.js?v=83c59b7e85"></script>
+  <script src="re2-engine.js?v=83c59b7e85"></script>
+  <script src="re2-ui.js?v=83c59b7e85"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -147,6 +147,9 @@
     .plan.lens { display: flex; flex-direction: column; }
     .plan.lens > .flex:last-child { margin-top: auto; }
     .lens-set { gap: 8px 16px; font-size: 13px; margin: 12px 0 10px; padding: 8px 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+    .dlg-back { position: fixed; inset: 0; background: rgba(14,26,43,.45); z-index: 60; display: flex; justify-content: flex-end; }
+    .dlg { background: var(--paper); width: min(580px, 100%); height: 100%; overflow-y: auto; padding: 18px 20px 28px; box-shadow: -8px 0 30px rgba(14,26,43,.25); outline: none; }
+    @media print { .dlg-back { display: none !important; } }
     .tbl-notes { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--sub); line-height: 1.5; }
     .tbl-notes li { margin: 2px 0; }
     .lens-cap { caption-side: top; text-align: left; font-size: 12.5px; font-weight: 700; padding: 0 0 6px; }
@@ -441,6 +444,7 @@
       useEffect(() => { const id = setTimeout(() => { try { localStorage.setItem(CUR_KEY, JSON.stringify(inp)); } catch (e) {} }, 400); return () => clearTimeout(id); }, [inp]);
       const [step, setStep] = useState(0);
       const [editIdx, setEditIdx] = useState(-1);      // the plan whose editor is open
+      const [loanDlg, setLoanDlg] = useState(null);     // the loan whose details are open: { i: plan, key: facility }
       const [focus, setFocus] = useState(-1);          // the plan shown in detail; -1 = the recommended one
       const [landWithBuild, setLandWithBuild] = useState(false);
       const [printAll, setPrintAll] = useState(false);
@@ -1779,7 +1783,7 @@
       ];
       const PlanPicker = ({ label }) => <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>{label || "for"} <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select></span>;
       const timelineOf = (r) => {
-        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, text: calText(e.text) }));
+        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, text: calText(e.text) }));
         // a plan that runs out says so once, in the month the cash runs out (the engine's row: how much more it needs, and the most
         // you would be short); the other plans show their lowest cash, or the most bridge money they need
         if (r.minCash >= 0 || r.bridged) rows.push({ t: r.minCashT, o: 1e6, kind: r.minCash < 0 ? "bridge" : "low", text: r.minCash < 0 ? `The most bridge money you need: ${fS(-r.minCash)}.` : `Lowest cash (no growth): ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
@@ -2035,12 +2039,12 @@
         return (
           <Box title={`What you take on with ${planRef(i)}`} style={{ marginTop: 14 }} help={EXPL.newDebt}>
             {cards ? <div className="grid" style={{ gap: 8 }}>{rows.map((x) => <div key={x.key} className={"plan lrow " + x.cls} style={{ borderLeftColor: x.kind === "old" ? "#8C877D" : x.key === "lm" ? "#2F6DB5" : /^eq/.test(x.key) ? "#1F9A80" : x.key === "co" ? "#6FA3E0" : "#A24FB8" }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>{nameOf(x)} <span className="mono" style={{ fontWeight: 700 }}>{fS(x.amount)}</span></div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{nameOf(x)}{x.kind === "new" && <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, key: x.key })}>Details ›</button></>} <span className="mono" style={{ fontWeight: 700 }}>{fS(x.amount)}</span></div>
                 <div style={{ fontSize: 12, color: K.sub, lineHeight: 1.45 }}>on {x.securedOn} · {x.borrower} · {rateTxt2(x)} · {instOf(x)} · {whenOf(x)}</div>
               </div>)}</div>
             : <div className="scroll-x"><table className="tbl liab">
                 <thead><tr><th>Loan</th><th>Secured on</th><th>Borrower</th><th>Amount</th><th>Rate ({inp.rateQuote === "flat" ? "hamish / APR" : "APR"})</th><th>Instalment</th><th>From – to</th></tr></thead>
-                <tbody>{rows.map((x) => <tr key={x.key} className={x.cls}><td className="l" dir="auto">{nameOf(x)}</td><td className="l">{x.securedOn}</td><td className="l">{x.borrower}</td><td>{fSAR(x.amount)}</td><td>{rateTxt2(x)}</td><td>{instOf(x)}</td><td className="l">{whenOf(x)}</td></tr>)}
+                <tbody>{rows.map((x) => <tr key={x.key} className={x.cls}><td className="l" dir="auto">{nameOf(x)}{x.kind === "new" && !print && <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, key: x.key })}>Details ›</button></>}</td><td className="l">{x.securedOn}</td><td className="l">{x.borrower}</td><td>{fSAR(x.amount)}</td><td>{rateTxt2(x)}</td><td>{instOf(x)}</td><td className="l">{whenOf(x)}</td></tr>)}
                   {!rows.length && <tr><td className="l" colSpan={7} style={{ color: K.sub }}>No loans — this plan pays from your cash and you owe nothing.</td></tr>}</tbody>
               </table></div>}
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 10, marginTop: 10 }}>
@@ -2266,7 +2270,7 @@
             </Dis>
             <Dis id="timeline" title="What happens, in order" sub={planName(i)} open={!!openDis.timeline} onToggle={toggleDis}>
               <div className="ev" style={{ fontWeight: 600 }}><span className="d">{fCal(0)}</span><span className="k"><EvTag kind="today" /></span><span>Today: {fM(inp.cashAvailable)} cash; {hj ? <>your old loans take {fSAR(hj.existingInstA)}/mo ({household.existingDbr.toFixed(0)}% of your income) and your spouse's {fSAR(hj.existingInstB)}/mo ({hj.existingDbrB.toFixed(0)}% of theirs) · <AR /></> : <>your old loans take {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income)</>}.</span></div>
-              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span><span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}</span></div>)}
+              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span><span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}{x.fac && <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, key: x.fac })} aria-label={`Details of this loan`}>Details ›</button></>}</span></div>)}
               <div className="ev" style={{ borderBottom: "none", fontWeight: 600 }}><span className="d">{endDate}</span><span className="k"><EvTag kind="horizon" /></span><span>{works(r) ? "" : `Only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}: `}{works(r) ? "Wealth" : "wealth"} {fM(r.econEnd)} vs {fM(r.econBaseEnd)} if you {W.baseIf}: <span style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</span>.</span></div>
             </Dis>
             {refiSteps(r).length > 0 && <Dis id="refi" title="Which old loans the bank buys out" sub={planName(i)} open={!!openDis.refi} onToggle={toggleDis}>{RefiBox({ r, i, bare: true })}</Dis>}
@@ -2347,6 +2351,62 @@
           </div>
         );
       };
+      // one loan's whole story (opened from the step-by-step or the "What you take on" table)
+      const LoanDetails = () => {
+        const { i, key } = loanDlg, r = m.results[i], d = r ? reFacDetail(r, key, p2, prj) : null, close = () => setLoanDlg(null);
+        if (!d) return null;
+        const f = d.f, row = d.row || {}, cap = d.capacity || {}, H = r.months.length - 1;
+        const rate = inp.rateQuote === "flat" ? `${f.quoted}% hamish (≈${f.rate.toFixed(2)}% APR)` : `${f.rate.toFixed(2)}% APR`;
+        const before = d.dbrBefore != null ? d.dbrBefore : household.existingDbr, after = d.dbrAfter;
+        const endTxt = d.prepaid ? `Paid off early from your cash in ${fCal(d.prepaid.t)}: ${fSAR(d.prepaid.cost)} including a ${fSAR(d.prepaid.fee)} early-settlement fee. Your cash after it: ${fM(r.months[d.prepaid.t].avail)} (your cushion is ${fM(inp.cashBuffer)}).`
+          : d.ended ? `${d.ended.how.charAt(0).toUpperCase() + d.ended.how.slice(1)} in ${fCal(d.ended.t)}.`
+          : d.stillOwed > 0.5 ? `Still running in ${endDate}: ${fS(d.stillOwed)} owed then.` : `Runs to its end in ${fCal(d.lastT)}.`;
+        const Sec = ({ title, children }) => <div style={{ marginTop: 14 }}><div className="eyebrow" style={{ marginBottom: 4 }}>{title}</div>{children}</div>;
+        return (
+          <div className="dlg-back no-print" onClick={close}>
+            <div className="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t" tabIndex={-1} ref={(el) => { if (el && !el.contains(document.activeElement)) el.focus(); }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") close(); }}>
+              <div className="flex justify-between items-start" style={{ gap: 10 }}>
+                <div><div className="eyebrow">{planName(i)} · loan details</div><h3 id="dlg-t" style={{ margin: "2px 0 0", fontSize: 18 }}>{row.label ? (d.topups ? `Top-ups of ${d.refi.names.join(" + ")}` : row.label) : f.label}</h3></div>
+                <button className="btn small" onClick={close} aria-label="Close">×</button>
+              </div>
+              <Sec title="The loan">
+                <Row k="Amount" v={fSAR(f.amount)} sub={d.split ? `as two loans: ${fSAR(d.split[0])} + ${fSAR(d.split[1])}` : d.topups ? `${d.topups.length} loan${d.topups.length > 1 ? "s" : ""}, each with its own bank` : null} />
+                <Row k="Borrower" v={row.borrower || "you"} />
+                <Row k="Secured on" v={row.securedOn || "—"} />
+                <Row k="Rate" v={rate} sub={row.effective != null ? `effective yearly cost ${(+row.effective).toFixed(2)}%` : null} />
+                <Row k="Tenure" v={`${f.tenure} years`} />
+                <Row k="Instalment" v={`${fSAR(f.pmt)}/mo`} sub={r.plan && f.key === "lm" && r.plan.extraMo > 0 ? `+ ${fSAR(r.plan.extraMo)}/mo extra you chose to pay` : null} />
+                <Row k="Taken – last payment" v={`${fCal(f.startedAt)} – ${fCal(d.lastT)}`} />
+                {d.fees > 0.5 && <Row k="Bank fees" v={fSAR(d.fees)} />}
+              </Sec>
+              <Sec title="Why this size">
+                <Row k="The bank's maximum then" v={fSAR(cap.cap || f.amount)} sub={cap.limitedBy ? `limited by ${cap.limitedBy}` : null} />
+                {after != null && <Row k="Your instalments, % of income" v={`${(+before).toFixed(0)}% → ${(+after).toFixed(0)}%`} sub={`before and after this loan · your limit ${hj ? `${hj.capPctA}% (yours)` : `${inp.dbrCap}%`}`} />}
+              </Sec>
+              <Sec title="Where the money goes">
+                {d.topups ? d.topups.map((x) => <Row key={x.id} k={`${x.name}: its own bank refinances it`} v={`${fSAR(x.net)} to you`} sub={`${fSAR(x.payoff)} clears the old loan (incl. the early-settlement fee) · new loan ${fSAR(x.amount)} at ${fSAR(x.inst)}/mo instead of ${fSAR(x.oldInst)}/mo`} />)
+                  : d.refi ? d.refi.items.map((x) => <Row key={x.id} k={`Clears ${x.name}`} v={fSAR(x.cost)} sub={x.fee > 0.5 ? `incl. a ${fSAR(x.fee)} early-settlement fee` : null} />) : null}
+                <Row k={f.key === "lm" ? "Paid to the seller for you" : "Lands in your cash"} v={fSAR(d.net)} tone={K.pos} sub={f.key === "lm" ? "the bank pays the seller directly; you pay the rest of the price from your cash" : null} />
+              </Sec>
+              <Sec title="What it costs">
+                <Row k={d.stillOwed > 0.5 ? `Profit paid until ${endDate}` : "Profit paid in all"} v={fSAR(d.profit)} />
+                {d.fees > 0.5 && <Row k="Bank fees" v={fSAR(d.fees)} />}
+                {d.prepaid && <Row k="Early-settlement fee" v={fSAR(d.prepaid.fee)} />}
+                <Row k={d.stillOwed > 0.5 ? `Repaid until ${endDate}` : "Repaid in all"} v={fSAR(d.paid + d.fees + (d.prepaid ? d.prepaid.fee : 0))} sub={d.stillOwed > 0.5 ? `${fSAR(d.stillOwed)} still owed then` : null} />
+              </Sec>
+              <Sec title="How it ends"><div style={{ fontSize: 13, lineHeight: 1.5 }}>{endTxt}</div></Sec>
+              {d.events.length > 0 && <Sec title="In the step-by-step">{d.events.map((e, k) => <div key={k} style={{ fontSize: 12.5, lineHeight: 1.5, color: K.sub, marginBottom: 6 }}><b>{fCal(e.t)}</b> · {boldNums(calText(e.text))}</div>)}</Sec>}
+              <Sec title="Year by year">
+                <div className="scroll-x"><table className="tbl" style={{ fontSize: 12 }}>
+                  <thead><tr><th>Year</th><th>Owed at the start</th><th>Paid</th><th>of which profit</th><th>Paid off</th><th>Owed at the end</th></tr></thead>
+                  <tbody>{d.years.map((y) => <tr key={y.k}><td className="l">{y.k} · {fCal(y.from)}–{fCal(y.to)}</td><td>{fM(y.open)}</td><td>{fM(y.paid)}</td><td>{fM(y.int)}</td><td>{y.payoff > 0.5 ? fM(y.payoff) : "—"}</td><td>{fM(y.close)}</td></tr>)}</tbody>
+                </table></div>
+                <div style={{ fontSize: 12, color: K.sub, marginTop: 4 }}>Paid = the instalments of that year (profit + repayment); paid off = a lump sum that clears it early.</div>
+              </Sec>
+            </div>
+          </div>
+        );
+      };
       const StepAnswer = () => {
         if (!lead) return <div><Head id="answer" title="Your answer" /><Box>Tick at least one plan in How to pay.</Box></div>;
         const r = focusRes, i = focusIdx;
@@ -2359,6 +2419,7 @@
             {letAll && InvestmentView({ r, i })}
             {WatchOut({ items: watchOut(r) })}
             {DetailsBox({ r, i })}
+            {loanDlg && LoanDetails()}
           </div>
         );
       };
