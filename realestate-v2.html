@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=7d1a00c9e5"></script>
-  <script src="re2-engine.js?v=7d1a00c9e5"></script>
-  <script src="re2-ui.js?v=7d1a00c9e5"></script>
+  <script src="engine.js?v=acf96b548c"></script>
+  <script src="re2-engine.js?v=acf96b548c"></script>
+  <script src="re2-ui.js?v=acf96b548c"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -888,6 +888,12 @@
               <div>
                 <Field label="Your spouse's income the bank recognises" value={+jt.income || 0} min={0} max={150000} step={500} unit="SAR/mo" onChange={(v) => setJoint("income", v)} hint="gross salary (after GOSI) with fixed allowances, plus half of other regular income shown for two years — not Citizen Account (SAMA)" />
                 <Tick checked={!!jt.redf} onChange={(v) => setJoint("redf", v)} label="The mortgage is supported by the Ministry of Housing / REDF (Sakani)" sub="SAMA then allows 65% instead of 55% for an income up to 15,000" />
+                {(() => { const set = jt.myShare != null && jt.myShare !== "", rA = household.dbrRoom || 0, rB = hj ? hj.dbrRoomB || 0 : 0, prop = rA + rB > 0 ? Math.round(rA / (rA + rB) * 100) : 100; return <div style={{ marginTop: 10 }}>
+                  <div className="lbl" style={{ marginBottom: 4 }}>Your share of the joint mortgage's instalment</div>
+                  <Seg label="Your share of the joint mortgage" value={set ? "set" : "auto"} onChange={(v) => setJoint("myShare", v === "auto" ? null : prop)} options={[["auto", "In proportion (default)"], ["set", "I set my share"]]} />
+                  {!set && <div style={{ fontSize: 12, color: K.sub, marginTop: 4, lineHeight: 1.45 }}>Split in proportion to the room each of you has left, so both rooms are used in full — today about {prop}% yours, {100 - prop}% your spouse's.</div>}
+                  {set && <div style={{ marginTop: 8 }}><Field label="My share" value={+jt.myShare} min={0} max={100} step={5} unit="%" onChange={(v) => setJoint("myShare", v)} hint={`your spouse carries ${100 - (+jt.myShare)}% · the bank lends only what each of you can carry at this split, so a split far from ${prop}% / ${100 - prop}% lowers the mortgage`} /></div>}
+                </div>; })()}
               </div>
               <div>
                 {hj && <div className="note" style={{ marginTop: 0, lineHeight: 1.55 }}>Each of you is tested on your own income: <b>you {hj.capPctA}%</b> ({limitWhy(inp.income)}) · <b>your spouse {hj.capPctB}%</b> ({limitWhy(hj.income)}). Your spouse's loans take {fSAR(hj.existingInstB)}/mo ({hj.existingDbrB.toFixed(0)}% of their income), leaving <b className="mono">{fSAR(hj.dbrRoomB)}/mo</b> of room for a joint mortgage.</div>}
