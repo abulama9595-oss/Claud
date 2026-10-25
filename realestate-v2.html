@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=596f3246b7"></script>
-  <script src="re2-engine.js?v=596f3246b7"></script>
-  <script src="re2-ui.js?v=596f3246b7"></script>
+  <script src="engine.js?v=d3a0fcad69"></script>
+  <script src="re2-engine.js?v=d3a0fcad69"></script>
+  <script src="re2-ui.js?v=d3a0fcad69"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -513,7 +513,7 @@
       const H = Math.round(inp.horizon * 12), endDate = fCal(H);
       const netRet = lead ? lead.netReturn : inp.altReturn;
       const curStart = prj.start;                                      // the planned start: construction start, or the purchase for a ready kind / land
-      const lwb = prj.construct ? landWithBuild : true;                // a start date moves the purchase too when there is nothing to build
+      const lwb = prj.construct && landWithBuild;                   // a construction start may move the land purchase with it; land only and the ready kinds move the purchase itself (the engine)
       const dep = inp.buildDeprPct == null ? 2 : inp.buildDeprPct;     // the building loses this % of its finished value a year
       const moveLine = inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn; // your rule: cash at move-in at least this
       const isTool = (i) => i >= 0 && i === toolIdx;
@@ -534,27 +534,27 @@
       /* optimizer (debounced; a slice of 48 mixes per tick): the planned start always, every start on "When" */
       const SLICE = 48;
       const runSlices = (inp0, d, planned, onDone, isCancelled) => {
-        const n = optimizeRE(inp0, { delays: [d], slice: [0, 0], planned, lwb }).combos, parts = [];
+        const n = optimizeRE(inp0, { delays: [d], slice: [0, 0], planned, landWithBuild: lwb }).combos, parts = [];
         let a = 0, id = null;
         const tick = () => {
           if (isCancelled()) return;
-          parts.push(optimizeRE(inp0, { delays: [d], slice: [a, Math.min(n, a + SLICE)], planned, lwb }).part); a += SLICE;
+          parts.push(optimizeRE(inp0, { delays: [d], slice: [a, Math.min(n, a + SLICE)], planned, landWithBuild: lwb }).part); a += SLICE;
           if (a < n) { id = setTimeout(tick, 0); return; }
-          onDone(optimizeRE(inp0, { merge: { delay: d, planned, parts }, lwb }));
+          onDone(optimizeRE(inp0, { merge: { delay: d, planned, parts }, landWithBuild: lwb }));
         };
         id = setTimeout(tick, 0);
         return () => clearTimeout(id);
       };
       useEffect(() => {
         let cancelled = false;
-        const stop = runSlices(optInp, Math.max(optInp.buildStart, optInp.landMonth), true, (r) => { if (!cancelled) setOptPlanned({ planned: r.start, combos: r.combos, src: optInp }); }, () => cancelled);
+        const stop = runSlices(optInp, reStartMonth(optInp), true, (r) => { if (!cancelled) setOptPlanned({ planned: r.start, combos: r.combos, searchProps: r.searchProps || [], dearer: r.dearer || [], policies: r.policies || [], src: optInp }); }, () => cancelled);
         return () => { cancelled = true; stop(); };
       }, [optInp, lwb]);
       const wantStarts = cur === "when";
       useEffect(() => {
         if (!wantStarts) return;
         const delays = []; for (let d = 0; d <= 60; d += 3) delays.push(d);
-        const cs = Math.max(optInp.buildStart, optInp.landMonth); if (!delays.includes(cs)) { delays.push(cs); delays.sort((a, b) => a - b); }
+        const cs = reStartMonth(optInp); if (!delays.includes(cs)) { delays.push(cs); delays.sort((a, b) => a - b); }
         let cancelled = false, k = 0, stop = () => {}; const rows = [];
         setOptRows({ rows: [], done: false, total: delays.length, src: optInp });
         const next = () => {
@@ -587,7 +587,7 @@
         withUndo(label || `Copied the tool's pick into Plan ${k + 1}`, () => {
           setInp((s0) => {
             const q = { ...s0, plans: [...s0.plans, { ...(st.best.cleanPlan || st.best.plan), enabled: true, name: st.best.name }] };
-            if (st.delay !== curStart) { q.buildStart = st.delay; q.landMonth = lwb ? st.delay : Math.min(s0.landMonth, st.delay); }
+            if (st.delay !== curStart) Object.assign(q, reAtStart(q, st.delay, lwb));
             return q;
           });
           setFocus(k);
@@ -639,7 +639,7 @@
       const wi = (id) => { const c = whatIf[id]; return c && c.idx === focusE ? c : null; };
       // "why this start": the plan you look at (or the best mix) run at the date you pick and at your planned start; the
       // difference in the end result split into its parts (reWealthParts), largest first, each with a plain sentence
-      const atStart = (q, d) => ({ ...q, buildStart: d, landMonth: lwb ? d : Math.min(q.landMonth || 0, d) });
+      const atStart = (q, d) => reAtStart(q, d, lwb);
       const why = useMemo(() => {
         if (cur !== "when" || focusE < 0) return null;
         const line = whyLine === "best" ? "best" : "plan";
@@ -1346,8 +1346,7 @@
       </>;
       const fxTxt = (x) => {
         if (!x) return "working it out…";
-        const planned = (p) => inp.existingLoans.some((l) => l.name === p.name && l.settleAt != null && Math.round(l.settleAt) === p.t);
-        const paid = x.payoffs.filter((p) => !planned(p)), mort = x.lm.amount + x.eq.amount + x.co.amount;
+        const paid = x.payoffs.filter((p) => p.why !== "planned"), mort = x.lm.amount + x.eq.amount + x.co.amount;
         const parts = [paid.length ? `pays off ${paid.map((p) => p.name).join(" + ")} (${fM(paid.reduce((a, p) => a + p.cost, 0))})` : "pays nothing off", `mortgage${x.lm.amount + x.eq.amount > 0 && x.co.amount > 0 ? "s" : ""} ${fM(mort)}`];
         return works(x) ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.bridged ? ` · needs a ${bridgeTxt(x)}` : ""}${x.recoveryOk ? "" : " · slow to recover"}${x.moveInOk === false ? ` · below your line at move-in (${fCash(x.onHandAtMoveIn)})` : ""}` : `${parts.join(" · ")} · cash runs out ${fCal(x.shortFrom)}${needOf(x) != null ? `: needs ${fS(needOf(x))} more cash to start with` : ""} ✗`;
       };
@@ -1557,7 +1556,7 @@
         return (
           <div className="plan" style={{ borderLeftColor: K.ink, background: "#F7F4EC", boxShadow: focusIdx === i && cur !== "pay" ? `0 0 0 2px ${K.ink}` : "none" }}>
             <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.45 }}><span className="tag" style={{ background: K.ink, color: "#ECE4D3", marginRight: 8, letterSpacing: ".04em" }}>THE TOOL'S PICK{r === lead ? " · ★ BEST" : ""}</span>{planTitle(toolPlan, build, r, jointOn, props)}</div>
-            <div style={{ fontSize: 12.5, color: K.sub, marginTop: 2 }}>the best of {opt.combos} mixes for a {fCal(st.delay)} start{jointOn && (+jt.income || 0) > 0 ? " (personal loans in your name, your spouse's or both — all tried)" : ""} · {st.nOk} of them meet your rules (work every month, cash back at your cushion within {inp.recoveryMonths} months, cash at move-in at least {fM(moveLine)}){optStale && <b style={{ color: K.text }}> · updating…</b>}<Hint text={EXPL.optimizer} label="The tool's pick" /></div>
+            <div style={{ fontSize: 12.5, color: K.sub, marginTop: 2 }}>the best of {opt.combos} mixes for a {fCal(st.delay)} start{jointOn && (+jt.income || 0) > 0 ? " (personal loans in your name, your spouse's or both — all tried)" : ""}{opt.searchProps && opt.searchProps.length ? ` (a mortgage on ${opt.searchProps.map((x) => x.name).join(" or ")} tried)` : ""}{opt.dearer && opt.dearer.length ? ` ("only dearer loans" tried too — ${opt.dearer.join(" + ")} ${opt.dearer.length > 1 ? "are" : "is"} dearer than the mortgage)` : ""} · {st.nOk} of them meet your rules (work every month, cash back at your cushion within {inp.recoveryMonths} months, cash at move-in at least {fM(moveLine)}){optStale && <b style={{ color: K.text }}> · updating…</b>}<Hint text={EXPL.optimizer} label="The tool's pick" /></div>
             <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{steps2.length ? steps2.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
             <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
               <Status r={r} />
@@ -1667,7 +1666,7 @@
                 {optRows.done ? (firstAhead ? <><b>{W.act.charAt(0).toUpperCase() + W.act.slice(1)} comes out ahead from {fCal(firstAhead.delay)}</b> with the best mix for that date ({fM(firstAhead.best.econAdv)}).</> : <>No start in the next 5 years comes out ahead of {baseLbl}, even with the best mix{bestEarliest ? <> (the earliest workable best mix starts {fCal(bestEarliest.delay)}: {fM(bestEarliest.best.econAdv)})</> : null}.</>) : <span style={{ color: K.sub }}>Finding the best mix for every date…</span>}
               </div>
               <div className="flex flex-wrap no-print" style={{ gap: 8, marginTop: 10 }}>
-                {earliest && earliest.delay !== curStart && <button className="btn small" onClick={() => withUndo(`Start moved to ${fCal(earliest.delay)}`, () => setInp((s0) => ({ ...s0, buildStart: earliest.delay, landMonth: lwb ? earliest.delay : Math.min(s0.landMonth, earliest.delay) })))}>{prj.construct ? "Start" : "Buy"} in {fCal(earliest.delay)}</button>}
+                {earliest && earliest.delay !== curStart && <button className="btn small" onClick={() => withUndo(`Start moved to ${fCal(earliest.delay)}`, () => setInp((s0) => reAtStart(s0, earliest.delay, lwb)))}>{prj.construct ? "Start" : "Buy"} in {fCal(earliest.delay)}</button>}
                 {firstAhead && <button className="btn gold small" disabled={full} onClick={() => copyMix(firstAhead, `Plan ${inp.plans.length + 1}: the best mix for a ${fCal(firstAhead.delay)} start`)}>Copy {fCal(firstAhead.delay)}'s best mix into a new plan</button>}
               </div>
             </Box>
@@ -1927,7 +1926,7 @@
         const nameOf = (x) => x.kind === "old" ? `${x.label} (${x.state.kind === "kept" ? "kept" : x.state.kind === "boughtOut" ? "bought out" : x.state.kind === "sold" ? "repaid from a sale" : "cleared"})` : x.split ? `Two personal loans${x.borrower === "your spouse" ? ", your spouse's" : ""}` : x.label + (x.refi && x.refi.length ? ` (buys out ${x.refi.join(" + ")})` : "");
         const whenOf = (x) => x.kind === "new" ? `${fCal(x.from)} – ${fCal(x.to)}${x.ended ? ` · ${x.ended.how} ${fCal(x.ended.t)}` : ""}` : x.state.kind === "kept" ? (x.state.t != null ? `until ${fCal(x.to)}` : `beyond ${endDate}`) : `${x.state.how} ${fCal(x.state.t)}`;
         const instOf = (x) => x.kind === "old" && x.state.kind !== "kept" ? "—" : `${fSAR(x.inst)}/mo`;
-        const planDoes = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o) return ""; const s = o.state; return s.kind === "kept" ? ` This plan keeps it${s.t != null ? ` to its end in ${fCal(s.t)}` : ""}.` : s.kind === "boughtOut" ? ` This plan has the bank buy it out in ${fCal(s.t)}.` : s.kind === "sold" ? ` This plan repays it from a sale in ${fCal(s.t)}.` : ` This plan pays it off in ${fCal(s.t)}${(r.payoffs || []).some((x) => x.t === s.t && x.name === a.name && !(inp.existingLoans.concat(spouseLoans).some((l) => l.name === a.name && l.settleAt != null && Math.round(l.settleAt) === s.t))) ? " to make room for a mortgage" : ""}.`; };
+        const planDoes = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o) return ""; const s = o.state; return s.kind === "kept" ? ` This plan keeps it${s.t != null ? ` to its end in ${fCal(s.t)}` : ""}.` : s.kind === "boughtOut" ? ` This plan has the bank buy it out in ${fCal(s.t)}.` : s.kind === "sold" ? ` This plan repays it from a sale in ${fCal(s.t)}.` : ` This plan pays it off in ${fCal(s.t)}${(() => { const x = (r.payoffs || []).find((y) => y.t === s.t && y.name === a.name); return x && x.why === "room" ? ` to make room for the ${(x.forLabel || "mortgage").toLowerCase()}${x.dearer ? " — it is dearer than that mortgage" : ""}` : ""; })()}.`; };
         const years = Lb.debtByYear.filter((y) => y.year >= 1), present = DEBT_SERIES.filter(([k]) => years.some((y) => (y[k] || 0) > 0.5));
         const peakTxt = `Most you owe at once ${fS(Lb.peakDebt)} in ${fCal(Lb.peakDebtT)}; instalments at their highest ${fSAR(Lb.peakInst)}/mo (${(Lb.peakInstPct || 0).toFixed(0)}% of income) from ${fCal(span.from)} to ${fCal(span.to)}; ${Lb.debtFreeT != null ? `debt-free ${fCal(Lb.debtFreeT)}` : `still in debt in ${endDate}`}.`;
         const cards = narrow && !print;
@@ -2316,7 +2315,6 @@
               </div>
               <div style={{ fontSize: 13, color: "#ECE4D3" }} title={dirty ? "changes not saved" : "saved"}>{loadedName ? <>“<span dir="auto">{loadedName}</span>”{dirty && <span style={{ color: "#D9B36A" }} aria-label="unsaved changes"> ● unsaved</span>}</> : <span style={{ color: "#C8D3DF" }}>Working copy <span style={{ color: "#D9B36A" }}>● not saved</span></span>}</div>
               <div className="flex flex-wrap items-center no-print" style={{ gap: 8 }}>
-                <span className="tag" style={{ background: "#B0823A", color: "#0E1A2B", letterSpacing: ".04em" }}>NEW VERSION</span>
                 <button className="hbtn gold" onClick={saveCurrent} disabled={clean} title={loadedName ? `Save your changes to "${loadedName}"` : "Save this scenario"}>{clean ? "Saved ✓" : "Save"}</button>
                 <button className="hbtn" onClick={saveAsNew} title="Save under a new name">Save as…</button>
                 <button className="hbtn" onClick={() => setShowScen(!showScen)} aria-expanded={showScen}>Scenarios</button>
