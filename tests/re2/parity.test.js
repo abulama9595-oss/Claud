@@ -25,10 +25,26 @@ test('fork parity: every synthetic scenario gives the old engine\'s numbers (imp
   assert.ok(n > 90);
 });
 
-test('fork parity: the tool\'s pick (optimizer) agrees too', { skip: !OLD && 'old engine deleted' }, () => {
+// a mix is compared by what it draws and what it gives (the new engine names the property and uses the kind's words, so not by name)
+// (the next-best list is compared only where the old scenario builds: for a ready home the new engine knows that "at build
+// start" and "when the land is bought" are one and the same mix and lists another in its place)
+const mixKey = (o, alts) => { const b = o.planned.best; return JSON.stringify([b.econAdv, o.planned.nOk, b.feasible, !!b.bridged, b.recoveryOk, b.moveInOk, b.lm, b.eq, b.pl, b.co, b.pl2, b.settled, b.roomSettled, b.plan.settlePolicy, alts ? o.planned.alts.map((x) => [x.econAdv, x.lm, x.eq, x.pl, x.co, x.pl2, x.settled]) : null]); };
+test('fork parity: the tool\'s pick (optimizer) agrees too — on the old tool\'s three settle policies; the new search adds "only dearer loans" when an old loan is dearer than the mortgage, and then ranks no lower', { skip: !OLD && 'old engine deleted' }, () => {
+  let withDearer = 0;
   for (const { label, inp } of scenarios(NEW, 12)) {
-    const a = OLD.optimizeRE(inp, { plannedOnly: true }), b = NEW.optimizeRE(toNew(inp), { plannedOnly: true });
+    const a = OLD.optimizeRE(inp, { plannedOnly: true }), q = toNew(inp), b = NEW.optimizeRE(q, { plannedOnly: true, policies: ['asNeeded', 'forMax', 'none'] });
     assert.equal(b.combos, a.combos, `${label}: combos`);
-    assert.equal(JSON.stringify([b.planned.best.econAdv, b.planned.best.name, b.planned.nOk]), JSON.stringify([a.planned.best.econAdv, a.planned.best.name, a.planned.nOk]), label);
+    const alts = (inp.acquire || 'build') !== 'buy';
+    assert.equal(mixKey(b, alts), mixKey(a, alts), label);
+    // the default search: the same mixes, plus the "dearer" policy when one of the old loans is dearer than the mortgages (a
+    // superset of the old search), so its best never ranks below the old best — standing, then your rules, then everything grows
+    const c = NEW.optimizeRE(q, { plannedOnly: true });
+    assert.equal(c.combos, c.dearer.length ? a.combos * 4 / 3 : a.combos, `${label}: default combos`);
+    if (!c.dearer.length) { assert.equal(mixKey(c, alts), mixKey(a, alts), `${label}: no dearer loan, the same search`); continue; }
+    withDearer++;
+    const rk = (x) => [NEW.reStanding(x), NEW.reStanding(x) > 0 ? (x.recoveryOk ? 1 : 0) + (x.moveInOk ? 1 : 0) : 0, x.econAdv], ra = rk(a.planned.best), rc = rk(c.planned.best);
+    assert.ok(rc[0] > ra[0] || (rc[0] === ra[0] && (rc[1] > ra[1] || (rc[1] === ra[1] && rc[2] >= ra[2] - 1e-6))), `${label}: the default search ranks no lower (${rc} vs ${ra})`);
+    assert.ok(c.planned.nOk >= a.planned.nOk, `${label}: at least as many mixes meet your rules`);
   }
+  assert.ok(withDearer > 0, 'some synthetic households have a dearer loan');
 });
