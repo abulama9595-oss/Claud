@@ -186,7 +186,7 @@ test('a building let out entirely: the whole-home channel, no move-in — the sa
   a.results.forEach((r, i) => {
     assert.equal(r.livesIn, false); assert.equal(r.lettingOut, true); assert.ok(near(r.annualRentOut, net, 1e-9));
     r.months.forEach((x) => { if (x.t >= 1) assert.ok(near(x.rentPaid, x.rentEq, 1e-9), `S${i + 1} M${x.t}: you keep renting`); if (x.t > r.occupy) assert.ok(near(x.rentIn, net / 12 * Math.pow(1.03, Math.floor((x.t - r.occupy - 1) / 12)), 1e-6)); else assert.equal(x.rentIn, 0); });
-    assert.ok(r.events.some((e) => e.kind === 'milestone' && e.t === r.occupy && /^Building bought — let from month/.test(e.text)), `S${i + 1}: "let from" milestone`);
+    assert.ok(r.events.some((e) => e.kind === 'milestone' && e.t === r.occupy && /let from month/.test(e.text)), `S${i + 1}: "let from" milestone`);
     assert.ok(!r.events.some((e) => /move in/.test(e.text)));
     assert.ok(near(r.rentInTotal, r.months.reduce((s, x) => s + x.rentIn, 0), 1e-6));
   });
@@ -372,4 +372,25 @@ test('the villa kinds are untouched by the new choices: units, land keys and the
   assert.ok(fam.results.some((r) => r && r.ownSale));
   const landFam = E.computeRE({ ...FAMILY2, asOf: '2026-03', properties: [{ ...FAMILY2.properties[0], plan: 'sell' }], kind: 'land' }, { noNeed: true });
   assert.ok(landFam.results.every((r) => !r || (r.ownPlan === 'keep' && !r.ownSale)), 'land: you stay where you live');
+});
+
+test('a ready home or building has its own milestones: bought (price with RETT, the broker\'s fee and finishing) in the purchase month, move in — or let — the month after', () => {
+  const villa = run({ kind: 'readyVilla', propertyPrice: 2800000, finishExtra: 100000, landMonth: 3, rentNow: 9000 });
+  villa.results.forEach((r, i) => {
+    const bought = r.events.find((e) => e.kind === 'milestone' && e.t === villa.prj.landMonth);
+    assert.ok(bought && /^Home bought for .* incl\. RETT and the broker's fee; finishing .* incl\. VAT/.test(bought.text), `S${i + 1}: ${bought && bought.text}`);
+    assert.ok(r.events.some((e) => e.kind === 'milestone' && e.t === r.occupy && /^Move in\. Upkeep starts\./.test(e.text)), `S${i + 1}: move-in milestone`);
+    assert.ok(!r.events.some((e) => /Land bought|Construction/.test(e.text)), `S${i + 1}: no build words`);
+  });
+  const bld = run({ kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRent: 3000, propertyPrice: 5000000, finishExtra: 0, landMonth: 0 });
+  bld.results.forEach((r, i) => {
+    const bought = r.events.find((e) => e.kind === 'milestone' && e.t === 0);
+    assert.ok(bought && /^Building bought for .* incl\. RETT and the broker's fee\.$/.test(bought.text), `S${i + 1}: ${bought && bought.text}`);
+    assert.ok(r.events.some((e) => e.kind === 'milestone' && e.t === r.occupy && /^Building ready — let from month/.test(e.text)), `S${i + 1}: let-from milestone`);
+  });
+  // a build keeps its milestones; land only keeps "Land bought" alone
+  const built = run({ kind: 'landVilla' }).results[0];
+  assert.ok(built.events.some((e) => /^Land bought for/.test(e.text)) && built.events.some((e) => /^Construction starts/.test(e.text)) && built.events.some((e) => /^Construction complete — move in/.test(e.text)));
+  const land = run({ kind: 'land', landArea: 1000, landPrice: 2000 }).results[0];
+  assert.equal(land.events.filter((e) => e.kind === 'milestone').length, 1);
 });

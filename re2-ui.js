@@ -138,7 +138,8 @@ function fundingBridgeRows(r, upto, inp, prj) {
 }
 
 /* ---------- plain-English description of a strategy, generated from its settings ---------- */
-const whenTxt = (w, mo, prj) => w === "start" ? "at the start" : w === "land" ? `when the land is bought (${fCal(prj.landMonth)})` : w === "build" ? `when construction starts (${fCal(prj.start)})` : w === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(mo)}`;
+// (a ready home or building, and land only: "when the land is bought" / "at build start" both mean the purchase)
+const whenTxt = (w, mo, prj) => w === "start" ? "at the start" : w === "land" ? (prj.build ? `when the land is bought (${fCal(prj.landMonth)})` : `at the purchase (${fCal(prj.landMonth)})`) : w === "build" ? (prj.construct ? `when construction starts (${fCal(prj.start)})` : `at the purchase (${fCal(prj.start)})`) : w === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(mo)}`;
 const refiTxt = (o) => (o.refiMode === "cash" ? "buying out the old personal loans that put the most cash in your hands" : o.refiMode === "value" ? "buying out old personal loans only where that leaves you richer" : o.refiMode === "pick" ? "buying out only the old loans you chose" : "buying out old personal loans where that leaves you richer (or puts more cash in hand if needed)");
 function describePlan(o, inp, prj, build) {
   // each step with the month it happens; listed in that order (a payoff before the mortgage it makes room for, the loans
@@ -279,7 +280,7 @@ function rePayoffRows(f, extraMo, feeMonths) {
 // when not given)
 // props (optional): your properties (inp.properties), to name the one a mortgage step is on (else the result's facilities name it)
 function planTitle(o, build, r, joint, props) {
-  const when = { start: "now", land: "when the land is bought", build: "at build start", completion: "at move-in", month: "in a month you chose" };
+  const when = { start: "now", land: build ? "when the land is bought" : "at the purchase", build: build ? "at build start" : "at the purchase", completion: "at move-in", month: "in a month you chose" };
   const cov = r && r.covered ? RE_PL_STEP[r.covered.key] || r.covered.key : null, short = r && r.covered && r.covered.split ? "in two parts, when your cash runs short" : "when your cash runs short";
   const pl = o.plWhen && o.plWhen !== "none", pl2 = !!o.pl2Use, parts = [];
   const plW = cov === "pl" ? short : when[o.plWhen], pl2W = cov === "pl2" ? short : "at move-in";
@@ -413,6 +414,15 @@ function reKindWords(inp, prj) {
     doneShort: isLand ? "purchase" : letAll ? "completion" : "move-in",
     thing: isLand ? "the land" : isBuilding ? "the building" : "the home",
   };
+}
+
+/* ---------- when a plan's cash would cover settling an old loan (the advisor says "keep it for now" when today's cash does not):
+   the first month, before the loan ends (until), in which the cash you can spend minus the cushion and three months' outgoings
+   (the advisor's rule) covers the settlement cost; null when never. Presentation only. ---------- */
+function reSettleWhen(r, cost, cashBuffer, until) {
+  const H = r.months.length - 1, end = until == null ? H : Math.min(H, until);
+  for (let t = 1; t <= end; t++) { const x = r.months[t]; const out = x.liv + x.rentPaid + x.existInst + x.lmPay + x.eqPay + x.plPay + x.coPay + x.rfPay + (x.ownerCost || 0); if (x.avail - (cashBuffer || 0) - 3 * out >= cost) return t; }
+  return null;
 }
 
 /* ---------- a plan's instalments at their highest: the months at the peak (within 0.5% of it), around peakInstT ---------- */

@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=d3a0fcad69"></script>
-  <script src="re2-engine.js?v=d3a0fcad69"></script>
-  <script src="re2-ui.js?v=d3a0fcad69"></script>
+  <script src="engine.js?v=8cae00fa32"></script>
+  <script src="re2-engine.js?v=8cae00fa32"></script>
+  <script src="re2-ui.js?v=8cae00fa32"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -524,7 +524,7 @@
       const lenses = useMemo(() => reLenses(m.results, { liabilityBy: lens.by, years: lens.years === "horizon" ? null : lens.years, atMonth: lens.at }), [m, lens]);
 
       /* steps: project · money · loans · properties · pay · when · answer (no "When" for land: the sale year is on the project step) */
-      const steps = [["project", "Your project"], ["money", "Your money"], ["loans", "Your loans"], ["props", "Your properties"], ["pay", "How to pay"], ...(isLand ? [] : [["when", "When"]]), ["answer", "Your answer"]];
+      const steps = [["project", "Your project"], ["money", "Your money"], ["loans", "Your loans"], ["props", "Your properties"], ["pay", "How to pay"], ["answer", "Your answer"], ...(isLand ? [] : [["when", "When"]])];   // the answer first; When is a what-if on it
       const stepI = Math.min(step, steps.length - 1), cur = steps[stepI][0];
       const stepIdx = (id) => steps.findIndex((s) => s[0] === id);
       const stepRow = useRef(null);
@@ -1085,7 +1085,8 @@
       const ReadyFields = () => { const split = inp.readyLandShare != null && inp.readyLandShare !== "" && !isNaN(+inp.readyLandShare); return (
         <Box title="The purchase">
           <Field label="Price" value={inp.propertyPrice} min={300000} max={isBuilding ? 40000000 : 15000000} step={50000} unit="SAR" onChange={(v) => set("propertyPrice", v)} />
-          <Field label="Built-up area" value={inp.builtArea} min={100} max={isBuilding ? 6000 : 2500} step={10} unit="m²" onChange={(v) => set("builtArea", v)} hint={isBuilding ? "for the rent per m² and the cost per m²" : "for the cost per m²"} />
+          {!isBuilding && <Field label="Plot size" value={inp.landArea} min={100} max={5000} step={10} unit="m²" onChange={(v) => set("landArea", v)} hint="the land the villa stands on — for the listing; the price is what counts" />}
+          <Field label={isBuilding ? "Built-up area" : "Villa size"} value={inp.builtArea} min={100} max={isBuilding ? 6000 : 2500} step={10} unit="m²" onChange={(v) => set("builtArea", v)} hint={isBuilding ? "for the rent per m² and the cost per m²" : "the villa's built-up area, for the cost per m²"} />
           <Field label="Finishing, furnishing" value={inp.finishExtra} min={0} max={800000} step={10000} unit="SAR" onChange={(v) => set("finishExtra", v)} />
           <MonthField label="Buy in" value={inp.landMonth} min={0} max={72} onChange={(v) => setInp((s) => ({ ...s, landMonth: v, buildStart: v }))} hint={`${letAll ? "let from" : "you move in"} ${fCal(prj.occupy)} · today's price grown ${inp.appreciation}%/yr until then`} />
           <More title="More: broker, the building's age and ageing, values, taxes and relief">
@@ -1926,7 +1927,7 @@
         const nameOf = (x) => x.kind === "old" ? `${x.label} (${x.state.kind === "kept" ? "kept" : x.state.kind === "boughtOut" ? "bought out" : x.state.kind === "sold" ? "repaid from a sale" : "cleared"})` : x.split ? `Two personal loans${x.borrower === "your spouse" ? ", your spouse's" : ""}` : x.label + (x.refi && x.refi.length ? ` (buys out ${x.refi.join(" + ")})` : "");
         const whenOf = (x) => x.kind === "new" ? `${fCal(x.from)} – ${fCal(x.to)}${x.ended ? ` · ${x.ended.how} ${fCal(x.ended.t)}` : ""}` : x.state.kind === "kept" ? (x.state.t != null ? `until ${fCal(x.to)}` : `beyond ${endDate}`) : `${x.state.how} ${fCal(x.state.t)}`;
         const instOf = (x) => x.kind === "old" && x.state.kind !== "kept" ? "—" : `${fSAR(x.inst)}/mo`;
-        const planDoes = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o) return ""; const s = o.state; return s.kind === "kept" ? ` This plan keeps it${s.t != null ? ` to its end in ${fCal(s.t)}` : ""}.` : s.kind === "boughtOut" ? ` This plan has the bank buy it out in ${fCal(s.t)}.` : s.kind === "sold" ? ` This plan repays it from a sale in ${fCal(s.t)}.` : ` This plan pays it off in ${fCal(s.t)}${(() => { const x = (r.payoffs || []).find((y) => y.t === s.t && y.name === a.name); return x && x.why === "room" ? ` to make room for the ${(x.forLabel || "mortgage").toLowerCase()}${x.dearer ? " — it is dearer than that mortgage" : ""}` : ""; })()}.`; };
+        const planDoes = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o) return ""; const s = o.state; return s.kind === "kept" ? ` This plan keeps it${s.t != null ? ` to its end in ${fCal(s.t)}` : ""}.${a.verdict === "keep" && a.canSettle && a.saveSettle >= a.eps && !a.cashOk ? (() => { const w = reSettleWhen(r, a.settleCost, inp.cashBuffer, s.t); return w != null ? ` Under this plan your cash would cover settling it from ${fCal(w)} — settle it then.` : " Under this plan your cash never covers settling it before it ends."; })() : ""}` : s.kind === "boughtOut" ? ` This plan has the bank buy it out in ${fCal(s.t)}.` : s.kind === "sold" ? ` This plan repays it from a sale in ${fCal(s.t)}.` : ` This plan pays it off in ${fCal(s.t)}${(() => { const x = (r.payoffs || []).find((y) => y.t === s.t && y.name === a.name); return x && x.why === "room" ? ` to make room for the ${(x.forLabel || "mortgage").toLowerCase()}${x.dearer ? " — it is dearer than that mortgage" : ""}` : ""; })()}.`; };
         const years = Lb.debtByYear.filter((y) => y.year >= 1), present = DEBT_SERIES.filter(([k]) => years.some((y) => (y[k] || 0) > 0.5));
         const peakTxt = `Most you owe at once ${fS(Lb.peakDebt)} in ${fCal(Lb.peakDebtT)}; instalments at their highest ${fSAR(Lb.peakInst)}/mo (${(Lb.peakInstPct || 0).toFixed(0)}% of income) from ${fCal(span.from)} to ${fCal(span.to)}; ${Lb.debtFreeT != null ? `debt-free ${fCal(Lb.debtFreeT)}` : `still in debt in ${endDate}`}.`;
         const cards = narrow && !print;

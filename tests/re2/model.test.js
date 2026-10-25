@@ -13,7 +13,7 @@ const stable = (v) => JSON.stringify(v, (k, x) => x && typeof x === 'object' && 
 const fk = (k) => String(k).replace(/^eq:.*$/, 'eq');
 const key = (m) => JSON.stringify({ v: m.verdict, t: Math.round(m.prj.total), d: m.household.dbrRoom, h: m.household.capTimeline.map((c) => [c.t, c.room, c.maxMortgage, c.maxTwoPl]),
   r: m.results.map((r) => r && { f: r.feasible, b: !!r.bridged, e: r.econAdv, a: r.advantage, mc: r.minCash, oh: r.onHandAtMoveIn, pk: r.peakInst, nd: r.newDebtTotal, ni: r.newDebtInterest, ok: r.dbrOk, op: r.ownPlan, os: r.ownSale ? [r.ownSale.t, r.ownSale.net, r.ownSale.payoff] : null,
-    cov: r.covered ? [fk(r.covered.key), r.covered.at, r.covered.amount] : null, fac: r.facilities.filter((f) => f.amount > 0).map((f) => [fk(f.key), f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.length, fl: r.flags.length,
+    cov: r.covered ? [fk(r.covered.key), r.covered.at, r.covered.amount] : null, fac: r.facilities.filter((f) => f.amount > 0).map((f) => [fk(f.key), f.amount, f.startedAt, f.pmt, f.settledAt]), ev: r.events.filter((e) => e.kind !== 'milestone').length, fl: r.flags.length,
     m: r.months.map((x) => [x.cash, x.avail, x.debt, x.econAdv, x.netWorth, x.plPay, x.eqPay, x.ownIn, x.ownGone]) }) });
 
 test('mergeRE: idempotent; mode and acquire follow the kind; properties and a plan\'s mortgages are normalised', () => {
