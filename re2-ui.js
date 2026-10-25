@@ -370,6 +370,46 @@ function reWealthParts(r) {
    instalment, from–to), then the old loans with their state (kept, bought out, paid off, repaid from a sale). */
 const RE_LENS_MEASURES = [["peakDebt", "The most you owe at once", "the most you owe in any month, old loans included"], ["borrowed", "Borrowed in total", "the sum of every new loan"], ["peakInst", "Instalments at their highest", "your heaviest month, as % of income"], ["profit", "Profit paid to banks", "profit, fees and bridge money over the comparison"]];
 const RE_SETTLE_VERDICT = { keep: "Keep", buyout: "Let the bank buy it out", settleCash: "Settle from cash", room: "Settle only to make room" };
+/* ---------- LOAN DETAILS (the step-by-step's "Details" link): one new loan's whole story from a result ---------- */
+// its month-by-month schedule, rebuilt from its rate, instalment, start and end (the run keeps no per-loan series, so each run
+// stays as light as before): the first instalment the month after it starts; the plan's extra payment on the land / purchase
+// mortgage; paid off early (after that month's instalment) at prepaidAt; bought out, sold or cleared at settledAt (no instalment)
+function reFacSchedule(f, r, plan) {
+  const H = r.months.length - 1, rows = [];
+  if (!f || f.startedAt == null || !(f.amount > 0)) return rows;
+  const extra = f.key === "lm" ? Math.max(0, (plan && +plan.extraMo) || 0) : 0;
+  let bal = f.amount;
+  for (let t = f.startedAt + 1; t <= H && bal > 0.5; t++) {
+    if (f.prepaidAt == null && f.settledAt != null && t >= f.settledAt) { rows.push({ t, open: bal, pay: 0, int: 0, payoff: bal, close: 0 }); bal = 0; break; }
+    const open = bal, int = bal * f.rate / 1200, pay = Math.min(f.pmt + extra, bal + int);
+    bal -= pay - int;
+    let payoff = 0;
+    if (f.prepaidAt === t) { payoff = bal; bal = 0; }
+    rows.push({ t, open, pay, int, payoff, close: bal });
+  }
+  return rows;
+}
+// everything about one new loan (key = its facility key: lm, eq:<id>, pl, pl2, spl, spl2, co, rf)
+function reFacDetail(r, key, p, prj) {
+  const f = (r.facilities || []).find((x) => x.key === key);
+  if (!f || f.startedAt == null || !(f.amount > 0)) return null;
+  const row = reLiability(r, p, prj).rows.find((x) => x.key === key) || null;
+  const sched = reFacSchedule(f, r, r.plan), H = r.months.length - 1;
+  const years = [];
+  sched.forEach((x) => { const k = Math.floor((x.t - f.startedAt - 1) / 12); const y = years[k] || (years[k] = { k: k + 1, from: x.t, to: x.t, open: x.open, paid: 0, int: 0, payoff: 0, close: x.close }); y.to = x.t; y.paid += x.pay; y.int += x.int; y.payoff += x.payoff; y.close = x.close; });
+  const profit = sched.reduce((a, x) => a + x.int, 0), paid = sched.reduce((a, x) => a + x.pay + x.payoff, 0);
+  const prepaid = (r.prepaid || []).find((x) => x.key === key) || null;
+  const dbrOf = (t) => t >= 0 && t <= H && r.months[t] && r.months[t].dbr != null ? r.months[t].dbr : null;
+  const net = f.refi ? f.refi.net : f.amount - (f.fees || 0);
+  return {
+    f, row, sched, years, profit, paid, fees: f.fees || 0, net, prepaid,
+    capacity: f.capacity || null, refi: f.refi || null, topups: f.topups || null, split: f.split || null,
+    dbrBefore: f.startedAt >= 1 ? dbrOf(f.startedAt) : null,   // (month 0: the page reads today's figure)
+     dbrAfter: dbrOf(Math.min(H, f.startedAt + 1)),
+    ended: row ? row.ended : null, lastT: sched.length ? sched[sched.length - 1].t : f.startedAt, stillOwed: sched.length ? sched[sched.length - 1].close : f.amount,
+    events: (r.events || []).filter((e) => e.fac === key),
+  };
+}
 function reLiability(r, p, prj) {
   const J = !!(p && p.joint && p.joint.on), build = prj ? prj.build : true, H = r.months.length - 1, extraMo = r.plan ? r.plan.extraMo : 0;
   const propName = (id) => { const P = p && (p.properties || []).find((x) => String(x.id) === String(id)); return P ? P.name : "a property you own"; };
