@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=a70a7f462f"></script>
-  <script src="re2-engine.js?v=a70a7f462f"></script>
-  <script src="re2-ui.js?v=a70a7f462f"></script>
+  <script src="engine.js?v=db1c8b825b"></script>
+  <script src="re2-engine.js?v=db1c8b825b"></script>
+  <script src="re2-ui.js?v=db1c8b825b"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1531,8 +1531,9 @@
             </div>}
 
             <div style={{ marginTop: 16 }}>
-              <Pick label="Pay the new mortgages off early from your cash?" value={prepayOn ? "after" : "never"} onChange={(v) => setPlan(i, "prepayAfter", v === "never" ? null : 24)} help={EXPL.prepay} options={[["never", "No — they run to their end"], ["after", `Yes, some months after ${W.doneShort}`]]} />
-              {prepayOn && <Field label={`Months after ${W.doneShort}`} value={+o.prepayAfter} min={0} max={120} step={3} unit="months" onChange={(v) => setPlan(i, "prepayAfter", v)} hint={`${fCal(prj.occupy + Math.round(+o.prepayAfter))} · whole mortgages, dearest first, while your cash${inp.cashBuffer > 0 ? ` above your ${fM(inp.cashBuffer)} cushion` : ""} covers the payoff + ${inp.settleFeeMonths} months' profit${r && r.prepaidTotal > 0 ? ` · this plan pays off ${fM(r.prepaidTotal)}` : r && prepayOn ? " · not enough cash then in this plan" : ""}`} />}
+              <Pick label="Pay the new mortgages off early from your cash?" value={o.prepayAfter === "asap" ? "asap" : prepayOn ? "after" : "never"} onChange={(v) => setPlan(i, "prepayAfter", v === "never" ? null : v === "asap" ? "asap" : 24)} help={EXPL.prepay} options={[["never", "No — they run to their end"], ["asap", "As soon as your cash allows"], ["after", `Yes, some months after ${W.doneShort}`]]} />
+              {o.prepayAfter === "asap" && <div style={{ fontSize: 12.5, color: K.sub, marginTop: -4 }}>Each mortgage that costs more than your cash earns is paid off once your cash above the cushion and three months' outgoings covers it{r && r.prepaidTotal > 0 ? ` · this plan pays off ${fM(r.prepaidTotal)} in ${fCal(r.prepaid[0].t)}` : r ? " · not enough cash in this plan" : ""}.</div>}
+              {prepayOn && o.prepayAfter !== "asap" && <Field label={`Months after ${W.doneShort}`} value={+o.prepayAfter} min={0} max={120} step={3} unit="months" onChange={(v) => setPlan(i, "prepayAfter", v)} hint={`${fCal(prj.occupy + Math.round(+o.prepayAfter))} · whole mortgages, dearest first, while your cash${inp.cashBuffer > 0 ? ` above your ${fM(inp.cashBuffer)} cushion` : ""} covers the payoff + ${inp.settleFeeMonths} months' profit${r && r.prepaidTotal > 0 ? ` · this plan pays off ${fM(r.prepaidTotal)}` : r && prepayOn ? " · not enough cash then in this plan" : ""}`} />}
               {o.lmUse && <Field label={`Extra monthly payment on the ${isLand ? "land finance" : build ? "land mortgage" : "purchase mortgage"}`} value={o.extraMo} min={0} max={30000} step={500} unit="SAR/mo" onChange={(v) => setPlan(i, "extraMo", v)} hint="voluntary — it shortens the mortgage; the bank doesn't count it in your limit" />}
             </div>
           </div>
@@ -2186,7 +2187,7 @@
         if (!pr) return null;
         const e = pr.early, extra = f.key === "lm" ? Math.max(0, r.plan.extraMo || 0) : 0, lastT = r.months.length - 1;
         const tPick = Math.max(pr.start, Math.min(pr.end, payMonth != null ? payMonth : e ? e.row.t : pr.start + 12)), a = pr.at(tPick);
-        const earlyTxt = !e ? null : e.kind === "prepaid" ? `Your plan pays it off early from your cash in ${fCal(e.t)}, ${r.plan.prepayAfter} months after ${W.doneShort}` : e.kind === "refinanced" ? `In ${fCal(e.t)} your plan's new personal loan buys it out — the bank clears it, no cash from you` : e.kind === "sold" ? `In ${fCal(e.t)} it is repaid from the sale of ${f.propName || "the property"} it is secured on` : `In ${fCal(e.t)} your plan pays it off from your cash to make room for a mortgage`;
+        const earlyTxt = !e ? null : e.kind === "prepaid" ? `Your plan pays it off early from your cash in ${fCal(e.t)}, ${r.plan.prepayAfter === "asap" ? "as soon as your cash allows" : `${r.plan.prepayAfter} months after ${W.doneShort}`}` : e.kind === "refinanced" ? `In ${fCal(e.t)} your plan's new personal loan buys it out — the bank clears it, no cash from you` : e.kind === "sold" ? `In ${fCal(e.t)} it is repaid from the sale of ${f.propName || "the property"} it is secured on` : `In ${fCal(e.t)} your plan pays it off from your cash to make room for a mortgage`;
         // the yearly rows, with the plan's own payoff in its place (a payoff before that month's instalment gets its own row)
         const rows = pr.rows.map((x) => ({ ...x, own: !!e && e.kind === "prepaid" && x.t === e.t }));
         if (e && e.row && !rows.some((x) => x.own)) rows.push({ ...e.row, t: e.t, own: true });

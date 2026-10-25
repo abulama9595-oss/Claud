@@ -93,6 +93,9 @@
                    from month …"). reSaveAndBuy(inp, {maxWait, landWithBuild}) runs the all-cash plan at every month from the
                    planned start up to maxWait (default 12) months later and returns the earliest start that works with no new
                    loan (found), or the cash still needed at the last start (need); the page stores the wait as saveWaitMax.
+   Early payoff "asap": plan.prepayAfter "asap" pays each mortgage dearer than the net cash return off from move-in on,
+                   once the cash above the cushion and three months' outgoings covers it; optimizeRE reruns its 8 leading
+                   mortgage mixes that work with it (opts.prepay false skips that — the old tool's search, for parity).
    Keys with no engine effect yet (later phases): invLtv, invTenure, invRateAdd, dscrMin (income-property finance for a
                    building let out entirely), legacyRental (an imported old rental scenario: a building let out entirely whose
                    one unit earns the old rentMo).
@@ -814,6 +817,7 @@ function rePlanSimulate(p, prj, plan) {
   const H = Math.round(p.horizon * 12);
   // monthly return on cash, net of any zakat on invested cash (both sides, and the today's-money discount)
   const alt = Math.pow((1 + p.altReturn / 100) * (1 - (p.cashZakatPct || 0) / 100), 1 / 12) - 1;
+  const prepayAsap = plan.prepayAfter === "asap", netReturnPct = (Math.pow(1 + alt, 12) - 1) * 100;   // early payoff "as soon as the cash allows"
   // this month's income and living costs (optional yearly growth) and the bank's limits, which follow your current income
   // تضامن (p.joint.on): your spouse's salary joins the household's (inc = yours + theirs); the bank tests each of you on your
   // own income — yours: dbrTarget / perLoanTarget / mortgageTarget, your spouse's: dbrTargetB / mortgageTargetB
@@ -1358,13 +1362,16 @@ function rePlanSimulate(p, prj, plan) {
     cash -= existInst + newPay + ownerCost + holding; ccash -= holding; holdingCum += holding;
     // your option: pay off the mortgages early from your own cash N months after move-in (after that month's instalments),
     // most expensive first, while the cash above your safety cushion covers the payoff and the early-settlement fee
-    if (plan.prepayAfter != null && plan.prepayAfter !== "" && t === prj.occupy + Math.max(0, Math.round(plan.prepayAfter))) {
-      mortgages.filter((f) => f.bal > 0.5 && f.settledAt === null && f.startedAt !== null && f.startedAt < t).sort((a, b) => b.rate - a.rate).forEach((f) => {
+    // "asap": every month from move-in, each mortgage dearer than your cash earns (net) is paid off once the cash above your
+    // cushion AND three months' outgoings covers it (the settle advisor's cash test); one cheaper than your cash is kept
+    if (prepayAsap ? t >= prj.occupy : plan.prepayAfter != null && plan.prepayAfter !== "" && t === prj.occupy + Math.max(0, Math.round(plan.prepayAfter))) {
+      const reserve = prepayAsap ? 3 * (liv + rentPaid + existInst + newPay + ownerCost + holding) : 0;
+      mortgages.filter((f) => f.bal > 0.5 && f.settledAt === null && f.startedAt !== null && f.startedAt < t && (!prepayAsap || f.rate > netReturnPct)).sort((a, b) => b.rate - a.rate).forEach((f) => {
         const cost = settleCost(f), fee = cost - f.bal;
-        if (avail() - cost < p.cashBuffer) { events.push({ t, kind: "settle", text: `Not enough cash above your ${fS(p.cashBuffer)} safety cushion to pay off the ${fLc(f)} early (${fSAR(cost)} needed).` }); return; }
+        if (avail() - cost < p.cashBuffer + reserve) { if (!prepayAsap) events.push({ t, kind: "settle", text: `Not enough cash above your ${fS(p.cashBuffer)} safety cushion to pay off the ${fLc(f)} early (${fSAR(cost)} needed).` }); return; }
         cash -= cost; ccash -= cost; prepaidTotal += f.bal; prepayFees += fee;
         prepaid.push({ t, name: f.label, nameLc: fLc(f), key: f.key, cost, fee, inst: f.pmt });
-        events.push({ t, kind: "settle", text: `Pay off the ${fLc(f)} early from your cash: ${fSAR(cost)} (incl. ${fSAR(fee)} early-settlement fee) — instalments drop by ${fSAR(f.pmt)}/mo.` });
+        events.push({ t, kind: "settle", text: `Pay off the ${fLc(f)} early from your cash${prepayAsap ? `, as soon as your cash above the cushion and three months' outgoings covers it (at ${f.rate.toFixed(2)}% APR it costs more than your cash earns, ${netReturnPct.toFixed(2)}%)` : ""}: ${fSAR(cost)} (incl. ${fSAR(fee)} early-settlement fee) — instalments drop by ${fSAR(f.pmt)}/mo.` });
         f.bal = 0; f.settledAt = t + 1; f.prepaidAt = t;   // this month's instalment was paid; none after
       });
     }
@@ -2193,7 +2200,8 @@ function reAutoName(o, prj, propName) {
 }
 // opts: maxDelay, step, landWithBuild (a construction start moves the land purchase with it), plannedOnly, delays, slice / merge
 // (the page's path), policies (the settle policies to try — default: asNeeded / forMax / none, plus dearer when a dearer loan
-// exists), props (how many of your properties the search mortgages, default 2)
+// exists), props (how many of your properties the search mortgages, default 2), prepay (false: no early-payoff reruns — the
+// old tool's search, for the parity test)
 function optimizeRE(inp, opts) {
   opts = opts || {};
   const p0 = mergeRE(inp);
@@ -2226,7 +2234,7 @@ function optimizeRE(inp, opts) {
     pl2: r.pl2.amount, pl2Split: r.pl2.split, pl2Net: r.pl2.refi ? r.pl2.refi.net : r.pl2.amount, pl2Refi: r.pl2.refi ? r.pl2.refi.names : [],
     // تضامن: your spouse's personal loans
     ...(r.spl ? { spl: r.spl.amount, splSplit: r.spl.split, splNet: r.spl.refi ? r.spl.refi.net : r.spl.amount, splRefi: r.spl.refi ? r.spl.refi.names : [], spl2: r.spl2.amount, spl2Split: r.spl2.split, spl2Net: r.spl2.refi ? r.spl2.refi.net : r.spl2.amount, spl2Refi: r.spl2.refi ? r.spl2.refi.names : [] } : {}),
-    newDebt: r.newDebtTotal, newDebtInterest: r.newDebtInterest, settled: r.settledTotal, roomSettled: r.roomSettled, settleFees: r.settleFees, payoffs: r.payoffs.map((x) => ({ t: x.t, name: x.name, cost: x.cost, why: x.why, forKey: x.forKey })), cashAfterWindow: r.cashAfterWindow, cashAtCompletion: r.cashAtCompletion,
+    newDebt: r.newDebtTotal, newDebtInterest: r.newDebtInterest, prepaid: r.prepaidTotal || 0, prepaidAt: r.prepaid && r.prepaid.length ? r.prepaid[0].t : null, settled: r.settledTotal, roomSettled: r.roomSettled, settleFees: r.settleFees, payoffs: r.payoffs.map((x) => ({ t: x.t, name: x.name, cost: x.cost, why: x.why, forKey: x.forKey })), cashAfterWindow: r.cashAfterWindow, cashAtCompletion: r.cashAtCompletion,
     // the lens figures (reLensPick reads them, so the per-lens bests come from these runs — no extra run): the most you owe and
     // when, how far ahead of not building at 5 / 10 / 15 years and the horizon, cash and borrowing power at move-in and the end
     peakDebt: r.peakDebt, peakDebtT: r.peakDebtT, peakNewDebt: r.peakNewDebt, peakInstT: r.peakInstT, peakInstPct: r.peakInstPct, wealthAt5: reWealthAt(r, 5).econAdv, wealthAt10: reWealthAt(r, 10).econAdv, wealthAt15: reWealthAt(r, 15).econAdv, wealthAtH: r.econAdv,
@@ -2265,6 +2273,17 @@ function optimizeRE(inp, opts) {
   const runStart = (q, delay, planned) => { const { list, prj, p } = evalSlice(q, 0, combos.length); tried = combos.length; return finishStart(list, delay, planned, prj, p); };
   const finishStart = (list, delay, planned, prj, p) => {
     list.sort(rank);
+    // early payoff: the leading mixes that hold a mortgage (at most 8, ones that work) run once more paying the mortgages off
+    // "as soon as the cash allows" (plan.prepayAfter "asap") — holding a mortgage dearer than your cash earns to its term while
+    // the cash piles up would otherwise favour short personal loans. Kept only when it paid something off.
+    const holdsMortgage = (x) => x.lm > 0 || x.eq > 0 || x.co > 0;
+    if (opts.prepay !== false) list.filter((x) => holdsMortgage(x) && reStanding(x) > 0 && x.plan.prepayAfter !== "asap").slice(0, 8).forEach((x) => {
+      const o = { ...x.plan, prepayAfter: "asap" }; runs++;
+      const s = summarize(reRunPlan(p, prj, o), prj, o);
+      if (s.prepaid > 0) list.push({ ...s, name: o.name, plan: o });
+    });
+    list.sort(rank);
+    list.forEach((x, k) => { if (k > 0) delete x._r; });
     const W = reMixWords(prj);
     // name each mix by what it actually drew, and offer a cleaned plan (unused facilities switched off) for copying into a strategy slot
     list.forEach((x) => {
@@ -2285,6 +2304,7 @@ function optimizeRE(inp, opts) {
       if (coKeep) parts.push(x.co > 0 ? "cash-out (max) at completion" : "cash-out (nothing granted) at completion");
       if (x.pl2 > 0 || x.spl2 > 0) parts.push(pls(x.pl2, x.pl2Split, x.pl2Refi, x.spl2, x.spl2Split, x.spl2Refi || [], "at completion"));
       if (x.roomSettled > 0) parts.push(W.policy(o.settlePolicy, true));
+      if (o.prepayAfter === "asap") parts.push("pay the mortgage off early when your cash allows");
       x.name = parts.join(" · ");
       const aPl = x.pl > 0 || x.pl2 > 0, bPl = x.spl > 0 || x.spl2 > 0;
       x.cleanPlan = { ...o, name: x.name, lmUse: lmKeep, mortgages: eqKeep ? reNormMorts(o.mortgages) : {}, plWhen: x.pl > 0 || x.spl > 0 ? o.plWhen : "none", coUse: coKeep, pl2Use: x.pl2 > 0 || x.spl2 > 0, rfWhen: x.rf > 0 ? o.rfWhen : "none", plBy: J0 ? (aPl && bPl ? "both" : bPl ? "spouse" : "me") : o.plBy };
