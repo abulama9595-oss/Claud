@@ -142,13 +142,15 @@
     .kcard.on .kmark { background: var(--ink); border-color: var(--ink); }
     .ksub { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); cursor: default; }
     /* the three strategy cards (lens cards): one row, stacked on a phone; a merged card spans its columns */
-    .lens-grid { display: grid; gap: 10px; }
-    @media (max-width: 820px) { .lens-grid { grid-template-columns: minmax(0, 1fr) !important; } .lens-grid .plan.lens { grid-column: auto !important; } }
-    .plan.lens { cursor: pointer; min-height: 44px; }
-    .plan.lens:hover { border-color: var(--lineIn); }
+    .lens-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 820px) { .lens-grid { grid-template-columns: minmax(0, 1fr); } }
+    .plan.lens { display: flex; flex-direction: column; }
+    .plan.lens > .flex:last-child { margin-top: auto; }
+    .lens-set { gap: 8px 16px; font-size: 13px; margin: 0 0 10px; padding: 8px 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+    .lens-cap { caption-side: top; text-align: left; font-size: 12.5px; font-weight: 700; padding: 0 0 6px; }
+    .tbl.lens-tbl tr.on td { background: #F3EEE3; font-weight: 700; }
     .plan.lens.on { box-shadow: 0 0 0 2px var(--ink); border-color: var(--ink); }
     .plan.lens .lens-t { font-size: 11.5px; line-height: 1.5; }
-    .plan.lens .lens-pick { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
     .lens-sel { min-height: 28px; padding: 2px 6px; font-size: 12.5px; max-width: 100%; }
     .recstrip { background: var(--ink); color: #ECE4D3; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 10px; line-height: 1.5; }
     /* the liability table: old loans kept in grey, cleared ones struck through */
@@ -190,7 +192,7 @@
       .scroll-x { overflow: visible; }
       .tbl { font-size: 10px; }
       .print-one .lens-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px; }
-      .print-one .plan.lens { grid-column: auto !important; padding: 6px 8px; font-size: 11px; }
+      .print-one .plan.lens { padding: 6px 8px; font-size: 11px; }
       .print-one .plan.lens .row-l { font-size: 11px; padding: 1px 0; }
       .print-one .h1 { font-size: 17px; }
       .print-one .box { padding: 8px 10px; margin-top: 8px !important; }
@@ -1840,7 +1842,7 @@
       );
       /* ---------- step 6: your answer — the answer line, the three strategy cards, the liability card, the investment view ---------- */
       const stopEv = (e) => e.stopPropagation();
-      const LENS_YEARS = [[5, "5 years"], [10, "10 years"], [15, "15 years"]].filter(([y]) => y * 12 < H).concat([["horizon", `until ${endDate}`]]);
+      const LENS_YEARS = [[5, "in 5 years"], [10, "in 10 years"], [15, "in 15 years"]].filter(([y]) => y * 12 < H).concat([["horizon", `in ${endDate}`]]);
       const lensSelect = (label, value, options, onChange) => <select aria-label={label} value={value} onClick={stopEv} onKeyDown={stopEv} onChange={(e) => { stopEv(e); onChange(e.target.value); }} className="lens-sel">{options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>;
       const measureName = { peakDebt: "Most you owe at once", borrowed: "Borrowed in total", peakInst: "Instalments at their highest", profit: "Profit paid to banks" };
       const liabOf = (r, k) => k === "peakDebt" ? r.peakDebt : k === "borrowed" ? r.newDebtTotal : k === "peakInst" ? r.peakInst : (r.profitPaid == null ? r.newDebtInterest : r.profitPaid);
@@ -1877,29 +1879,77 @@
         const W2 = wealthAtOf(m.results[L.richest.idx]), mine = wealthAtOf(r), dv = W2.econAdv - mine.econAdv;
         return dv > 0.5 ? `You give up ${fS(dv)} of wealth in ${fCal(W2.t)} against ${planRef(L.richest.idx)}${tail}` : `You give up nothing on wealth${tail}`;
       };
-      const lensTitle = (k, print) => k === "leastLiability" ? <>Least liability <span className="lens-pick">by {print ? RE_LENS_MEASURES.find((x) => x[0] === lens.by)[1].toLowerCase() : lensSelect("Least liability, by", lens.by, RE_LENS_MEASURES.map(([v, l]) => [v, l.toLowerCase()]), (v) => setLens({ ...lens, by: v }))}</span></>
-        : k === "richest" ? <>Richest in <span className="lens-pick">{print ? LENS_YEARS.find((x) => String(x[0]) === String(lens.years))[1] : lensSelect("Richest in", String(lens.years), LENS_YEARS.map(([v, l]) => [String(v), l]), (v) => setLens({ ...lens, years: v === "horizon" ? "horizon" : +v }))}</span></>
-        : <>Most cash &amp; borrowing power <span className="lens-pick">{print ? (lens.at === "horizon" ? `in ${endDate}` : `at ${W.doneShort}`) : lensSelect("At which moment", lens.at, [["moveIn", `at ${W.doneShort}`], ["horizon", `in ${endDate}`]], (v) => setLens({ ...lens, at: v }))}</span></>;
+      // the three strategy cards: always three, in a fixed order, one per lens; the pickers sit in one row above them
+      const LENS_KEYS = ["leastLiability", "richest", "mostCash"];
+      const lensLbl = { leastLiability: "Least liability", richest: "Richest", mostCash: "Most cash & borrowing power" };
+      const yearsTxtOf = () => LENS_YEARS.find((x) => String(x[0]) === String(lens.years))[1];
+      const atTxt = () => lens.at === "horizon" ? `in ${endDate}` : `at ${W.doneShort}`;
+      const lensTitle = (k) => k === "leastLiability" ? `Least liability · ${RE_LENS_MEASURES.find((x) => x[0] === lens.by)[1].toLowerCase()}` : k === "richest" ? `Richest ${yearsTxtOf()}` : `Most cash & borrowing power ${atTxt()}`;
+      const cashPower = (r) => { const at = lens.at === "horizon", lev = (at ? r.leverageEnd : r.leverageAtMoveIn) || {}; return { cash: at ? r.availEnd : r.availAtMoveIn, lend: lev.borrowable || 0 }; };
+      const LensSettings = () => (
+        <div className="lens-set flex flex-wrap items-center no-print">
+          <b>Compare by</b>
+          <label className="flex items-center" style={{ gap: 6 }}>Liability {lensSelect("Least liability, by", lens.by, RE_LENS_MEASURES.map(([v, l]) => [v, l.toLowerCase()]), (v) => setLens({ ...lens, by: v }))}</label>
+          <label className="flex items-center" style={{ gap: 6 }}>Wealth {lensSelect("Richest in", String(lens.years), LENS_YEARS.map(([v, l]) => [String(v), l]), (v) => setLens({ ...lens, years: v === "horizon" ? "horizon" : +v }))}</label>
+          <label className="flex items-center" style={{ gap: 6 }}>Cash {lensSelect("At which moment", lens.at, [["moveIn", `at ${W.doneShort}`], ["horizon", `in ${endDate}`]], (v) => setLens({ ...lens, at: v }))}</label>
+        </div>
+      );
+      // the verdict in one sentence: what the recommended plan wins and how far it is from the best on the other measures
+      const lensVerdict = () => {
+        const L = lenses, r = m.results[recIdx]; if (!L || !L.recommended || !r) return null;
+        const gap = (k) => {
+          const o = L[k].idx;
+          if (k === "leastLiability") { const by = L.liabilityBy, dv = liabOf(r, by) - liabOf(m.results[o], by); const what = by === "peakDebt" ? `owes ${fS(dv)} more at the peak` : by === "borrowed" ? `borrows ${fS(dv)} more` : by === "peakInst" ? `has a heaviest month ${fSAR(dv)}/mo heavier` : `pays ${fS(dv)} more profit`; return dv > 0.5 ? `${what} than ${planRef(o)}` : null; }
+          if (k === "richest") { const dv = L.richest.value - wealthAtOf(r).econAdv; return dv > 0.5 ? `is ${fS(dv)} poorer in ${fCal(L.richest.t)} than ${planRef(o)}` : null; }
+          const c = cashPower(r), dv = L.mostCash.value - (c.cash + c.lend); return dv > 0.5 ? `has ${fS(dv)} less cash and borrowing power ${atTxt()} than ${planRef(o)}` : null;
+        };
+        // a lens counts as won when the recommended plan is at least as good there (a tie the lens broke the other way included)
+        const keys = LENS_KEYS.filter((k) => L[k]), wins = keys.filter((k) => L[k].idx === recIdx || !gap(k)), gaps = keys.filter((k) => !wins.includes(k)).map(gap), list = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
+        const winTxt = wins.length === 3 ? "it is first on all three measures" : wins.length ? `it ${list(wins.map((k) => ({ leastLiability: "carries the least liability", richest: "is the richest", mostCash: "keeps the most cash and borrowing power" })[k]))}` : "it is not first on any of the three measures as set, but it leaves you best placed at the end of the comparison";
+        return <>Recommended: <b style={{ color: "#D9B36A" }}>{planName(recIdx)}</b>. {winTxt[0].toUpperCase() + winTxt.slice(1)}{gaps.length ? `, but it ${list(gaps)}` : ""}.</>;
+      };
       const LensCards = ({ print }) => {
-        const L = lenses, groups = lensCards(); if (!groups.length) return null;
-        const n = groups.reduce((a, g) => a + g.lenses.length, 0), recOnCard = groups.some((g) => g.idx === recIdx);
+        const L = lenses; if (!L || !L.recommended) return null;
+        const keys = LENS_KEYS.filter((k) => L[k]);
         return (<>
-          {!recOnCard && recIdx >= 0 && <div className="recstrip">Recommended: <b>{planName(recIdx)}</b> — {L.recommended.why}{!print && <> · <button className="lnk" style={{ color: "#D9B36A" }} onClick={() => setFocus(recIdx)}>show it</button></>}</div>}
-          <div className="lens-grid" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
-            {groups.map((g) => { const r = m.results[g.idx], on = g.idx === focusIdx; return (
-              <div key={g.idx} role="button" tabIndex={print ? -1 : 0} aria-pressed={on} className={"plan lens" + (on ? " on" : "")} style={{ gridColumn: `span ${g.lenses.length}`, borderLeftColor: colF(g.idx) }} onClick={print ? undefined : () => setFocus(g.idx)} onKeyDown={print ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFocus(g.idx); } }}>
+          <div className="recstrip">{lensVerdict()}<span style={{ display: "block", fontSize: 12, opacity: .85 }}>{L.recommended.why}</span></div>
+          {!print && LensSettings()}
+          <div className="lens-grid">
+            {keys.map((k, n) => { const g = { idx: L[k].idx, lenses: [k] }, r = m.results[g.idx], on = g.idx === focusIdx, same = keys.slice(0, n).find((j) => L[j].idx === g.idx); return (
+              <div key={k} className={"plan lens" + (on ? " on" : "")} style={{ borderLeftColor: colF(g.idx) }}>
                 <div className="flex justify-between items-start" style={{ gap: 6 }}>
-                  <div className="grid" style={{ gap: 3, minWidth: 0 }}>{g.lenses.map((k) => <div key={k} className="eyebrow lens-t">{lensTitle(k, print)}</div>)}</div>
+                  <div className="eyebrow lens-t">{lensTitle(k)}</div>
                   {g.idx === recIdx && <span className="tag" style={{ background: K.ink, color: "#ECE4D3", flex: "none" }}>● Recommended</span>}
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 700, margin: "8px 0 6px", lineHeight: 1.35 }}><span style={{ color: colT(g.idx) }}>{planName(g.idx)}</span> · {planTitle(r.plan, build, r, jointOn, props)}</div>
-                {lensRows(g).map(([k, v, sub]) => <Row key={k} k={k} v={v} sub={sub} />)}
+                <div style={{ fontSize: 14, fontWeight: 700, margin: "8px 0 6px", lineHeight: 1.35 }}><span style={{ color: colT(g.idx) }}>{planName(g.idx)}</span> · {same ? <span style={{ fontWeight: 600, color: K.sub }}>same plan as {lensLbl[same].toLowerCase()}</span> : planTitle(r.plan, build, r, jointOn, props)}</div>
+                {lensRows(g).map(([kk, v, sub]) => <Row key={kk} k={kk} v={v} sub={sub} />)}
                 <div style={{ fontSize: 12.5, color: K.sub, lineHeight: 1.5, margin: "6px 0 8px" }}>{giveUp(g)}</div>
-                <Status r={r} />
+                <div className="flex justify-between items-center flex-wrap" style={{ gap: 6 }}><Status r={r} />{!print && (on ? <span style={{ fontSize: 12.5, fontWeight: 600 }}>Shown below</span> : <button className="btn small" onClick={() => setFocus(g.idx)}>Show this plan</button>)}</div>
               </div>); })}
           </div>
+          {!print && LensTable({ print })}
           {!print && <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 13, marginTop: 8 }}>Showing <b style={{ color: colT(focusIdx) }}>{planRef(focusIdx)}</b> below{focusIdx === recIdx ? " · the recommended plan" : ""}. <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>see <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select> instead</span></div>}
         </>);
+      };
+      // every plan on the same three measures; ★ marks each lens's pick (only plans that work can be picked)
+      const LensTable = ({ print }) => {
+        const L = lenses, star = (k, i) => L[k] && L[k].idx === i ? " ★" : "";
+        const rulesTxt = (r) => !works(r) ? "runs out of cash" : brokenRules(r).length ? brokenRules(r).join(", ") : "✓ works";
+        const wYear = fCal(wealthAtOf(m.results[liveIdx[0]]).t);
+        return (
+          <div className="scroll-x" style={{ marginTop: 10 }}><table className="tbl lens-tbl">
+            <caption className="lens-cap">Every plan on the same three measures · ★ best of the plans that work</caption>
+            <thead><tr><th>Plan</th><th>{measureName[L.liabilityBy]}</th><th>Wealth in {wYear}<span className="s"> vs {baseLbl}</span></th><th>Cash {atTxt()}<span className="s"> + the bank would lend</span></th><th>Status</th></tr></thead>
+            <tbody>{liveIdx.map((i) => { const r = m.results[i], c = cashPower(r), w = wealthAtOf(r), lv = liabOf(r, L.liabilityBy); return (
+              <tr key={i} className={i === focusIdx ? "on" : ""} onClick={print ? undefined : () => setFocus(i)} style={{ cursor: print ? "default" : "pointer" }}>
+                <td className="l"><b style={{ color: colT(i) }}>{planName(i)}</b>{i === recIdx ? " ●" : ""}</td>
+                <td>{L.liabilityBy === "peakInst" ? `${fSAR(lv)}/mo` : fS(lv)}{star("leastLiability", i)}</td>
+                <td>{fM(w.econNW)} <span style={{ color: w.econAdv >= 0 ? K.pos : K.neg }}>({w.econAdv >= 0 ? "+" : "−"}{fM(Math.abs(w.econAdv))})</span>{star("richest", i)}</td>
+                <td>{fCash(c.cash)} + {fS(c.lend)}{star("mostCash", i)}</td>
+                <td className="l" style={{ color: !works(r) ? K.neg : brokenRules(r).length ? "#7A4F12" : K.pos }}>{rulesTxt(r)}</td>
+              </tr>); })}</tbody>
+          </table></div>
+        );
       };
       // the answer in one line, on the recommended plan
       const AnswerLine = ({ one }) => {
