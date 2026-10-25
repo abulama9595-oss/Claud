@@ -111,7 +111,7 @@ test('a ready home or building: a start date is the purchase month — the sweep
   const o = E.optimizeRE(ready, { delays: [6, 18] });
   assert.equal(JSON.stringify(o.starts.map((s) => [s.delay, s.landMonth, s.occupy, s.planned])), JSON.stringify([[6, 6, 7, true], [18, 18, 19, false]]));
   assert.equal(E.optimizeRE(ready, { delays: [18], landWithBuild: true }).starts[0].best.econAdv, o.starts[1].best.econAdv);
-  assert.equal(E.optimizeRE({ ...ready, kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRent: 3000 }, { delays: [18] }).starts[0].landMonth, 18);
+  assert.equal(E.optimizeRE({ ...ready, kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000 }, { delays: [18] }).starts[0].landMonth, 18);
   assert.equal(E.optimizeRE({ ...HH, kind: 'land', landArea: 800, landPrice: 1500, existingLoans: CHEAP_ONLY, properties: [] }, { delays: [12] }).starts[0].landMonth, 12);
   // a construction: the land stays where set unless the start comes first — or moves with the start when asked
   const villa = { ...HH, existingLoans: CHEAP_ONLY, properties: [] }, pv = E.mergeRE(villa);

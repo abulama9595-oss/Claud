@@ -40,7 +40,7 @@ test('rePeakSpan: the months at the peak hold the plan\'s highest instalment (wi
 });
 
 test('reDebtCover: rent received ÷ the new loans\' instalments per year, from the engine\'s months; the lowest year and the year it holds from', () => {
-  const m = E.computeRE({ kind: 'landBuilding', occupancy: 'let', asOf: '2026-10', unitCount: 6, unitRent: 4000, cashAvailable: 2500000, income: 60000 }, { noNeed: true });
+  const m = E.computeRE({ kind: 'landBuilding', occupancy: 'let', asOf: '2026-10', unitCount: 6, unitRentBasis: 'unit', unitRent: 4000, cashAvailable: 2500000, income: 60000 }, { noNeed: true });
   let seen = 0;
   m.results.forEach((r, i) => {
     if (!r) return;
