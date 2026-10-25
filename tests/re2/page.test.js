@@ -6,10 +6,10 @@ const { loadEngine, kindScenarios } = require('./helpers.js');
 const E = loadEngine();
 const near = (a, b, tol = 1e-6) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
 
-test('reKindWords: one source of wording per kind — verbs, baseline and the completion word', () => {
+test('reKindWords: one source of wording per kind — verbs, baseline and the project-end word', () => {
   const words = (inp) => { const p = E.mergeRE(inp), prj = E.reProject(p); return E.reKindWords(p, prj); };
   const villa = words({ kind: 'landVilla', rentNow: 8000 });
-  assert.deepEqual([villa.doIt, villa.dont, villa.baseline, villa.doneShort, villa.renting], ['Own it', 'Keep renting', 'renting', 'move-in', true]);
+  assert.deepEqual([villa.doIt, villa.dont, villa.baseline, villa.doneShort, villa.renting], ['Own it', 'Keep renting', 'renting', 'project end', true]);
   const villa0 = words({ kind: 'landVilla', rentNow: 0 });
   assert.deepEqual([villa0.doIt, villa0.dont, villa0.baseline, villa0.baseIf], ['Build it', "Don't build", 'not building', "don't build"]);
   const ready = words({ kind: 'readyVilla', rentNow: 0 });
@@ -17,7 +17,7 @@ test('reKindWords: one source of wording per kind — verbs, baseline and the co
   const land = words({ kind: 'land', rentNow: 8000 });   // you keep paying your rent either way: never "renting"
   assert.deepEqual([land.doIt, land.dont, land.baseline, land.doneLabel, land.doneShort, land.renting, land.isLand], ['Buy the land', "Don't buy the land", 'not buying the land', 'Land paid for', 'purchase', false, true]);
   const letB = words({ kind: 'landBuilding', occupancy: 'let', rentNow: 8000 });
-  assert.deepEqual([letB.doIt, letB.dont, letB.baseline, letB.doneLabel, letB.letAll], ['Build the building', "Don't build the building", 'keeping your cash invested', 'Let from', true]);
+  assert.deepEqual([letB.doIt, letB.dont, letB.baseline, letB.doneLabel, letB.letAll], ['Build the building', "Don't build the building", 'keeping your cash invested', 'Project end', true]);
   const liveB = words({ kind: 'readyBuilding', occupancy: 'liveLet', rentNow: 8000 });
   assert.deepEqual([liveB.doIt, liveB.baseline, liveB.letAll, liveB.isBuilding], ['Own it', 'renting', false, true]);
   for (const k of ['landVilla', 'readyVilla', 'land', 'landBuilding', 'readyBuilding']) { const w = words({ kind: k }); assert.ok(w.gerund && w.short && w.label === E.RE_KINDS[k].label, k); }

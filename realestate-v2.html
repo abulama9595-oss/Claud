@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=db1c8b825b"></script>
-  <script src="re2-engine.js?v=db1c8b825b"></script>
-  <script src="re2-ui.js?v=db1c8b825b"></script>
+  <script src="engine.js?v=d67c4fe6e0"></script>
+  <script src="re2-engine.js?v=d67c4fe6e0"></script>
+  <script src="re2-ui.js?v=d67c4fe6e0"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -146,7 +146,9 @@
     @media (max-width: 820px) { .lens-grid { grid-template-columns: minmax(0, 1fr); } }
     .plan.lens { display: flex; flex-direction: column; }
     .plan.lens > .flex:last-child { margin-top: auto; }
-    .lens-set { gap: 8px 16px; font-size: 13px; margin: 0 0 10px; padding: 8px 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+    .lens-set { gap: 8px 16px; font-size: 13px; margin: 12px 0 10px; padding: 8px 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; }
+    .tbl-notes { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--sub); line-height: 1.5; }
+    .tbl-notes li { margin: 2px 0; }
     .lens-cap { caption-side: top; text-align: left; font-size: 12.5px; font-weight: 700; padding: 0 0 6px; }
     .tbl.lens-tbl tr.on td { background: #F3EEE3; font-weight: 700; }
     .plan.lens.on { box-shadow: 0 0 0 2px var(--ink); border-color: var(--ink); }
@@ -228,9 +230,9 @@
     const EV_KIND = {
       today: ["Today", "#F6EFE1", "#8A6427"], settle: ["Pay off", "#F7E9E5", "#A33D29"], lm: ["Land mortgage", "#E4ECF6", "#245A99"], eq: ["Own property", "#E2F2EE", "#1A6E5C"],
       pl: ["Personal loan", "#F1E6F6", "#87409B"], pl2: ["Personal loan", "#F1E6F6", "#87409B"], spl: ["Spouse's personal loan", "#F1E6F6", "#87409B"], co: ["Cash-out", "#E4ECF6", "#245A99"], rf: ["Bank buy-out", "#FBEFD9", "#7A4F12"],
-      milestone: ["Milestone", "#EFEAE0", "#56616C"], cash: ["Cash", "#F6EFE1", "#8A6427"], low: ["Cash low", "#FBEFD9", "#7A4F12"], occ: ["Move in", "#0E1A2B", "#ECE4D3"],
+      milestone: ["Milestone", "#EFEAE0", "#56616C"], cash: ["Cash", "#F6EFE1", "#8A6427"], low: ["Cash low", "#FBEFD9", "#7A4F12"], occ: ["Project end", "#0E1A2B", "#ECE4D3"],
       end: ["Debt-free", "#E6F0EC", "#276B55"], horizon: ["The end", "#E6F0EC", "#276B55"],
-      cover: ["Covered by a loan", "#E6F0EC", "#276B55"], bridge: ["Bridge money", "#FBEFD9", "#7A4F12"], short: ["Cash runs out", "#A33D29", "#FFFFFF"], shortIn: ["Short at move-in", "#F7E9E5", "#A33D29"],
+      cover: ["Covered by a loan", "#E6F0EC", "#276B55"], bridge: ["Bridge money", "#FBEFD9", "#7A4F12"], short: ["Cash runs out", "#A33D29", "#FFFFFF"], stop: ["Stops here", "#A33D29", "#FFFFFF"], shortIn: ["Short at project end", "#F7E9E5", "#A33D29"],
     };
     const EvTag = ({ kind, build }) => { const k = EV_KIND[kind] || EV_KIND.milestone; return <span className="tag" style={{ background: k[1], color: k[2] }}>{kind === "lm" && build === false ? "Mortgage" : k[0]}</span>; };
 
@@ -338,9 +340,9 @@
     );
     // a plan works every month, works only with bridge money (its cash is short until one of its loans lands and no loan can
     // cover the gap in time), or runs out of cash; a plan that works can still break one of your rules: cash back at the cushion
-    // in time, cash at move-in at or above your line
+    // in time, cash at project end at or above your line
     const works = (r) => !!r && (r.feasible || !!r.bridged);
-    const brokenRules = (r) => [r.bridged && !r.feasible && "needs a bridge", !r.recoveryOk && "slow to recover", r.moveInOk === false && "short at move-in"].filter(Boolean);
+    const brokenRules = (r) => [r.bridged && !r.feasible && "needs a bridge", !r.recoveryOk && "slow to recover", r.moveInOk === false && "short at project end"].filter(Boolean);
     // a plan that runs out: the least extra cash to start with that lets you carry it out (the engine's search; not there while
     // your inputs are still changing). The most you are short is a different, larger figure: the loans you would take later
     // can cover part of it once the extra cash keeps you going until then
@@ -349,7 +351,7 @@
     // the old loans the bank clears with them and the bank's fees
     const moveInMoney = (r, occ) => {
       const fs0 = r.facilities.filter((f) => f.startedAt === occ && f.amount > 0 && f.key !== "rf" && f.key !== "lm"), sale = r.ownSale && r.ownSale.t === occ ? r.ownSale : null;
-      const what = fs0.map((f) => f.key === "pl2" ? "the personal loans at move-in" : f.key === "co" ? "the cash-out on the new home" : f.key === "pl" ? "the personal loans" : /^eq/.test(f.key) ? `the mortgage on ${f.propName || "the property you own"}` : f.key === "spl2" ? "your spouse's personal loans at move-in" : f.key === "spl" ? "your spouse's personal loans" : f.label.toLowerCase()).concat(sale ? ["the sale of the home you lived in"] : []);
+      const what = fs0.map((f) => f.key === "pl2" ? "the personal loans at project end" : f.key === "co" ? "the cash-out on the new home" : f.key === "pl" ? "the personal loans" : /^eq/.test(f.key) ? `the mortgage on ${f.propName || "the property you own"}` : f.key === "spl2" ? "your spouse's personal loans at project end" : f.key === "spl" ? "your spouse's personal loans" : f.label.toLowerCase()).concat(sale ? ["the sale of the home you lived in"] : []);
       return { what: what.length > 1 ? `${what.slice(0, -1).join(", ")} and ${what[what.length - 1]}` : what[0] || "", n: what.length, cleared: fs0.flatMap((f) => !f.refi ? [] : f.refi.items ? f.refi.items.map((x) => x.old ? x.name : f.owner === "B" ? "your spouse's earlier personal loan" : "your earlier personal loan") : f.refi.names), net: fs0.reduce((a, f) => a + f.amount - (f.refi ? f.refi.payoff : 0) - (f.fees || 0), 0) + (sale ? sale.net : 0) };
     };
     const Status = ({ r }) => !r ? null : !works(r) ? <span className="tag" style={{ background: SOFT_NEG, color: K.neg, whiteSpace: "normal" }}>✗ Runs out of cash{needOf(r) != null ? ` · needs ${fS(needOf(r))} more` : ""}</span> : brokenRules(r).length === 0 ? <span className="tag" style={{ background: "#E2EFE9", color: K.pos }}>✓ Works every month</span> : <span className="tag" style={{ background: SOFT_AMB, color: "#7A4F12", whiteSpace: "normal" }}>✓ Works · {brokenRules(r).join(" · ")}</span>;
@@ -517,7 +519,7 @@
       const curStart = prj.start;                                      // the planned start: construction start, or the purchase for a ready kind / land
       const lwb = prj.construct && landWithBuild;                   // a construction start may move the land purchase with it; land only and the ready kinds move the purchase itself (the engine)
       const dep = inp.buildDeprPct == null ? 2 : inp.buildDeprPct;     // the building loses this % of its finished value a year
-      const moveLine = inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn; // your rule: cash at move-in at least this
+      const moveLine = inp.minCashMoveIn == null ? 0 : inp.minCashMoveIn; // your rule: cash at project end at least this
       const isTool = (i) => i >= 0 && i === toolIdx;
       const planName = (i) => isTool(i) ? "The tool's pick" : `Plan ${i + 1}`;
       const planRef = (i) => isTool(i) ? "the tool's pick" : planName(i);     // inside a sentence
@@ -582,7 +584,7 @@
       const sweep = focusE >= 0 && focusE === recE ? sweepRec : sweepF;
       // save and buy: the earliest start, within the wait you accept, at which your cash and savings pay for it with no new loan
       const saveWait = inp.saveWaitMax == null ? 12 : +inp.saveWaitMax;
-      const saveBuy = useMemo(() => cur === "answer" ? reSaveAndBuy(optInp, { maxWait: saveWait, landWithBuild: lwb }) : null, [optInp, saveWait, lwb, cur]);
+      const saveBuy = useMemo(() => cur === "answer" ? reSaveAndBuy(optInp, { maxWait: saveWait, landWithBuild: lwb, scanTo: 60 }) : null, [optInp, saveWait, lwb, cur]);
       const tornado = useMemo(() => focusE >= 0 && openDis.sens ? tornadoRE(eInp, focusE) : [], [eInp, focusE, openDis.sens]);
       const startBest = sweepRec && sweepRec.best, startNow = startBest && startBest.delay <= curStart;
       // a mix the tool found becomes a NEW plan (never in place of one of yours); the start moves if it was found for another date
@@ -730,10 +732,10 @@
       /* ---------- small derived things ---------- */
       const tWhen = (w, mo) => w === "start" ? 0 : w === "land" ? prj.landMonth : w === "build" ? prj.start : w === "completion" ? prj.occupy : Math.max(0, Math.round(mo || 0));
       const loanEnds = (l) => l.settleAt != null && l.settleAt > 0 ? Math.min(Math.round(l.settleAt), Math.round(l.monthsLeft)) : Math.round(l.monthsLeft);
-      const rateOf = (l) => `${l.rate}%${l.rateType === "flat" ? " flat" : ""}`;
+      const rateOf = (l) => `${+(+l.rate).toFixed(2)}%${l.rateType === "flat" ? " flat" : ""}`;
       const sameResult = (a, b) => !!a && !!b && Math.abs(a.econAdv - b.econAdv) < 1 && ["lm", "eq", "pl", "co", "pl2"].every((k) => Math.abs((a[k] ? a[k].amount : 0) - (b[k] ? b[k].amount : 0)) < 1);
       const occOf = (r) => Math.min(r.months.length - 1, r.occupy);
-      const moveInParts = (r) => reMoveInParts(r, occOf(r), inp, prj);   // money in / salary / money out up to move-in (no growth)
+      const moveInParts = (r) => reMoveInParts(r, occOf(r), inp, prj);   // money in / salary / money out up to the project end (no growth)
       // a property's room for a mortgage today: the share of its value the bank lends against, less the loan secured on it
       const allLoans = () => p2.existingLoans.concat(jointOn ? p2.joint.loans || [] : []);
       const securedBal = (P) => allLoans().reduce((a, l) => a + (l.balance > 0 && reSecuredOn(l, P) ? l.balance : 0), 0);
@@ -741,10 +743,10 @@
       const propRoom = (P) => Math.max(0, (+P.value || 0) * propLtv(P) / 100 - securedBal(P));
       const propAt = (P, t) => (+P.value || 0) * Math.pow(1 + inp.appreciation / 100, t / 12);
       const mortgageable = props.filter((P) => P.canMortgage && P.value > 0);
-      // the month a property is sold in this project (null = kept): the home you live in only at move-in or later, on the building side
+      // the month a property is sold in this project (null = kept): the home you live in only at project end or later, on the building side
       const saleMonthOf = (P) => P.plan !== "sell" || !(P.value > 0) ? null : P.isHome ? (prj.moveIn && !renting ? (P.sellAt === "moveIn" ? prj.occupy : Math.max(prj.occupy, P.sellAt)) : null) : P.sellAt === "moveIn" ? prj.occupy : Math.max(1, P.sellAt);
       // the words of the loans' timing for this kind of project
-      const atDone = isLand ? "When the land is paid for" : letAll ? "At completion" : "At move-in";
+      const atDone = isLand ? "When the land is paid for" : "At project end";
 
       /* ---------- left rail: your inputs at a glance ---------- */
       const InputsSummary = () => (
@@ -833,7 +835,7 @@
                 </tr>); })}</tbody>
             </table>
           )}
-          <div style={{ fontSize: 12, color: K.sub, marginTop: 6 }}>★ the recommended plan · click a row to see that plan in detail.</div>
+          <div style={{ fontSize: 12, color: K.sub, marginTop: 6, lineHeight: 1.45 }}><b>Cash at {W.doneShort}</b>: the cash left after paying for it, with no growth counted (short = how much below zero). <b>vs {W.baseline}</b>: how much richer (+) or poorer (−) you end in {endDate} than if you did not do it. ★ the recommended plan · click a row to see that plan in detail.</div>
           {cur === "answer" && <div className="grid no-print" style={{ gap: 8, marginTop: 12 }}>
             <button className="btn gold" onClick={saveCurrent} disabled={clean}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved to "${loadedName}" ✓`) : "Save this scenario"}</button>
             <button className="btn" onClick={saveAsNew}>Save as a new scenario…</button>
@@ -1004,6 +1006,7 @@
                   {isLand ? <Field label="The bank lends up to — on land alone" value={inp.landOnlyLtv} min={30} max={90} step={5} unit="% of the price" onChange={(v) => set("landOnlyLtv", v)} hint="SAMA: 70% on land that is not built on" /> : <Field label={`The bank lends up to — on the ${build ? "land you buy" : "home you buy"}`} value={inp.landLtv} min={30} max={95} step={5} unit="% of the price" onChange={(v) => set("landLtv", v)} />}
                   <Field label="…on a property you already own" value={inp.ownedLtv} min={30} max={90} step={5} unit="% of its value" onChange={(v) => set("ownedLtv", v)} hint="the default for a property you add; each property can have its own" />
                   {!isLand && <Field label={`…as a cash-out on the finished ${isBuilding ? "building" : "home"}`} value={inp.cashoutLtv} min={30} max={90} step={5} unit="% of its value" onChange={(v) => set("cashoutLtv", v)} />}
+                  <Pick label="When a plan takes personal loans and you have old ones" value={inp.refiStyle === "consolidate" ? "consolidate" : "topup"} onChange={(v) => set("refiStyle", v)} options={[["topup", "Top up each old loan with its own bank (recommended)"], ["consolidate", "Let a new bank buy several out into one or two new loans"]]} hint={inp.refiStyle === "consolidate" ? "the previous tool's way: old loans are combined into the new loans to free a slot" : "each old loan stays one loan: its bank refinances it at your personal-loan terms and pays you the rest; old loans are combined into a new loan only when the new loan is cheaper"} />
                   <Field label="The bank may buy a personal loan out after" value={inp.refiMinMonths} min={0} max={36} step={1} unit="months" onChange={(v) => set("refiMinMonths", v)} />
                   <Field label="Early-settlement fee" value={inp.settleFeeMonths} min={0} max={3} step={1} unit="months of profit" onChange={(v) => set("settleFeeMonths", v)} hint="SAMA cap: the next 3 months' profit on the declining balance" />
                 </div>
@@ -1324,9 +1327,9 @@
         const by = jointOn ? o.plBy || "me" : "me", mineL = inp.existingLoans.filter(may), spouseL = ((m.p.joint && m.p.joint.loans) || []).filter(may);
         const stepsP = [], P = jointOn ? "Your personal loans" : "Personal loans";
         if (by !== "spouse" && o.plWhen !== "none") stepsP.push(["pl", `${P} ${whenTxt(o.plWhen, o.plMonth, prj)}`, tWhen(o.plWhen, o.plMonth), mineL, null]);
-        if (by !== "spouse" && o.pl2Use) stepsP.push(["pl2", `${P} at move-in (${fCal(prj.occupy)})`, prj.occupy, mineL, "pl"]);
+        if (by !== "spouse" && o.pl2Use) stepsP.push(["pl2", `${P} at project end (${fCal(prj.occupy)})`, prj.occupy, mineL, "pl"]);
         if (by !== "me" && o.plWhen !== "none") stepsP.push(["spl", `Your spouse's personal loans ${whenTxt(o.plWhen, o.plMonth, prj)}`, tWhen(o.plWhen, o.plMonth), spouseL, null]);
-        if (by !== "me" && o.pl2Use) stepsP.push(["spl2", `Your spouse's personal loans at move-in (${fCal(prj.occupy)})`, prj.occupy, spouseL, "spl"]);
+        if (by !== "me" && o.pl2Use) stepsP.push(["spl2", `Your spouse's personal loans at project end (${fCal(prj.occupy)})`, prj.occupy, spouseL, "spl"]);
         const toggle = (key, id, on) => { const cur0 = (pick[key] || []).map(String).filter((x) => x !== id); setPlan(i, "refiPick", { ...pick, [key]: on ? [...cur0, id] : cur0 }); };
         return (
           <div style={{ background: SOFT, borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
@@ -1354,7 +1357,7 @@
         if (!x) return "working it out…";
         const paid = x.payoffs.filter((p) => p.why !== "planned"), mort = x.lm.amount + x.eq.amount + x.co.amount;
         const parts = [paid.length ? `pays off ${paid.map((p) => p.name).join(" + ")} (${fM(paid.reduce((a, p) => a + p.cost, 0))})` : "pays nothing off", `mortgage${x.lm.amount + x.eq.amount > 0 && x.co.amount > 0 ? "s" : ""} ${fM(mort)}`];
-        return works(x) ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.bridged ? ` · needs a ${bridgeTxt(x)}` : ""}${x.recoveryOk ? "" : " · slow to recover"}${x.moveInOk === false ? ` · below your line at move-in (${fCash(x.onHandAtMoveIn)})` : ""}` : `${parts.join(" · ")} · cash runs out ${fCal(x.shortFrom)}${needOf(x) != null ? `: needs ${fS(needOf(x))} more cash to start with` : ""} ✗`;
+        return works(x) ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.bridged ? ` · needs a ${bridgeTxt(x)}` : ""}${x.recoveryOk ? "" : " · slow to recover"}${x.moveInOk === false ? ` · below your line at project end (${fCash(x.onHandAtMoveIn)})` : ""}` : `${parts.join(" · ")} · cash runs out ${fCal(x.shortFrom)}${needOf(x) != null ? `: needs ${fS(needOf(x))} more cash to start with` : ""} ✗`;
       };
       /* ---------- which old loans the bank buys out: what each personal-loan step weighed, in words and as a table ---------- */
       const refiSteps = (r) => !r ? [] : [r.pl, r.pl2, r.spl, r.spl2].filter((f) => f && f.capacity && ((f.refiOld && f.refiOld.length) || (f.refiTooYoung && f.refiTooYoung.length)));
@@ -1377,7 +1380,7 @@
         const out = ch.ids.length ? `buys out ${names(ch)} (the bank clears ${fM(ch.payoff)} and ${fM(ch.net)} reaches you)` : `buys out none of your old loans (all ${fM(ch.net)} reaches you)`;
         if (r.refiFallback && r.refiFallbackWhy) {
           const w = r.refiFallbackWhy;
-          s.push(`Auto first tried the best-value choice (buy out ${names(bv)}), but with it ${!w.feasible ? (w.bridged ? `you would need ${fM(w.bridgePeak)} of bridge money (no loan could cover your cash in time)` : `your cash would run out (${fCash(w.minCash)} by ${fCal(w.minCashT)})`) : !w.recoveryOk ? `your cash would be back at your cushion only ${w.recoveryMonths == null ? "after the end of the comparison" : `${w.recoveryMonths} months after move-in`}, later than your ${inp.recoveryMonths}-month rule` : `your cash at move-in would be ${fCash(w.onHandAtMoveIn)}, below your line of ${fM(moveLine)}`}. So it took the choice that puts the most cash in your hands: the bank ${out}.`);
+          s.push(`Auto first tried the best-value choice (buy out ${names(bv)}), but with it ${!w.feasible ? (w.bridged ? `you would need ${fM(w.bridgePeak)} of bridge money (no loan could cover your cash in time)` : `your cash would run out (${fCash(w.minCash)} by ${fCal(w.minCashT)})`) : !w.recoveryOk ? `your cash would be back at your cushion only ${w.recoveryMonths == null ? "after the end of the comparison" : `${w.recoveryMonths} months after the project end`}, later than your ${inp.recoveryMonths}-month rule` : `your cash at project end would be ${fCash(w.onHandAtMoveIn)}, below your line of ${fM(moveLine)}`}. So it took the choice that puts the most cash in your hands: the bank ${out}.`);
         } else if (mode === "cash") {
           s.push(`You chose "most cash": the bank ${out}.`);
           if (bv && bv !== ch) s.push(`The best-value choice (buy out ${names(bv)}) would put ${fM(ch.net - bv.net)} less in your hands but leave you ${fM(pv(bv.value - ch.value))} richer in today's money.`);
@@ -1406,7 +1409,7 @@
                     <thead><tr><th>Buy out</th><th>New personal loan(s)</th><th>The bank clears</th><th>Cash to you</th><th>vs the choice made, today's money</th><th></th></tr></thead>
                     <tbody>{st.rows.map((x, j) => <tr key={j} style={{ background: x.chosen ? SOFT : "transparent", fontWeight: x.chosen ? 700 : 400 }}>
                       <td className="l">{x.names.length ? x.names.join(" + ") : "nothing"}</td>
-                      <td>{x.split ? `two: ${fM(x.split[0])} + ${fM(x.split[1])}` : `one: ${fM(x.amount)}`}</td><td>{fM(x.payoff)}</td><td>{fM(x.net)}</td>
+                      <td>{x.topup ? `top-ups with each loan's own bank: ${fM(x.amount)}` : x.split ? `two: ${fM(x.split[0])} + ${fM(x.split[1])}` : `one: ${fM(x.amount)}`}</td><td>{fM(x.payoff)}</td><td>{fM(x.net)}</td>
                       <td style={{ color: x.chosen ? K.text : signCol(x.d) }}>{x.chosen ? "—" : fM(x.d)}</td>
                       <td className="l">{[x.chosen && "✓ chosen", x.bestValue && "best value", x.bestCash && "most cash"].filter(Boolean).join(" · ")}</td>
                     </tr>)}</tbody>
@@ -1469,10 +1472,10 @@
           </div>
         );
       };
-      // the timing choices for a mortgage on a property you own, for this kind of project (a property sold at move-in: nothing after construction starts)
+      // the timing choices for a mortgage on a property you own, for this kind of project (a property sold at project end: nothing after construction starts)
       const mortOpts = (P) => { const sold = saleMonthOf(P), soldAtDone = sold != null && sold <= prj.occupy; const o = [["none", "No"], ["start", "Now"]]; if (build && prj.landMonth > 0) o.push(["land", "When the land is bought"]); if (prj.construct) o.push(["build", "When construction starts"]); if (!soldAtDone) o.push(["completion", atDone]); o.push(["month", "In a month I choose"]); return o; };
       // the one personal-loan timing control, worded for this kind of project (no construction: no "when construction starts")
-      const plTimingOpts = RE_PL_TIMING.filter(([k]) => prj.construct || !/^build/.test(k)).map(([k, l]) => [k, l.replace("At move-in", atDone).replace("at move-in", atDone.toLowerCase()).replace("When the land is bought", build ? "When the land is bought" : "When you buy")]);
+      const plTimingOpts = RE_PL_TIMING.filter(([k]) => prj.construct || !/^build/.test(k)).map(([k, l]) => [k, l.replace("At project end", atDone).replace("at project end", atDone.toLowerCase()).replace("When the land is bought", build ? "When the land is bought" : "When you buy")]);
       const SETTLE_POLICIES = [["asNeeded", `Only as much as the ${prj.construct ? "build" : "purchase"} needs`], ["forMax", "As much as it takes for the biggest mortgage the property allows"], ["dearer", `Only loans dearer than the new mortgage (more than ${inp.dearerMargin == null ? 0.25 : inp.dearerMargin} points above its rate)`], ["none", "Don't pay them off"]];
       const PlanEditor = ({ o, i }) => {
         const r = m.results[i], plT = plTimingOf(o), prepayOn = o.prepayAfter != null && o.prepayAfter !== "";
@@ -1563,7 +1566,7 @@
         return (
           <div className="plan" style={{ borderLeftColor: K.ink, background: "#F7F4EC", boxShadow: focusIdx === i && cur !== "pay" ? `0 0 0 2px ${K.ink}` : "none" }}>
             <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.45 }}><span className="tag" style={{ background: K.ink, color: "#ECE4D3", marginRight: 8, letterSpacing: ".04em" }}>THE TOOL'S PICK{r === lead ? " · ★ BEST" : ""}</span>{planTitle(toolPlan, build, r, jointOn, props)}</div>
-            <div style={{ fontSize: 12.5, color: K.sub, marginTop: 2 }}>the best of {opt.combos} mixes for a {fCal(st.delay)} start{jointOn && (+jt.income || 0) > 0 ? " (personal loans in your name, your spouse's or both — all tried)" : ""}{opt.searchProps && opt.searchProps.length ? ` (a mortgage on ${opt.searchProps.map((x) => x.name).join(" or ")} tried)` : ""}{opt.dearer && opt.dearer.length ? ` ("only dearer loans" tried too — ${opt.dearer.join(" + ")} ${opt.dearer.length > 1 ? "are" : "is"} dearer than the mortgage)` : ""} · {st.nOk} of them meet your rules (work every month, cash back at your cushion within {inp.recoveryMonths} months, cash at move-in at least {fM(moveLine)}){optStale && <b style={{ color: K.text }}> · updating…</b>}<Hint text={EXPL.optimizer} label="The tool's pick" /></div>
+            <div style={{ fontSize: 12.5, color: K.sub, marginTop: 2 }}>the best of {opt.combos} mixes for a {fCal(st.delay)} start{jointOn && (+jt.income || 0) > 0 ? " (personal loans in your name, your spouse's or both — all tried)" : ""}{opt.searchProps && opt.searchProps.length ? ` (a mortgage on ${opt.searchProps.map((x) => x.name).join(" or ")} tried)` : ""}{opt.dearer && opt.dearer.length ? ` ("only dearer loans" tried too — ${opt.dearer.join(" + ")} ${opt.dearer.length > 1 ? "are" : "is"} dearer than the mortgage)` : ""} · {st.nOk} of them meet your rules (work every month, cash back at your cushion within {inp.recoveryMonths} months, cash at project end at least {fM(moveLine)}){optStale && <b style={{ color: K.text }}> · updating…</b>}<Hint text={EXPL.optimizer} label="The tool's pick" /></div>
             <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{steps2.length ? steps2.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
             <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
               <Status r={r} />
@@ -1574,7 +1577,7 @@
             {FlagLine(r)}
             {FacTable(r)}
             {st.alts.length > 0 && <div style={{ fontSize: 12.5, color: K.sub, lineHeight: 1.5, marginTop: 6 }}><b style={{ color: K.text }}>Next best:</b> {st.alts.map((a, k) => <span key={k}>{k > 0 ? " · " : ""}{planTitle(a.cleanPlan || a.plan, build, a, jointOn, props)} ({fM(a.econAdv)}{a.ok ? "" : works(a) ? `, ${brokenRules(a).join(", ")}` : ", runs out of cash"})</span>)}</div>}
-            {st.refiBest && !(b.pl2 > 0 || b.spl2 > 0) && <div style={{ fontSize: 12.5, lineHeight: 1.5, background: SOFT_AMB, borderRadius: 7, padding: "8px 12px", marginTop: 8 }}><b>A personal loan at {W.doneShort} too?</b><Hint text={EXPL.refi} label="A personal loan at move-in" /> The best mix that takes one — {planTitle(st.refiBest.cleanPlan || st.refiBest.plan, build, st.refiBest, jointOn, props).toLowerCase()} — puts <b>{fM(st.refiBest.pl2Net + (st.refiBest.spl2Net || 0))}</b> in your hands at {W.doneShort}{st.refiBest.pl2Refi.concat(st.refiBest.spl2Refi || []).length ? ` after the bank clears ${st.refiBest.pl2Refi.concat(st.refiBest.spl2Refi || []).join(" + ")}` : ""}, but as a whole it leaves {fM(st.refiBest.cashAtCompletion)} in the bank at {W.doneShort} (this pick: {fM(b.cashAtCompletion)}) and you <b style={{ color: K.neg }}>{fM(Math.max(0, b.econAdv - st.refiBest.econAdv))}</b> poorer in {endDate} when everything grows. {b.ok ? "You don't need it to meet your recovery rule." : "It is the way to meet your recovery rule."}</div>}
+            {st.refiBest && !(b.pl2 > 0 || b.spl2 > 0) && <div style={{ fontSize: 12.5, lineHeight: 1.5, background: SOFT_AMB, borderRadius: 7, padding: "8px 12px", marginTop: 8 }}><b>A personal loan at {W.doneShort} too?</b><Hint text={EXPL.refi} label="A personal loan at project end" /> The best mix that takes one — {planTitle(st.refiBest.cleanPlan || st.refiBest.plan, build, st.refiBest, jointOn, props).toLowerCase()} — puts <b>{fM(st.refiBest.pl2Net + (st.refiBest.spl2Net || 0))}</b> in your hands at {W.doneShort}{st.refiBest.pl2Refi.concat(st.refiBest.spl2Refi || []).length ? ` after the bank clears ${st.refiBest.pl2Refi.concat(st.refiBest.spl2Refi || []).join(" + ")}` : ""}, but as a whole it leaves {fM(st.refiBest.cashAtCompletion)} in the bank at {W.doneShort} (this pick: {fM(b.cashAtCompletion)}) and you <b style={{ color: K.neg }}>{fM(Math.max(0, b.econAdv - st.refiBest.econAdv))}</b> poorer in {endDate} when everything grows. {b.ok ? "You don't need it to meet your recovery rule." : "It is the way to meet your recovery rule."}</div>}
             <div className="flex flex-wrap items-center no-print" style={{ gap: 10, marginTop: 10 }}>
               {sameIdx != null ? <span className="tag" style={{ background: SOFT, color: K.sub }}>same result as {planName(sameIdx)}</span> : <button className="btn gold small" disabled={full} onClick={() => copyMix(st)}>Copy into a new plan</button>}
               <span style={{ fontSize: 12.5, color: K.sub }}>{full && sameIdx == null ? `You have ${MAX_PLANS} plans — delete one to copy it.` : "It never replaces one of your plans; a copy is yours to change."}</span>
@@ -1697,7 +1700,7 @@
                       <td className="l">{fCal(st.delay)}{st.delay === curStart ? " · planned" : ""}</td><td className="l">{fCal(st.occupy)}</td>
                       <td style={{ color: signCol(b.econAdv), fontWeight: 700 }}>{fM(b.econAdv)}</td>
                       <td style={{ color: worksCol(b) }}>{worksTxt(b)}</td>
-                      <td>{b.recoveryMonths == null ? "never" : b.recoveryMonths === 0 ? "at move-in" : `${b.recoveryMonths} mo`}</td>
+                      <td>{b.recoveryMonths == null ? "never" : b.recoveryMonths === 0 ? "at project end" : `${b.recoveryMonths} mo`}</td>
                       <td style={{ color: b.moveInOk === false ? K.neg : K.text }}>{fCash(b.onHand)}</td>
                       <td className="l" style={{ minWidth: 220 }}>{planTitle(b.cleanPlan || b.plan, build, b, jointOn, props)}</td>
                       <td style={{ color: b.minCash < 0 ? K.neg : K.text }}>{fCash(b.minCash)}</td><td>{fSAR(b.peakInst)}/mo · {pct1(b.peakDbr)}</td>
@@ -1716,7 +1719,7 @@
                     <td className="l">{fCal(x.delay)}{x.delay === curStart ? " · planned" : earliest && x.delay === earliest.delay ? " · earliest" : ""}</td><td className="l">{fCal(x.occupy)}</td>
                     <td style={{ color: signCol(x.econAdv), fontWeight: 700 }}>{fM(x.econAdv)}</td>
                     <td style={{ color: worksCol(x) }}>{worksTxt(x)}</td>
-                    <td>{x.recoveryMonths == null ? "never" : x.recoveryMonths === 0 ? "at move-in" : `${x.recoveryMonths} mo`}</td>
+                    <td>{x.recoveryMonths == null ? "never" : x.recoveryMonths === 0 ? "at project end" : `${x.recoveryMonths} mo`}</td>
                     <td style={{ color: x.moveInOk === false ? K.neg : K.text }}>{fCash(x.onHand)}</td>
                     <td>{fM(x.total)}</td><td style={{ color: x.minCash < 0 ? K.neg : K.text }}>{fCash(x.minCash)} · {fCal(x.minCashT)}</td><td>{fSAR(x.peakInst)}/mo · {pct1(x.peakDbr)}</td>
                     <td>{fM(x.mortgage)}</td><td>{fM(x.eq)}</td><td>{fM(x.pl)}</td><td>{fM(x.co)}</td><td>{fM(x.settled)}</td><td>{fM(x.newDebtInterest)}</td><td>{fM(x.advantage)}</td>
@@ -1787,7 +1790,15 @@
           : { t: occ, o: 1e6 + 2, kind: "shortIn", text: mi.n ? `${mi.what.charAt(0).toUpperCase() + mi.what.slice(1)} bring${mi.n > 1 || /loans/.test(mi.what) ? "" : "s"} ${fS(mi.net)}${mi.cleared.length ? ` after clearing ${mi.cleared.join(" + ")}` : ""}; you would still be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` : `You would be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` });
         // a plan that runs out: the finished home and the moving in only happen if the money it needs is found
         if (!works(r)) rows.forEach((x) => { if (x.kind === "milestone" && x.t === occ && /Construction complete/.test(x.text)) x.text = `Construction complete — only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}.`; });
-        return rows.sort((a, b) => a.t - b.t || a.o - b.o);
+        const ord = (a, b) => a.t - b.t || a.o - b.o;
+        rows.sort(ord);
+        // a plan that runs out stops where the cash runs out: in that month the shortfall comes before the purchase or the
+        // construction it fails to pay for, and nothing after it is shown as if it happened
+        const s = !works(r) ? rows.find((x) => x.kind === "short") : null;
+        if (!s) return rows;
+        const before = rows.filter((x) => x.t === s.t && x.kind === "milestone" && x.o < s.o);
+        if (before.length) { s.o = Math.min(...before.map((x) => x.o)) - 0.5; rows.sort(ord); }
+        return rows.slice(0, rows.indexOf(s) + 1).concat([{ t: s.t, o: s.o + 0.1, kind: "stop", text: "The plan stops here: the steps after this need cash you do not have. Find the money it needs, or choose another plan." }]);
       };
       // what to watch out for — only what changes the decision, at most five lines, about the plan shown (r)
       const lensNames = { leastLiability: "least liability", richest: "richest", mostCash: "most cash" };
@@ -1917,6 +1928,8 @@
         const keys = LENS_KEYS.filter((k) => L[k]);
         return (<>
           <div className="recstrip">{lensVerdict()}<span style={{ display: "block", fontSize: 12, opacity: .85 }}>{L.recommended.why}</span></div>
+          {!print && <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 13, margin: "0 0 4px" }}>Showing <b style={{ color: colT(focusIdx) }}>{planRef(focusIdx)}</b> below{focusIdx === recIdx ? " · the recommended plan" : ""}. <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>see <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select> instead · or click a row of the table</span></div>}
+          {!print && LensTable({ print })}
           {!print && LensSettings()}
           <div className="lens-grid">
             {keys.map((k, n) => { const g = { idx: L[k].idx, lenses: [k] }, r = m.results[g.idx], on = g.idx === focusIdx, same = keys.slice(0, n).find((j) => L[j].idx === g.idx); return (
@@ -1931,8 +1944,6 @@
                 <div className="flex justify-between items-center flex-wrap" style={{ gap: 6 }}><Status r={r} />{!print && (on ? <span style={{ fontSize: 12.5, fontWeight: 600 }}>Shown below</span> : <button className="btn small" onClick={() => setFocus(g.idx)}>Show this plan</button>)}</div>
               </div>); })}
           </div>
-          {!print && LensTable({ print })}
-          {!print && <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 13, marginTop: 8 }}>Showing <b style={{ color: colT(focusIdx) }}>{planRef(focusIdx)}</b> below{focusIdx === recIdx ? " · the recommended plan" : ""}. <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>see <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select> instead</span></div>}
         </>);
       };
       // every plan on the same three measures; ★ marks each lens's pick (only plans that work can be picked)
@@ -1949,10 +1960,17 @@
                 <td className="l"><b style={{ color: colT(i) }}>{planName(i)}</b>{i === recIdx ? " ●" : ""}</td>
                 <td>{L.liabilityBy === "peakInst" ? `${fSAR(lv)}/mo` : fS(lv)}{star("leastLiability", i)}</td>
                 <td>{fM(w.econNW)} <span style={{ color: w.econAdv >= 0 ? K.pos : K.neg }}>({w.econAdv >= 0 ? "+" : "−"}{fM(Math.abs(w.econAdv))})</span>{star("richest", i)}</td>
-                <td>{fCash(c.cash)} + {fS(c.lend)}{star("mostCash", i)}</td>
+                <td>{!works(r) ? <span style={{ color: K.neg }}>runs out{needOf(r) != null ? ` — needs ${fS(needOf(r))} more` : ""}</span> : <>{fCash(c.cash)} + {fS(c.lend)}</>}{star("mostCash", i)}</td>
                 <td className="l" style={{ color: !works(r) ? K.neg : brokenRules(r).length ? "#7A4F12" : K.pos }}>{rulesTxt(r)}</td>
               </tr>); })}</tbody>
-          </table></div>
+          </table>
+          <ul className="tbl-notes">
+            <li><b>{measureName[L.liabilityBy]}</b>: {(RE_LENS_MEASURES.find((x) => x[0] === L.liabilityBy) || [])[2]}.</li>
+            <li><b>Wealth in {wYear}</b>: your cash + property − every debt in that month; in brackets, how far ahead (+) or behind (−) {baseLbl} you would be.</li>
+            <li><b>Cash {atTxt()} + the bank would lend</b>: the cash you would hold then, with no growth counted, plus what the bank would still lend you on top of your loans.</li>
+            <li><b>Runs out — needs X more</b>: the plan's cash falls below zero in some month; X is the extra cash you would need at the start to carry it out.</li>
+            <li><b>★</b> the best of the plans that work on that measure · <b>●</b> the recommended plan · click a row to see that plan below.</li>
+          </ul></div>
         );
       };
       // save and buy: wait, keep renting, save, and pay with no new loan
@@ -1972,7 +1990,10 @@
               <Row k={`vs ${baseLbl} in ${endDate}`} v={fM(f.econAdv)} tone={f.econAdv >= 0 ? K.pos : K.neg} />
               {d != null && <Row k={`Against ${planRef(recIdx)}, the recommended plan`} v={`${d >= 0 ? "+" : "−"}${fM(Math.abs(d))}`} tone={d >= 0 ? K.pos : K.neg} sub={Math.abs(d) < 0.5 ? "the same at the end" : d > 0 ? `richer in ${endDate}` : `poorer in ${endDate} — the price of borrowing nothing`} />}
               <div style={{ fontSize: 12.5, color: K.sub, margin: "6px 0 8px", lineHeight: 1.5 }}>{f.wait > 0 ? `While you wait you keep paying rent and your savings build up; the price keeps rising at ${inp.appreciation}%/yr. ` : ""}{f.rulesMet === 2 ? "It meets both of your rules." : `It works every month but meets ${f.rulesMet === 1 ? "one" : "none"} of your two rules.`}</div>
-            </> : <div style={{ fontSize: 13, color: K.sub, margin: "0 0 8px", lineHeight: 1.5 }}>{sb.need != null ? <>Even {verb === "start" ? "starting" : "buying"} in {fCal(lastStart)} you would need <b style={{ color: K.neg }}>{fS(sb.need)}</b> more cash. </> : null}While you wait the price keeps rising at {inp.appreciation}%/yr, so savings close the gap slowly. Try a longer wait, or a plan with a loan.</div>}
+            </> : <div style={{ fontSize: 13, color: K.sub, margin: "0 0 8px", lineHeight: 1.5 }}>{sb.need != null ? <>Even {verb === "start" ? "starting" : "buying"} in {fCal(lastStart)} you would need <b style={{ color: K.neg }}>{fS(sb.need)}</b> more cash. </> : null}{(() => {
+              const save = household.savings, rise = sb.priceRise, olds = (inp.existingLoans || []).filter((l) => l.balance > 0 && l.installment > 0), lastEnd = olds.length ? Math.max(...olds.map((l) => Math.round(l.monthsLeft))) : null, freed = olds.reduce((a, l) => a + l.installment, 0);
+              return <>You save about <b>{fSAR(Math.max(0, save))}/mo</b> today; while you wait the {build ? "project's" : "purchase's"} all-in cost (price{inp.appreciation > 0 ? ` growing ${inp.appreciation}%/yr` : ""}, with taxes, fees{inp.costInflation > 0 ? " and costs that rise with inflation" : ""}) {rise > 0.5 ? <>rises about <b>{fSAR(rise)}/mo</b></> : "stays the same"}, so {save > rise + 0.5 ? "each month of waiting closes the gap a little" : "waiting longer makes the gap bigger, not smaller"}.{lastEnd != null && lastEnd > 0 ? ` Your old loans end by ${fCal(lastEnd)}; after that you save about ${fSAR(Math.max(0, save) + freed)}/mo.` : ""} {sb.later ? <>Without a wait limit, paying from cash first works in <b>{fCal(sb.later.delay)}</b> ({sb.later.wait} months from your planned date).</> : "Even waiting five years would not be enough."}</>;
+            })()}</div>}
             <div className="flex items-center flex-wrap no-print" style={{ gap: 10, fontSize: 13 }}>
               <label className="flex items-center" style={{ gap: 6 }}>Willing to wait up to <select aria-label="Willing to wait up to" value={saveWait} onChange={(e) => setInp((s0) => ({ ...s0, saveWaitMax: +e.target.value }))}>{[6, 12, 18, 24, 36].map((n) => <option key={n} value={n}>{n} months</option>)}</select></label>
               {f && (() => { const k = inp.plans.findIndex((x) => x && x.enabled && x.name === sb.plan.name); return k >= 0 ? <span style={{ color: K.sub }}>Already in your plans as Plan {k + 1}</span> : null; })()}
@@ -2004,7 +2025,7 @@
         const Lb = reLiability(r, p2, prj), span = rePeakSpan(r), adv = household.settleAdvice || [];
         const rateTxt2 = (x) => x.kind === "old" ? (x.flat ? `${x.quoted}% hamish / ${x.apr.toFixed(2)}% APR` : `${(+x.apr).toFixed(2)}% APR`) : (inp.rateQuote === "flat" ? `${x.quoted}% hamish / ${x.apr.toFixed(2)}% APR` : `${x.apr.toFixed(2)}% APR`);
         const rows = [...Lb.rows.map((x) => ({ ...x, cls: "" })), ...Lb.old.filter((x) => x.state.kind === "kept").map((x) => ({ ...x, cls: "kept" })), ...Lb.old.filter((x) => x.state.kind !== "kept").map((x) => ({ ...x, cls: "gone" }))];
-        const nameOf = (x) => x.kind === "old" ? `${x.label} (${x.state.kind === "kept" ? "kept" : x.state.kind === "boughtOut" ? "bought out" : x.state.kind === "sold" ? "repaid from a sale" : "cleared"})` : x.split ? `Two personal loans${x.borrower === "your spouse" ? ", your spouse's" : ""}` : x.label + (x.refi && x.refi.length ? ` (buys out ${x.refi.join(" + ")})` : "");
+        const nameOf = (x) => x.kind === "old" ? `${x.label} (${x.state.kind === "kept" ? "kept" : x.state.kind === "boughtOut" ? (x.state.topup ? "topped up by its bank" : "bought out") : x.state.kind === "sold" ? "repaid from a sale" : "cleared"})` : x.split ? `Two personal loans${x.borrower === "your spouse" ? ", your spouse's" : ""}` : x.topups ? `Top-ups of ${x.refi.join(" + ")} (each with its own bank)` : x.label + (x.refi && x.refi.length ? ` (buys out ${x.refi.join(" + ")})` : "");
         const whenOf = (x) => x.kind === "new" ? `${fCal(x.from)} – ${fCal(x.to)}${x.ended ? ` · ${x.ended.how} ${fCal(x.ended.t)}` : ""}` : x.state.kind === "kept" ? (x.state.t != null ? `until ${fCal(x.to)}` : `beyond ${endDate}`) : `${x.state.how} ${fCal(x.state.t)}`;
         const instOf = (x) => x.kind === "old" && x.state.kind !== "kept" ? "—" : `${fSAR(x.inst)}/mo`;
         const planDoes = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o) return ""; const s = o.state; return s.kind === "kept" ? ` This plan keeps it${s.t != null ? ` to its end in ${fCal(s.t)}` : ""}.${a.verdict === "keep" && a.canSettle && a.saveSettle >= a.eps && !a.cashOk ? (() => { const w = reSettleWhen(r, a.settleCost, inp.cashBuffer, s.t); return w != null ? ` Under this plan your cash would cover settling it from ${fCal(w)} — settle it then.` : " Under this plan your cash never covers settling it before it ends."; })() : ""}` : s.kind === "boughtOut" ? ` This plan has the bank buy it out in ${fCal(s.t)}.` : s.kind === "sold" ? ` This plan repays it from a sale in ${fCal(s.t)}.` : ` This plan pays it off in ${fCal(s.t)}${(() => { const x = (r.payoffs || []).find((y) => y.t === s.t && y.name === a.name); return x && x.why === "room" ? ` to make room for the ${(x.forLabel || "mortgage").toLowerCase()}${x.dearer ? " — it is dearer than that mortgage" : ""}` : ""; })()}.`; };
@@ -2195,7 +2216,7 @@
         return (<>
           {loans.length > 1 && <div style={{ marginBottom: 10 }}><Seg label="Loan" value={f.key} onChange={(k) => { setPayKey(k); setPayMonth(null); }} options={loans.map((x) => [x.key, payName(x)])} /></div>}
           <div style={{ fontSize: 13, lineHeight: 1.55, marginBottom: 10 }}>
-            <b>{f.label}</b>: {fM(f.amount)} taken {fCal(f.startedAt)}{f.split ? ` as two new loans (${fM(f.split[0])} + ${fM(f.split[1])})` : ""}{f.refi ? `, of which ${fM(f.refi.payoff)} cleared ${f.refi.names.join(" + ")}` : ""} · {f.quoted}%{inp.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over {f.tenure} years · {fSAR(f.pmt)}/mo{extra > 0 ? ` + ${fSAR(extra)} extra` : ""} · last instalment {fCal(pr.end)} · {fM(pr.totalProfit)} profit over its life if you keep it.
+            <b>{f.label}</b>: {fM(f.amount)} taken {fCal(f.startedAt)}{f.split ? ` as two new loans (${fM(f.split[0])} + ${fM(f.split[1])})` : ""}{f.topups ? `, topping up ${f.refi.names.join(" + ")} with their own banks: ${fM(f.refi.payoff)} cleared` : f.refi ? `, of which ${fM(f.refi.payoff)} cleared ${f.refi.names.join(" + ")}` : ""} · {f.quoted}%{inp.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over {f.tenure} years · {fSAR(f.pmt)}/mo{extra > 0 ? ` + ${fSAR(extra)} extra` : ""} · last instalment {fCal(pr.end)} · {fM(pr.totalProfit)} profit over its life if you keep it.
           </div>
           <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: 14, alignItems: "start" }}>
             <MonthField label="Pay it off in" value={tPick} min={pr.start} max={pr.end} onChange={setPayMonth} hint={tPick === pr.start ? "the month it is taken, before any instalment" : `after that month's instalment · year ${a.year} of the loan`} help={EXPL.payoff} />
@@ -2226,7 +2247,7 @@
           <div className="box" style={{ marginTop: 14, padding: "0 18px" }}>
             <div className="flex justify-between items-center flex-wrap" style={{ gap: 8, padding: "12px 0 4px" }}><b style={{ fontSize: 14 }}>Details</b><PlanPicker /></div>
             <Dis id="wf" title={rc.total >= 0 ? `How the ${fM(rc.total)} at ${W.doneShort} adds up` : `Why you would be ${fS(-rc.total)} short at ${W.doneShort}`} sub="waterfall" open={!!openDis.wf} onToggle={toggleDis}>
-              <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 4 }}>{planName(i)} · money in, what your salary saved, money out — in date order · no return on cash counted<Hint text={EXPL.cashMoveIn} label="Cash at move-in" /></div>
+              <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 4 }}>{planName(i)} · money in, what your salary saved, money out — in date order · no return on cash counted<Hint text={EXPL.cashMoveIn} label="Cash at project end" /></div>
               {(() => { const mp = moveInParts(r); return <Waterfall rows={[
                 { head: true, label: "1 · Money in: your cash and the loans", note: `${fCal(0)} → ${fCal(occ)}` },
                 ...mp.inRows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v })),
@@ -2257,7 +2278,7 @@
                   <tbody>{be.data.map((d) => <tr key={d.key}><td className="l">{d.label}</td><td>{d.key === "rent" ? `${fM(d.current)} a year` : `${d.current}%`}</td><td style={{ fontWeight: 700 }}>{beCell(d, "econ")}</td><td>{beCell(d, "rule7")}</td></tr>)}</tbody>
                 </table></div>
                 {be.partial && <div className="note">Working on the rest…</div>}
-                <div className="note">Each line changes one assumption on its own until {planRef(i)} draws level with {baseLbl}. {isBuilding ? "The rent line is the rent per unit." : isLand ? "" : `The rent line is any rent you would receive from move-in (an annex or a floor${lettingOut ? ", or the whole home" : ""}) — or what living there is worth to you.`} Appreciation is the land's; a building keeps losing {dep}% a year.</div>
+                <div className="note">Each line changes one assumption on its own until {planRef(i)} draws level with {baseLbl}. {isBuilding ? "The rent line is the rent per unit." : isLand ? "" : `The rent line is any rent you would receive from the project end (an annex or a floor${lettingOut ? ", or the whole home" : ""}) — or what living there is worth to you.`} Appreciation is the land's; a building keeps losing {dep}% a year.</div>
               </>}
             </Dis>
             <Dis id="stress" title="How fragile is it?" sub="stress tests" open={!!openDis.stress} onToggle={toggleDis}>
