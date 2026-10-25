@@ -113,7 +113,7 @@ function fundingBridgeRows(r, upto, inp, prj) {
   const build = inp.acquire === "build";
   const landPart = inRange(prj.landMonth) ? (build ? prj.land + prj.rett + (prj.landBroker || 0) : prj.total) : 0;
   const spend = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.spend, 0);
-  add(build ? `Land price + ${inp.rettPct}% transfer tax${prj.landBroker > 0 ? ` + ${inp.landBrokerPct}% broker` : ""}` : "Purchase price, tax, broker and finishing", -landPart, fCal(prj.landMonth), prj.landMonth + 0.5);
+  if (landPart) rePurchaseParts(inp, prj).forEach((x) => add(x.label, -x.v, `${fCal(prj.landMonth)}${x.note ? ` · ${x.note}` : ""}`, prj.landMonth + 0.5));
   r.facilities.filter((f) => inRange(f.startedAt) && f.amount > 0 && f.key !== "rf").forEach((f) => {
     add(f.key === "lm" ? (build ? "Land mortgage, paid to the seller" : "Purchase mortgage, paid to the seller") : f.refi ? `${f.owner === "B" ? "Your spouse's new" : "New"} personal loan(s), bank's maximum` : `Loan paid to you: ${f.labelLc || f.label.toLowerCase()}`, f.amount, f.key === "lm" ? `${fCal(f.startedAt)} · never passes through your hands` : fCal(f.startedAt), f.startedAt);
     if (f.refi) add(`The bank clears ${f.refi.names.join(" + ")} with it (buy-out)`, -f.refi.payoff, `${fCal(f.startedAt)} · paid by the bank directly, incl. early-settlement fees`, f.startedAt);
@@ -135,6 +135,71 @@ function fundingBridgeRows(r, upto, inp, prj) {
   let worst = Infinity, worstT = 0, short = 0;
   r.months.filter((x) => x.t >= 1 && x.t <= upto).forEach((x) => { const s = x.inc - x.liv - x.rentPaid - x.existInst - x.lmPay - x.eqPay - x.plPay - x.coPay - x.rfPay - x.ownerCost; if (s < worst) { worst = s; worstT = x.t; } if (s < 0) short -= s; });
   return { rows, total, ret, worst: worst === Infinity ? 0 : worst, worstT, short };
+}
+
+// the purchase, item by item (paid in the purchase month): the land or the price, the transfer tax with the first-home relief
+// worked out, the broker's fee, and (a ready home) finishing with its VAT. The rows add up exactly to what the purchase month
+// costs (prj.total for a ready kind; land + RETT + the land broker's fee for a build)
+function reRettNote(inp, prj) {
+  const what = prj.build ? "land" : "price", base = prj.build ? prj.land : prj.price;
+  if (prj.rettExempt > 0) return prj.rett > 0.5 ? `${inp.rettPct}% of ${fSAR(base - prj.rettExempt)}, the ${what} above the first ${fSAR(prj.rettExempt)} — the state pays the tax on that part (first-home relief)` : `none: the ${what} is within the first ${fSAR(inp.rettExemptCap)}, on which the state pays the tax (first-home relief)`;
+  return `${inp.rettPct}% of the ${what}, ${fSAR(base)}${prj.isLand || prj.isBuilding ? "" : " (no first-home relief ticked)"}`;
+}
+function rePurchaseParts(inp, prj) {
+  const grown = (today, v) => today != null && Math.abs(v - today) >= 0.5 ? `today's ${fSAR(today)} grown ${inp.appreciation}% a year to ${fCal(prj.landMonth)}` : null;
+  const rows = prj.build ? [
+    ["Land price", prj.land, grown(prj.landToday, prj.land)],
+    [`Transfer tax (${inp.rettPct}%)`, prj.rett, reRettNote(inp, prj)],
+    [`Broker's fee on the land (${inp.landBrokerPct}%)`, prj.landBroker || 0, `${inp.landBrokerPct}% of ${fSAR(prj.land)}`],
+  ] : [
+    ["Purchase price", prj.price, grown(+inp.propertyPrice || null, prj.price)],
+    [`Transfer tax (${inp.rettPct}%)`, prj.rett, reRettNote(inp, prj)],
+    [`Broker's fee (${inp.brokerPct}%)`, prj.broker, `${inp.brokerPct}% of ${fSAR(prj.price)}`],
+  ];
+  const out = rows.filter(([, v]) => Math.abs(v) >= 0.5).map(([label, v, note]) => ({ label, v, note }));
+  const rest = (prj.build ? prj.land + prj.rett + (prj.landBroker || 0) : prj.total) - out.reduce((a, x) => a + x.v, 0);
+  if (Math.abs(rest) >= 0.5) out.push({ label: prj.build ? "Other purchase costs" : `Finishing, furnishing${prj.vat > 0.5 ? ` (incl. ${inp.vatPct}% VAT)` : ""}`, v: rest, note: null });
+  return out;
+}
+/* ---------- where the cash for an early payoff came from (the step-by-step's payoff "Details" link) ---------- */
+// from the project end (or the month before the payoff, if earlier) to the payoff month: the cash then (no growth counted), what
+// your salary, rent and costs added month by month, anything else (loans, sales, other payoffs) as one line; then the payoff
+// itself and the cash test the plan uses ("asap": cushion + three months' outgoings), and why not a month earlier
+function rePrepayDetail(r, key, inp, prj) {
+  const k = (r.prepaid || []).findIndex((x) => x.key === key);
+  if (k < 0) return null;
+  const x = r.prepaid[k], t = x.t, occ = prj.occupy, from = Math.max(0, Math.min(occ, t - 1)), M = r.months;
+  const ms = M.filter((m) => m.t > from && m.t <= t), sum = (f) => ms.reduce((a, m) => a + f(m), 0);
+  const newPay = (m) => m.lmPay + m.eqPay + m.plPay + m.coPay + m.rfPay;
+  const start = M[from].avail;
+  const flows = [
+    ["Your salary", sum((m) => m.inc), inp.incomeGrowth > 0 || (inp.joint && inp.joint.on) ? "with the raises you set" : null],
+    ["Living costs", -sum((m) => m.liv), null],
+    ["Rent you pay", -sum((m) => m.rentPaid), null],
+    ["Rent received", sum((m) => m.rentIn), null],
+    ["Rent your properties earn", sum((m) => m.propRentIn || 0), null],
+    ["Old-loan instalments", -sum((m) => m.existInst), null],
+    ["New-loan instalments", -sum(newPay), "including this mortgage's, up to the payoff month"],
+    ["Upkeep", -sum((m) => m.ownerCost), null],
+    ["Holding the land", -sum((m) => m.holding || 0), null],
+  ].filter(([, v]) => Math.abs(v) >= 0.5).map(([label, v, note]) => ({ label, v, note }));
+  // the cash just before this payoff: the month's cash after it, plus this payoff and any paid after it the same month
+  const sameMonth = r.prepaid.filter((y, j) => y.t === t && j >= k).reduce((a, y) => a + y.cost, 0);
+  const before = M[t].avail + sameMonth, after = before - x.cost;
+  const other = before - start - flows.reduce((a, y) => a + y.v, 0);
+  if (Math.abs(other) >= 0.5) flows.push({ label: "Everything else in that time", v: other, note: "loans taken, other payoffs, sales — see the step-by-step" });
+  const f = (r.facilities || []).find((y) => y.key === key) || null;
+  const balance = x.cost - x.fee;
+  const asap = r.plan && r.plan.prepayAfter === "asap";
+  const outgo = (m) => m.liv + m.rentPaid + m.existInst + newPay(m) + m.ownerCost + (m.holding || 0);
+  const reserve = asap ? 3 * outgo(M[t]) : 0, need = inp.cashBuffer + reserve;
+  // a month earlier: the same test on that month's cash and that month's payoff cost (only the first payoff of a month, from the project end)
+  let earlier = null;
+  if (asap && f && t - 1 >= occ && k === r.prepaid.findIndex((y) => y.t === t)) {
+    const pr = rePayoffRows(f, f.key === "lm" && r.plan ? +r.plan.extraMo || 0 : 0, inp.settleFeeMonths), row = pr && pr.at(t - 1);
+    if (row) { const needE = inp.cashBuffer + 3 * outgo(M[t - 1]); earlier = { t: t - 1, cash: M[t - 1].avail, cost: row.total, left: M[t - 1].avail - row.total, need: needE }; }
+  }
+  return { x, t, from, start, flows, before, after, balance, fee: x.fee, cost: x.cost, asap, reserve, need, earlier, f };
 }
 
 /* ---------- plain-English description of a strategy, generated from its settings ---------- */

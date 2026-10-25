@@ -1394,9 +1394,12 @@ function rePlanSimulate(p, prj, plan) {
     if (t === pl2T) takePersonal(t, pl2);          // after the cash-out: personal loan(s) fill what is left
     if (t === spl2T) takePersonal(t, spl2);
     // what the money raised above pays for (the land, the start of construction)
-    if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett + prj.landBroker)} incl. RETT${prj.landBroker > 0 ? " and the broker's fee" : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
+    // the purchase, item by item: the price (today's, grown), the transfer tax (with any first-home relief worked out) and the broker's fee
+    const grownTxt = prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : "";
+    const rettTxt = () => { const base = prj.build ? prj.land : prj.price; return prj.rettExempt > 0 ? (prj.rett > 0.5 ? ` + transfer tax ${fS(prj.rett)} (${p.rettPct}% of the ${fS(base - prj.rettExempt)} above the first ${fS(prj.rettExempt)}, which the state pays — first-home relief)` : ` + no transfer tax (the first ${fS(p.rettExemptCap)} is covered by first-home relief)`) : prj.rett > 0.5 ? ` + transfer tax ${fS(prj.rett)} (${p.rettPct}%)` : ""; };
+    if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought: ${fS(prj.land)}${grownTxt}${rettTxt()}${prj.landBroker > 0 ? ` + broker's fee ${fS(prj.landBroker)} (${p.landBrokerPct}%)` : ""} = ${fS(prj.land + prj.rett + prj.landBroker)}.` });
     // the purchase of a ready home or building: the price with RETT and the broker's fee (finishing, with VAT, paid the same month)
-    else if (t === prj.landMonth && !prj.build) events.push({ t, kind: "milestone", text: `${prj.isBuilding ? "Building" : "Home"} bought for ${fS(prj.price + prj.rett + prj.broker)} incl. RETT${prj.broker > 0 ? " and the broker's fee" : ""}${prj.finish > 0 ? `; finishing ${fS(prj.finish * (1 + p.vatPct / 100))} incl. VAT` : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
+    else if (t === prj.landMonth && !prj.build) events.push({ t, kind: "milestone", text: `${prj.isBuilding ? "Building" : "Home"} bought: ${fS(prj.price)}${grownTxt}${rettTxt()}${prj.broker > 0 ? ` + broker's fee ${fS(prj.broker)} (${p.brokerPct}%)` : ""} = ${fS(prj.price + prj.rett + prj.broker)}${prj.finish > 0 ? `; finishing ${fS(prj.finish * (1 + p.vatPct / 100))} incl. VAT` : ""}.` });
     if (t === prj.start && prj.construct) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett - prj.landBroker)} over ${prj.bm} months.` });
     // project spend, all from cash (facility proceeds are already in cash)
     const spend = prj.schedule[t] || 0;

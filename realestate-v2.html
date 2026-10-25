@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=acf96b548c"></script>
-  <script src="re2-engine.js?v=acf96b548c"></script>
-  <script src="re2-ui.js?v=acf96b548c"></script>
+  <script src="engine.js?v=dac7feee4f"></script>
+  <script src="re2-engine.js?v=dac7feee4f"></script>
+  <script src="re2-ui.js?v=dac7feee4f"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1070,7 +1070,7 @@
       const TaxFields = () => <>
         <Field label="VAT" value={inp.vatPct} min={0} max={20} step={1} unit="%" onChange={(v) => set("vatPct", v)} hint={isLand ? "land carries no VAT" : "on construction and finishing; land carries none"} />
         <Field label="Real-estate transfer tax" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
-        {!isLand && !isBuilding && <Tick checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home relief (the state pays the tax on the first ${fM(inp.rettExemptCap)})`} />}
+        {!isLand && !isBuilding && <Tick checked={inp.firstHomeExempt} onChange={(v) => set("firstHomeExempt", v)} label={`First-home relief (REDF / Sakani support): the state pays the transfer tax on the first ${fM(inp.rettExemptCap)}; the rest is taxed`} />}
       </>;
       const LandFields = () => (
         <Box title="Land">
@@ -1174,14 +1174,14 @@
       );
       // what it costs, and what it is worth — the rows branch on the kind
       const costRows = prj.construct
-        ? [["Land", prj.land], [`Transfer tax on the land (${inp.rettPct}%)${prj.rettExempt > 0 ? ", first-home relief applied" : ""}`, prj.rett], [`Broker's fee on the land (${inp.landBrokerPct}%)`, prj.landBroker], ["Construction", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Kitchen, AC, landscape", prj.finish], [`Cost overrun (${inp.overrunPct}%)`, prj.overrun], [`VAT ${inp.vatPct}%`, prj.vat]].filter(([, v], k) => v > 0.5 || ![2, 7].includes(k))
-        : isLand ? [["Land", prj.land], [`Transfer tax (${inp.rettPct}%)`, prj.rett], [`Broker's fee (${inp.landBrokerPct}%)`, prj.landBroker]].filter(([, v], k) => v > 0.5 || k < 2)
-        : [["Purchase price", prj.price], [`Transfer tax (${inp.rettPct}%)${prj.rettExempt > 0 ? ", first-home relief applied" : ""}`, prj.rett], ["Broker", prj.broker], ["Finishing, furnishing", prj.finish], [`VAT ${inp.vatPct}% on finishing`, prj.vat]];
+        ? [["Land", prj.land], [`Transfer tax on the land (${inp.rettPct}%)`, prj.rett, reRettNote(inp, prj)], [`Broker's fee on the land (${inp.landBrokerPct}%)`, prj.landBroker], ["Construction", prj.hard], ["Design, permits, supervision", prj.soft], ["Contingency", prj.cont], ["Kitchen, AC, landscape", prj.finish], [`Cost overrun (${inp.overrunPct}%)`, prj.overrun], [`VAT ${inp.vatPct}%`, prj.vat]].filter(([, v], k) => v > 0.5 || ![2, 7].includes(k))
+        : isLand ? [["Land", prj.land], [`Transfer tax (${inp.rettPct}%)`, prj.rett, reRettNote(inp, prj)], [`Broker's fee (${inp.landBrokerPct}%)`, prj.landBroker]].filter(([, v], k) => v > 0.5 || k < 2)
+        : [["Purchase price", prj.price], [`Transfer tax (${inp.rettPct}%)`, prj.rett, reRettNote(inp, prj)], [`Broker's fee (${inp.brokerPct}%)`, prj.broker, `${inp.brokerPct}% of ${fSAR(prj.price)}`], ["Finishing, furnishing", prj.finish], [`VAT ${inp.vatPct}% on finishing`, prj.vat]];
       const vw = (() => { const occ = prj.occupy - 1, landMove = prj.landValueAt(occ), end = prj.valueAt(H), landEnd = prj.landValueAt(H); return { landMove, end, landEnd, bldEnd: end - landEnd, yrs: Math.max(0, Math.round((H - occ) / 12)) }; })();
       const CostBox = () => (
         <Box title="What it costs, and what it is worth" help={EXPL.cost}>
           <table className="bridge"><tbody>
-            {costRows.map(([l, v]) => <tr key={l}><td>{l}</td><td className="v">{fSAR(v)}</td></tr>)}
+            {costRows.map(([l, v, n]) => <tr key={l}><td>{l}{n && <div className="n">{n}</div>}</td><td className="v">{fSAR(v)}</td></tr>)}
             <tr className="tot"><td>All-in cost</td><td className="v">{fSAR(prj.total)}</td></tr>
             {prj.construct && prj.builtArea > 0 && <tr><td>Cost per m² built (without the land)</td><td className="v">{fSAR(prj.costPerSqm)}</td></tr>}
             <tr><td colSpan={2} style={{ paddingTop: 12, fontWeight: 700 }}>What it is worth<Hint text={EXPL.value} label="What it is worth" /></td></tr>
@@ -1794,15 +1794,15 @@
       ];
       const PlanPicker = ({ label }) => <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>{label || "for"} <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select></span>;
       const timelineOf = (r) => {
-        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, text: calText(e.text) }));
+        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, payoff: e.kind === "settle" && !!e.fac && (r.prepaid || []).some((x) => x.key === e.fac && x.t === e.t), text: calText(e.text) }));
         // a plan that runs out says so once, in the month the cash runs out (the engine's row: how much more it needs, and the most
         // you would be short); the other plans show their lowest cash, or the most bridge money they need
         if (r.minCash >= 0 || r.bridged) rows.push({ t: r.minCashT, o: 1e6, kind: r.minCash < 0 ? "bridge" : "low", text: r.minCash < 0 ? `The most bridge money you need: ${fS(-r.minCash)}.` : `Lowest cash (no growth): ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
         if (r.debtFreeT != null) rows.push({ t: r.debtFreeT, o: 1e6 + 1, kind: "end", text: "Debt-free." });
         const mi = moveInMoney(r, occ);
         const inWord = isLand ? "The land is paid for" : letAll ? "The building is yours" : "You move in";
-        rows.push(r.onHandAtMoveIn >= 0 ? { t: occ, o: 1e6 + 2, kind: "occ", text: `${inWord} with ${fM(r.onHandAtMoveIn)} in cash (no growth counted).` }
-          : { t: occ, o: 1e6 + 2, kind: "shortIn", text: mi.n ? `${mi.what.charAt(0).toUpperCase() + mi.what.slice(1)} bring${mi.n > 1 || /loans/.test(mi.what) ? "" : "s"} ${fS(mi.net)}${mi.cleared.length ? ` after clearing ${mi.cleared.join(" + ")}` : ""}; you would still be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` : `You would be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` });
+        rows.push(r.onHandAtMoveIn >= 0 ? { t: occ, o: 1e6 + 2, kind: "occ", cash: true, text: `${inWord} with ${fM(r.onHandAtMoveIn)} in cash (no growth counted).` }
+          : { t: occ, o: 1e6 + 2, kind: "shortIn", cash: true, text: mi.n ? `${mi.what.charAt(0).toUpperCase() + mi.what.slice(1)} bring${mi.n > 1 || /loans/.test(mi.what) ? "" : "s"} ${fS(mi.net)}${mi.cleared.length ? ` after clearing ${mi.cleared.join(" + ")}` : ""}; you would still be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` : `You would be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` });
         // a plan that runs out: the finished home and the moving in only happen if the money it needs is found
         if (!works(r)) rows.forEach((x) => { if (x.kind === "milestone" && x.t === occ && /Construction complete/.test(x.text)) x.text = `Construction complete — only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}.`; });
         const ord = (a, b) => a.t - b.t || a.o - b.o;
@@ -2255,6 +2255,16 @@
           <div className="note">{earlyTxt ? <>{earlyTxt}: {fSARm(e.row.total)}, incl. {fSARm(e.row.fee)} fee (the highlighted row); the grey rows after it are what it would cost had you kept the loan. </> : null}Each row: the balance after that month's instalment plus the bank's early-settlement fee — at most the next {inp.settleFeeMonths} months of profit on what is left (SAMA cap), the same fee the tool charges when a plan pays a loan off early. "Paid so far" counts every instalment{extra > 0 ? " and extra payment" : ""} from {fCal(pr.start + 1)}.{pr.end > lastT ? ` † After ${endDate}, the end of the comparison: the bank's schedule carries on the same way.` : ""}</div>
         </>);
       };
+      // cash at the project end: money in, what your salary saved, money out (the Details panel and the step-by-step's link)
+      const EndWaterfall = ({ r }) => { const occ = occOf(r), mp = moveInParts(r); return <Waterfall rows={[
+                { head: true, label: "1 · Money in: your cash and the loans", note: `${fCal(0)} → ${fCal(occ)}` },
+                ...mp.inRows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v })),
+                { subtotal: true, label: "Money in" },
+                ...(mp.salaryRows.length ? [{ head: true, label: "2 · Your salary", note: `${fCal(1)} → ${fCal(occ)}` }, ...mp.salaryRows, { subtotal: true, label: mp.salary < 0 ? "Your salary fell short by" : "Saved from your salary", abs: true }] : []),
+                { head: true, label: `${mp.salaryRows.length ? 3 : 2} · Money out: the project, fees and payoffs` },
+                ...mp.outRows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v })),
+                { subtotal: true, label: "Money out" },
+              ]} totalLabel={<span title={`${fSAR(mp.total)} SAR`}>{mp.total >= 0 ? `Cash at ${W.doneShort}, ${fCal(occ)}` : `Short at ${W.doneShort}, ${fCal(occ)}`}</span>} total={mp.total} />; };
       // the Details panels: today's answer pieces, every comparison row and the what-ifs, closed until opened
       const DetailsBox = ({ r, i }) => {
         const occ = occOf(r), rc = cashReconcile(r, occ, inp, prj);
@@ -2266,15 +2276,7 @@
             <div className="flex justify-between items-center flex-wrap" style={{ gap: 8, padding: "12px 0 4px" }}><b style={{ fontSize: 14 }}>Details</b><PlanPicker /></div>
             <Dis id="wf" title={rc.total >= 0 ? `How the ${fM(rc.total)} at ${W.doneShort} adds up` : `Why you would be ${fS(-rc.total)} short at ${W.doneShort}`} sub="waterfall" open={!!openDis.wf} onToggle={toggleDis}>
               <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 4 }}>{planName(i)} · money in, what your salary saved, money out — in date order · no return on cash counted<Hint text={EXPL.cashMoveIn} label="Cash at project end" /></div>
-              {(() => { const mp = moveInParts(r); return <Waterfall rows={[
-                { head: true, label: "1 · Money in: your cash and the loans", note: `${fCal(0)} → ${fCal(occ)}` },
-                ...mp.inRows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v })),
-                { subtotal: true, label: "Money in" },
-                ...(mp.salaryRows.length ? [{ head: true, label: "2 · Your salary", note: `${fCal(1)} → ${fCal(occ)}` }, ...mp.salaryRows, { subtotal: true, label: mp.salary < 0 ? "Your salary fell short by" : "Saved from your salary", abs: true }] : []),
-                { head: true, label: `${mp.salaryRows.length ? 3 : 2} · Money out: the project, fees and payoffs` },
-                ...mp.outRows.map((x) => ({ label: x.label.trim(), note: x.note, v: x.v })),
-                { subtotal: true, label: "Money out" },
-              ]} totalLabel={<span title={`${fSAR(rc.total)} SAR`}>{rc.total >= 0 ? `Cash at ${W.doneShort}, ${fCal(occ)}` : `Short at ${W.doneShort}, ${fCal(occ)}`}</span>} total={rc.total} />; })()}
+              {EndWaterfall({ r })}
               {(rc.salary < 0 || r.moveInOk === false || rc.total < 0) && <div className="note">{rc.salary < 0 ? `Up to ${W.doneShort} your salary did not cover living costs and every instalment — the gap came out of your cash. ` : ""}{rc.total < 0 ? <span style={{ color: K.neg, fontWeight: 600 }}>Money out is more than money in: no loan in this plan covers the {fS(-rc.total)}. </span> : r.moveInOk === false ? <span style={{ color: K.neg }}>This is below your line of {fM(moveLine)}, so this plan ranks after plans that meet it.</span> : null}</div>}
             </Dis>
             <Dis id="bars" title={`Wealth in ${endDate}: ${W.act} vs not`} sub="both measures" open={!!openDis.bars} onToggle={toggleDis}>
@@ -2364,7 +2366,7 @@
       const StepByStep = ({ r, i }) => (
         <Box title={`What happens, in order · ${planName(i)}`} style={{ marginTop: 14 }}>
               <div className="ev" style={{ fontWeight: 600 }}><span className="d">{fCal(0)}</span><span className="k"><EvTag kind="today" /></span><span>Today: {fM(inp.cashAvailable)} cash; {hj ? <>your old loans take {fSAR(hj.existingInstA)}/mo ({household.existingDbr.toFixed(0)}% of your income) and your spouse's {fSAR(hj.existingInstB)}/mo ({hj.existingDbrB.toFixed(0)}% of theirs) · <AR /></> : <>your old loans take {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income)</>}.</span></div>
-              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span><span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}{x.fac && <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, key: x.fac })} aria-label={`Details of this loan`}>Details ›</button></>}</span></div>)}
+              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span><span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}{x.fac ? <> <button className="lnk no-print" onClick={() => setLoanDlg(x.payoff ? { i, key: x.fac, view: "payoff" } : { i, key: x.fac })} aria-label={x.payoff ? "Where the cash for this payoff comes from" : "Details of this loan"}>Details ›</button></> : x.cash ? <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, view: "end" })} aria-label={`How the cash at ${W.doneShort} adds up`}>Details ›</button></> : null}</span></div>)}
               <div className="ev" style={{ borderBottom: "none", fontWeight: 600 }}><span className="d">{endDate}</span><span className="k"><EvTag kind="horizon" /></span><span>{works(r) ? "" : `Only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}: `}{works(r) ? "Wealth" : "wealth"} {fM(r.econEnd)} vs {fM(r.econBaseEnd)} if you {W.baseIf}: <span style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</span>.</span></div>
         </Box>
       );
@@ -2424,6 +2426,64 @@
           </div>
         );
       };
+      // the side sheet the step-by-step's "Details ›" links open (not printed; Esc and × close it)
+      const DlgShell = ({ eyebrow, title, children }) => {
+        const close = () => setLoanDlg(null);
+        return (
+          <div className="dlg-back no-print" onClick={close}>
+            <div className="dlg" role="dialog" aria-modal="true" aria-labelledby="dlg-t" tabIndex={-1} ref={(el) => { if (el && !el.contains(document.activeElement)) el.focus(); }} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") close(); }}>
+              <div className="flex justify-between items-start" style={{ gap: 10 }}>
+                <div><div className="eyebrow">{eyebrow}</div><h3 id="dlg-t" style={{ margin: "2px 0 0", fontSize: 18 }}>{title}</h3></div>
+                <button className="btn small" onClick={close} aria-label="Close">×</button>
+              </div>
+              {children}
+            </div>
+          </div>
+        );
+      };
+      // how the cash at the project end adds up
+      const CashEndDetails = () => {
+        const { i } = loanDlg, r = m.results[i];
+        if (!r) return null;
+        const occ = occOf(r), mp = moveInParts(r);
+        return DlgShell({ eyebrow: `${planName(i)} · cash at ${W.doneShort}`, title: mp.total >= 0 ? `${fM(mp.total)} in cash at ${W.doneShort}, ${fCal(occ)}` : `${fS(-mp.total)} short at ${W.doneShort}, ${fCal(occ)}`, children: <>
+          <div style={{ fontSize: 12.5, color: K.sub, margin: "10px 0 4px" }}>Money in, what your salary saved, money out — in date order · no return on cash counted</div>
+          {EndWaterfall({ r })}
+          <div className="note">The purchase lines are paid in {fCal(prj.landMonth)}{prj.rettExempt > 0 ? "; the transfer tax is charged only on the part above the first-home relief" : ""}. The mortgage never passes through your hands: the bank pays the seller.</div>
+        </> });
+      };
+      // where the cash for an early payoff comes from, the cash test, and the balance it clears
+      const PayoffDetails = () => {
+        const { i, key } = loanDlg, r = m.results[i], d = r ? rePrepayDetail(r, key, inp, prj) : null;
+        if (!d) return null;
+        const Sec = ({ title, children }) => <div style={{ marginTop: 14 }}><div className="eyebrow" style={{ marginBottom: 4 }}>{title}</div>{children}</div>;
+        const nm = d.x.nameLc || d.x.name.toLowerCase();
+        return DlgShell({ eyebrow: `${planName(i)} · early payoff`, title: `The ${nm} is paid off in ${fCal(d.t)}`, children: <>
+          <Sec title={`Where the cash comes from · ${fCal(d.from)} → ${fCal(d.t)}`}>
+            <Waterfall rows={[
+              { label: d.from === occOf(r) ? `Cash at ${W.doneShort}, ${fCal(d.from)}` : `Cash in ${fCal(d.from)}`, v: d.start, note: d.from === occOf(r) ? "no return on cash counted" : null },
+              ...d.flows.map((x) => ({ label: x.label, note: x.note, v: x.v })),
+              { subtotal: true, label: "Cash before the payoff" },
+              { label: `Balance left on the ${nm}`, v: -d.balance, note: "after this month's instalment" },
+              { label: "Early-settlement fee", v: -d.fee, note: `the next ${inp.settleFeeMonths} months' profit at most (SAMA cap)` },
+            ]} totalLabel={`Cash after the payoff, ${fCal(d.t)}`} total={d.after} />
+          </Sec>
+          <Sec title={d.asap ? "Why this month" : "The month you set"}>
+            {d.asap ? <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+              The plan pays it off the first month the cash left after the payoff covers your safety cushion ({fSAR(inp.cashBuffer)}) plus three months' outgoings ({fSAR(d.reserve)}: living costs, rent and instalments).
+              {" "}In {fCal(d.t)}: {fSAR(d.before)} − {fSAR(d.cost)} = <b>{fSAR(d.after)}</b>, at least {fSAR(d.need)} ✓.
+              {d.earlier && <>{" "}A month earlier, in {fCal(d.earlier.t)}: {fSAR(d.earlier.cash)} − {fSAR(d.earlier.cost)} = {fSAR(d.earlier.left)}, below {fSAR(d.earlier.need)}.</>}
+              {" "}It is paid off because at {d.f ? `${d.f.rate.toFixed(2)}% APR` : "its rate"} it costs more than your cash earns.
+            </div> : <div style={{ fontSize: 13, lineHeight: 1.55 }}>You chose to pay the mortgages off in this month; the cash above your safety cushion ({fSAR(inp.cashBuffer)}) covers it: {fSAR(d.before)} − {fSAR(d.cost)} = <b>{fSAR(d.after)}</b>.</div>}
+          </Sec>
+          <Sec title="The loan">
+            <Row k="Balance cleared" v={fSAR(d.balance)} />
+            <Row k="Early-settlement fee" v={fSAR(d.fee)} />
+            <Row k="Instalment you stop paying" v={`${fSAR(d.x.inst)}/mo`} />
+            <div style={{ marginTop: 8 }}><button className="lnk" onClick={() => setLoanDlg({ i, key })}>The loan's full details ›</button></div>
+          </Sec>
+        </> });
+      };
       const StepAnswer = () => {
         if (!lead) return <div><Head id="answer" title="Your answer" /><Box>Tick at least one plan in How to pay.</Box></div>;
         const r = focusRes, i = focusIdx;
@@ -2438,7 +2498,7 @@
             {letAll && InvestmentView({ r, i })}
             {WatchOut({ items: watchOut(r) })}
             {DetailsBox({ r, i })}
-            {loanDlg && LoanDetails()}
+            {loanDlg && (loanDlg.view === "end" ? CashEndDetails() : loanDlg.view === "payoff" ? PayoffDetails() : LoanDetails())}
           </div>
         );
       };

@@ -378,19 +378,19 @@ test('a ready home or building has its own milestones: bought (price with RETT, 
   const villa = run({ kind: 'readyVilla', propertyPrice: 2800000, finishExtra: 100000, landMonth: 3, rentNow: 9000 });
   villa.results.forEach((r, i) => {
     const bought = r.events.find((e) => e.kind === 'milestone' && e.t === villa.prj.landMonth);
-    assert.ok(bought && /^Home bought for .* incl\. RETT and the broker's fee; finishing .* incl\. VAT/.test(bought.text), `S${i + 1}: ${bought && bought.text}`);
+    assert.ok(bought && /^Home bought: .* \+ transfer tax .* \+ broker's fee .* = .*; finishing .* incl\. VAT/.test(bought.text), `S${i + 1}: ${bought && bought.text}`);
     assert.ok(r.events.some((e) => e.kind === 'milestone' && e.t === r.occupy && /^Move in\. Upkeep starts\./.test(e.text)), `S${i + 1}: move-in milestone`);
     assert.ok(!r.events.some((e) => /Land bought|Construction/.test(e.text)), `S${i + 1}: no build words`);
   });
   const bld = run({ kind: 'readyBuilding', occupancy: 'let', unitCount: 6, unitRentBasis: 'unit', unitRent: 3000, propertyPrice: 5000000, finishExtra: 0, landMonth: 0 });
   bld.results.forEach((r, i) => {
     const bought = r.events.find((e) => e.kind === 'milestone' && e.t === 0);
-    assert.ok(bought && /^Building bought for .* incl\. RETT and the broker's fee\.$/.test(bought.text), `S${i + 1}: ${bought && bought.text}`);
+    assert.ok(bought && /^Building bought: .* \+ transfer tax .* \+ broker's fee .* = [^;]*\.$/.test(bought.text), `S${i + 1}: ${bought && bought.text}`);
     assert.ok(r.events.some((e) => e.kind === 'milestone' && e.t === r.occupy && /^Building ready — let from month/.test(e.text)), `S${i + 1}: let-from milestone`);
   });
   // a build keeps its milestones; land only keeps "Land bought" alone
   const built = run({ kind: 'landVilla' }).results[0];
-  assert.ok(built.events.some((e) => /^Land bought for/.test(e.text)) && built.events.some((e) => /^Construction starts/.test(e.text)) && built.events.some((e) => /^Construction complete — move in/.test(e.text)));
+  assert.ok(built.events.some((e) => /^Land bought: /.test(e.text)) && built.events.some((e) => /^Construction starts/.test(e.text)) && built.events.some((e) => /^Construction complete — move in/.test(e.text)));
   const land = run({ kind: 'land', landArea: 1000, landPrice: 2000 }).results[0];
   assert.equal(land.events.filter((e) => e.kind === 'milestone').length, 1);
 });
