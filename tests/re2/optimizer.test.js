@@ -164,3 +164,29 @@ test('the room timeline carries each property\'s room: value × the share the ba
   // no properties: an empty list, the rows as before
   assert.ok(E.computeRE({ ...HH, properties: [] }, { noNeed: true }).household.capTimeline.every((c) => c.props.length === 0 && c.propRoom === 0));
 });
+
+// early payoff "as soon as the cash allows" (prepayAfter "asap"): a long mortgage dearer than the cash return is paid off once the
+// cash above the cushion and three months' outgoings covers it, and the optimizer tries it on its leading mortgage mixes. Synthetic.
+test('early payoff as soon as the cash allows: pays a dear mortgage off when the cash test passes, keeps a cheap one, and the optimizer finds it', () => {
+  const inp = { asOf: '2026-10', kind: 'readyVilla', propertyPrice: 3000000, finishExtra: 0, income: 150000, livingExpenses: 40000, rentNow: 0, cashAvailable: 2500000, cashBuffer: 200000, altReturn: 4, lmRate: 7, lmTenure: 20, existingLoans: [] };
+  const p = E.mergeRE(inp), prj = E.reProject(p), plan = { ...E.RE_PLAN_PRESETS.landMortgage, enabled: true };
+  const hold = E.reRunPlan(p, prj, plan), asap = E.reRunPlan(p, prj, { ...plan, prepayAfter: 'asap' });
+  assert.ok(hold.feasible && asap.feasible);
+  assert.equal(hold.prepaidTotal, 0);
+  assert.ok(asap.prepaidTotal > 0 && asap.prepaid[0].t >= prj.occupy, 'paid off after move-in');
+  // the cash test: the month it pays off, the cash left covers the cushion and three months' outgoings
+  const t = asap.prepaid[0].t, m = asap.months[t];
+  assert.ok(m.avail >= p.cashBuffer - 1, 'never below the cushion');
+  assert.ok(asap.econAdv > hold.econAdv, 'paying 7% debt off early beats holding it while cash earns 4%');
+  // a mortgage cheaper than the cash return is kept
+  const cheap = E.reRunPlan(E.mergeRE({ ...inp, lmRate: 2, altReturn: 6 }), E.reProject(E.mergeRE({ ...inp, lmRate: 2, altReturn: 6 })), { ...plan, prepayAfter: 'asap' });
+  assert.equal(cheap.prepaidTotal, 0);
+  // the optimizer's pick pays the mortgage off early here, and is at least as good as holding it
+  const st = E.optimizeRE(inp, { planned: true }).planned;
+  assert.equal(st.best.plan.prepayAfter, 'asap');
+  assert.match(st.best.name, /pay the mortgage off early when your cash allows/);
+  assert.equal(st.best.cleanPlan.prepayAfter, 'asap', 'copying the pick keeps the early payoff');
+  assert.ok(st.best.econAdv >= asap.econAdv - 1);
+  // the default scenario's own plans never pay off early (the goldens are unchanged)
+  assert.ok(E.computeRE({ asOf: '2026-10' }).results.every((r) => !r || r.prepaidTotal === 0));
+});
