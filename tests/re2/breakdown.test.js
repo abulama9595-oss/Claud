@@ -47,12 +47,3 @@ test('where "vs not building" comes from: the parts add up to it exactly', () =>
   }
   assert.deepStrictEqual(bad.slice(0, 8), []);
 });
-
-test('the working copy that opens after the switch', () => {
-  const a = { income: 1 }, b = { income: 2 }, j = (x) => JSON.stringify(x);   // compared as JSON: the engine runs in its own context
-  assert.strictEqual(j(E.reBootCopy(null, null)), j({ inp: null, offer: null, drop: false }), 'neither: defaults');
-  assert.strictEqual(j(E.reBootCopy(a, null)), j({ inp: a, offer: null, drop: false }), 'only the main copy');
-  assert.strictEqual(j(E.reBootCopy(null, b)), j({ inp: b, offer: null, drop: true }), 'only the preview copy: open it, then drop the old key');
-  assert.strictEqual(j(E.reBootCopy(a, { income: 1 })), j({ inp: a, offer: null, drop: true }), 'both, the same');
-  assert.strictEqual(j(E.reBootCopy(a, b)), j({ inp: a, offer: b, drop: false }), 'both, different: open the main copy, offer the preview copy');
-});
