@@ -1271,7 +1271,8 @@ function rePlanSimulate(p, prj, plan) {
     // loans at move-in — each loan with any payoff that makes room for it — then what that money pays for
     // (a building let out entirely: no move-in; land: no construction and no move-in — only "Land bought")
     if (t === prj.occupy && prj.construct) events.push({ t, kind: "milestone", text: letB ? `Building complete — let from month ${t + 1}. Upkeep starts.` : `Construction complete — move in. Upkeep starts.` });
-    else if (t === prj.occupy && letB) events.push({ t, kind: "milestone", text: `Building bought — let from month ${t + 1}. Upkeep starts.` });
+    // a ready home or building (bought, not built): the month after the purchase you move in — or it is let
+    else if (t === prj.occupy && !prj.build) events.push({ t, kind: "milestone", text: livesIn ? `Move in. Upkeep starts.` : `${prj.isBuilding ? "Building" : "Home"} ready — let from month ${t + 1}. Upkeep starts.` });
     // land only: the sale you planned — the land's market value then less selling costs; the mortgage on the land is repaid
     // from it first (with the early-settlement fee); from then on the land is not yours (its value counts 0 in both measures)
     if (prj.saleAt != null && t === prj.saleAt && landSale === null) {
@@ -1323,6 +1324,8 @@ function rePlanSimulate(p, prj, plan) {
     if (t === spl2T) takePersonal(t, spl2);
     // what the money raised above pays for (the land, the start of construction)
     if (t === prj.landMonth && prj.build) events.push({ t, kind: "milestone", text: `Land bought for ${fS(prj.land + prj.rett + prj.landBroker)} incl. RETT${prj.landBroker > 0 ? " and the broker's fee" : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
+    // the purchase of a ready home or building: the price with RETT and the broker's fee (finishing, with VAT, paid the same month)
+    else if (t === prj.landMonth && !prj.build) events.push({ t, kind: "milestone", text: `${prj.isBuilding ? "Building" : "Home"} bought for ${fS(prj.price + prj.rett + prj.broker)} incl. RETT${prj.broker > 0 ? " and the broker's fee" : ""}${prj.finish > 0 ? `; finishing ${fS(prj.finish * (1 + p.vatPct / 100))} incl. VAT` : ""}${prj.landMonth > 0 ? ` (today's price grown at ${p.appreciation}%/yr)` : ""}.` });
     if (t === prj.start && prj.construct) events.push({ t, kind: "milestone", text: `Construction starts${prj.inflate > 1 ? ` (priced ${((prj.inflate - 1) * 100).toFixed(0)}% above today)` : ""} — ${fS(prj.total - prj.land - prj.rett - prj.landBroker)} over ${prj.bm} months.` });
     // project spend, all from cash (facility proceeds are already in cash)
     const spend = prj.schedule[t] || 0;
