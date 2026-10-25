@@ -99,6 +99,9 @@
    refiStyle "topup" (default; re2Import sets "consolidate"): a personal-loan step may refinance each old personal loan
                    one-for-one with its own bank (f.topups; old loans get toppedUpAt); combining old loans into a new loan is
                    allowed only when the new APR is below theirs. Lens ties go to the recommended plan, then the earlier one.
+   coverAny (default on; re2Import off): when no planned loan closes a cash gap, the plan's later movable loans are still
+                   tried in the gap's first month; if none makes the plan work, the one that shrinks the shortfall most is kept
+                   (r.coveredPart, a "cover" event saying it is not enough on its own).
    Keys with no engine effect yet (later phases): invLtv, invTenure, invRateAdd, dscrMin (income-property finance for a
                    building let out entirely), legacyRental (an imported old rental scenario: a building let out entirely whose
                    one unit earns the old rentMo).
@@ -191,6 +194,7 @@ const RE_BASE = {
   // and loans run through the household cash on both sides; each of you is tested on your own income (SAMA, see reSamaCap);
   // the land / purchase mortgage and the cash-out use both of your room; personal loans stay yours.
   joint: { on: false, income: 0, incomeGrowth: null, redf: false, loans: [] },   // incomeGrowth null = the same as yours; redf = MoH / REDF-supported mortgage
+  coverAny: true,          // a gap no planned loan closes still tries the plan's later loans early (re2Import: off — the old tool's cover)
   refiStyle: "topup",      // a personal-loan step refinances each old personal loan with its own bank ("topup"), or buys several out into new loans ("consolidate", the old tool's way; a new loan buys loans out under "topup" only when it is cheaper than they are)
   settleFeeMonths: 3,      // SAMA: early-settlement cost capped at the next 3 months' term cost
   dearerMargin: 0.25,      // settlePolicy "dearer": an old loan is paid off for a mortgage's room only when its APR is more than this many points above the mortgage's
@@ -500,7 +504,8 @@ function re2Import(old) {
   if (Array.isArray(o.plans) && o.termsV == null) { const { terms } = reTermsFromPlans(o.plans); for (const [k, v] of Object.entries(terms)) if (out[k] == null) out[k] = v; }
   out.termsV = 1;
   // the old tool's defaults where the new tool's differ
-  if (out.refiStyle == null) out.refiStyle = "consolidate";   // the old tool bought old loans out into new ones
+  if (out.refiStyle == null) out.refiStyle = "consolidate";
+  if (out.coverAny == null) out.coverAny = false;   // the old tool tried only the loan that closes a gap   // the old tool bought old loans out into new ones
   if (out.lmRate == null) out.lmRate = RE2_OLD.lmRate;
   if (out.plRate == null) out.plRate = RE2_OLD.plRate;
   if (out.cashAvailable == null || out.cashAvailable === "") out.cashAvailable = RE2_OLD.cashAvailable;
@@ -1567,7 +1572,17 @@ function reCarryOut(p, prj, plan) {
   const r = rePlanSimulate(p, prj, plan);
   if (r.feasible) return r;
   const gaps = reGaps(r.months, r.facilities, r.sales, r.landSale);
-  if (!gaps.length || gaps.some((g) => !g.closedBy.length)) return r;
+  if (!gaps.length) return r;
+  // coverAny (default; re2Import sets it off): a gap that no loan closes — the plan's later loan is too small to bring the cash
+  // back above zero, so only your savings do, later — still gets the plan's later loans to try: each movable loan step planned
+  // after the gap starts is tried in the gap's first month. A move that makes the plan work covers it as usual; otherwise the
+  // move that shrinks the shortfall the most is kept (coveredPart) when no bridge money can save the plan.
+  if (gaps.some((g) => !g.closedBy.length)) {
+    if (p.coverAny === false) return r;
+    const later = (r.facilities || []).filter((f) => f.amount > 0 && f.startedAt != null && reMovable(f.key)).map((f) => f.key);
+    gaps.forEach((g) => { if (!g.closedBy.length) { g.closedBy = later.filter((k) => reFacOf(r, k).startedAt > g.from); g.noClose = true; } });
+    if (gaps.some((g) => !g.closedBy.length)) return r;
+  }
   const J = !!(p.joint && p.joint.on);
   const saleOf = (k) => (r.sales || []).find((s) => `sale:${s.id}` === k) || null;
   // whose personal loans (named only with تضامن): "the personal loans in your spouse's name …"
@@ -1602,7 +1617,7 @@ function reCarryOut(p, prj, plan) {
         r2.events.splice(i < 0 ? r2.events.length : i, 0, { t: g.from, kind: "cover", text: `Your cash would run short now — by up to ${fS(g.peak)} before the planned loan lands in month ${f0.startedAt} — so the ${what} taken now instead. The bank lends ${amt}${refiTxt}: the ${fS(g.peak)} deficit is covered by ${fs.length > 1 ? "these loans" : "a loan"}.` });
         return r2;
       }
-      ks.forEach((x, j) => tried.push({ key: x, gap: g, f: fs[j] }));
+      ks.forEach((x, j) => tried.push({ key: x, gap: g, f: fs[j], r2, ks }));
     }
   }
   // still short: a personal-loan step that may be two loans is taken in two parts — one loan in the month the cash runs short
@@ -1626,7 +1641,7 @@ function reCarryOut(p, prj, plan) {
   }
   const rb = split && split.r.feasible ? null : rePlanSimulate(p, prj, { ...plan, _bridge: true });
   if (split && (split.r.feasible || !rb.bridged || split.r.bridgePeak < rb.bridgePeak - 1)) return reSplitNote(split, plan, J);
-  if (!rb.bridged) return r;
+  if (!rb.bridged) return reCoverPart(r, tried, plan, p, J, whose);
   rb.plan = plan;
   const label = (k) => k === "sale" || (saleOf(k) && saleOf(k).isHome) ? "sale of the home you live in" : saleOf(k) ? `sale of ${saleOf(k).name}` : k === "landSale" ? "sale of the land" : k === "pl2" || k === "spl2" ? (plan._split && k === "pl2" ? `second part of the personal loans${whose([k])}` : `personal loans${whose([k])} at project end`) : k === "pl" || k === "spl" ? `personal loans${whose([k])}` : (rb[k] && rb[k].label ? rb[k].label.toLowerCase() : k);
   rb.bridges.forEach((b) => {
@@ -1655,6 +1670,28 @@ function reCarryOut(p, prj, plan) {
   });
   rb.events.sort((a, b) => a.t - b.t);
   return rb;
+}
+
+// still short, and no bridge money saves the plan: keep the earlier loan that shrinks the shortfall the most (coverAny only)
+function reCoverPart(r, tried, plan, p, J, whose) {
+  if (p.coverAny === false) return r;
+  let best = null;
+  for (const x of tried) if (x.r2 && x.ks && x.ks[0] === x.key && x.r2.minCash > r.minCash + 1 && (!best || x.r2.minCash > best.r2.minCash)) best = x;
+  if (!best) return r;
+  const { r2, ks, gap: g } = best, k = ks[0], fs = ks.map((y) => reFacOf(r2, y)), f = fs[0], f0 = reFacOf(r, k);
+  const amount = fs.reduce((a, y) => a + y.amount, 0), refis = fs.filter((y) => y.refi), net = fs.reduce((a, y) => a + (y.refi ? y.refi.net : y.amount), 0);
+  if (!(amount > 0)) return r;
+  r2.plan = plan;
+  ks.forEach((y) => [reFacOf(r2, y), r2.facilities.find((z) => z.key === y)].forEach((z) => { if (z && z.amount > 0) z.takenEarly = reFacOf(r, y).startedAt; }));
+  const what = reIsEq(k) ? `${f.labelLc || f.label.toLowerCase()} is` : `personal loans${whose(ks)}${RE_PL_STEP[k] === "pl2" ? " planned for the project end" : ""} are`;
+  const reach = refis.length ? `, of which ${fS(net)} reaches you after ${refis.flatMap((y) => y.refi.names).join(" + ")} ${refis.some((y) => y.topups) ? "is refinanced" : "is bought out"}` : "";
+  r2.coveredPart = { key: k, ...(ks.length > 1 ? { keys: ks } : {}), label: f.label, at: g.from, plannedAt: f0.startedAt, amount, net, before: -r.minCash, after: -r2.minCash };
+  const note = `Your cash would run short in month ${g.from} (up to ${fS(-r.minCash)}), so the ${what} taken in month ${g.from} instead of month ${f0.startedAt}: the bank lends ${fS(amount)} then${reach}. That is not enough on its own — your cash still runs short, by up to ${fS(-r2.minCash)} instead of ${fS(-r.minCash)}.`;
+  r2.notes = [note].concat(r2.notes || []);
+  let i = r2.events.findIndex((e) => e.t === g.from && (reIsEq(k) ? e.kind === "eq" : e.kind === "pl" || e.kind === "spl"));
+  if (i < 0) i = r2.events.findIndex((e) => e.t >= g.from);
+  r2.events.splice(i < 0 ? r2.events.length : i, 0, { t: g.from, kind: "cover", text: `Your cash would run short now, so the ${what} taken now instead of in month ${f0.startedAt}: the bank lends ${fS(amount)}${reach}. Not enough on its own — your cash still runs short, by up to ${fS(-r2.minCash)} instead of ${fS(-r.minCash)}.` });
+  return r2;
 }
 
 // a personal-loan step taken in two parts (see reCarryOut): the parts, the note and the "covered by a loan" rows. The second

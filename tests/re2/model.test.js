@@ -164,7 +164,7 @@ test('samaBands: SAMA\'s bands cap a single borrower too (55% up to 15,000 — 6
   const over = (x) => E.computeRE({ ...base, income: 12000, existingLoans: [{ id: 1, name: 'L', balance: 300000, installment: 7000, monthsLeft: 60, rate: 5 }], ...x }, { noNeed: true }).results[0].dbrOk;
   assert.equal(over({ samaBands: true }), false); assert.equal(over({ samaBands: false }), true);
   // the band follows the income of the month (income growth)
-  const g = E.computeRE({ ...base, income: 14000, incomeGrowth: 10, samaBands: true, plans: [{ ...base.plans[0], mortgages: { p1: { when: 'month', month: 13 } } }] }, { noNeed: true }).results[0];
+  const g = E.computeRE({ ...base, income: 14000, incomeGrowth: 10, samaBands: true, coverAny: false, plans: [{ ...base.plans[0], mortgages: { p1: { when: 'month', month: 13 } } }] }, { noNeed: true }).results[0];
   assert.ok(near(g.eq.capacity.totalRoom, 14000 * 1.1 * 0.65), `month 13: ${g.eq.capacity.totalRoom}`);
   // off = the old single-borrower limit everywhere
   for (const { label, inp } of scenarios(E, 12)) assert.equal(key(E.computeRE({ ...E.re2Import(inp), samaBands: false }, { noNeed: true })), key(E.computeRE(E.re2Import(inp), { noNeed: true })), label);
