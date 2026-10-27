@@ -33,3 +33,26 @@ test('loan details: schedules match the run, profit matches, every loan event na
   }
   assert.ok(loans > 20, `checked ${loans} loans`);
 });
+
+test('loan cards: every loan step carries a short card (title, cash, instalments before → after, rate, amount) matching the loan', () => {
+  let n = 0;
+  for (const { inp } of scenarios2(E, 30)) {
+    const m = E.computeRE(inp, { noNeed: true });
+    for (const r of m.results) {
+      if (!r) continue;
+      for (const e of r.events.filter((x) => x.fac && x.card)) {
+        const f = r.facilities.find((x) => x.key === e.fac), c = e.card;
+        assert.ok(f && Math.abs(c.amount - f.amount) < 1, `${e.fac}: amount`);
+        assert.ok(c.title && typeof c.title === 'string');
+        assert.ok(Number.isFinite(c.instBefore) && Number.isFinite(c.instAfter) && Number.isFinite(c.pctAfter) && c.apr > 0);
+        if (/^s?pl\d*$/.test(e.fac)) {
+          assert.ok(Math.abs(c.cash - (f.refi ? f.refi.net : f.amount)) < 1, `${e.fac}: cash`);
+          if (f.topups) assert.ok(/Refinance|refinance/.test(c.title) && f.topups.every((x) => c.name.includes(x.name)));
+          else if (!f.refi) assert.ok(/new personal loan/i.test(c.title) && c.instAfter >= c.instBefore - 1);
+        } else assert.ok(Math.abs(c.cash - (f.amount - (f.fees || 0))) < 1 && (e.fac === 'lm') === (c.cashTo === 'seller'), `${e.fac}: cash`);
+        n++;
+      }
+    }
+  }
+  assert.ok(n > 20, `cards checked: ${n}`);
+});

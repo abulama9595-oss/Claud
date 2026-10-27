@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=949d34ed0f"></script>
-  <script src="re2-engine.js?v=949d34ed0f"></script>
-  <script src="re2-ui.js?v=949d34ed0f"></script>
+  <script src="engine.js?v=bd533dc09f"></script>
+  <script src="re2-engine.js?v=bd533dc09f"></script>
+  <script src="re2-ui.js?v=bd533dc09f"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -125,6 +125,8 @@
     .ev .d { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: var(--sub); padding-top: 2px; }
     .ev .k { padding-top: 1px; }
     .ev .k .tag { font-size: 11.5px; letter-spacing: .02em; }
+    .loan-card { display: grid; grid-template-columns: max-content 1fr; gap: 1px 14px; margin-top: 4px; font-size: 12.5px; }
+    .loan-card .k2 { color: #6B6B6B; }
     .ev.hi { background: #FBF6EA; }
     .ev.warn { background: #F7E9E5; font-weight: 600; }
     .ev.amber { background: #FBEFD9; }
@@ -1802,7 +1804,7 @@
       ];
       const PlanPicker = ({ label }) => <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>{label || "for"} <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select></span>;
       const timelineOf = (r) => {
-        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, payoff: e.kind === "settle" && !!e.fac && (r.prepaid || []).some((x) => x.key === e.fac && x.t === e.t), text: calText(e.text) }));
+        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, payoff: e.kind === "settle" && !!e.fac && (r.prepaid || []).some((x) => x.key === e.fac && x.t === e.t), card: e.card || null, text: calText(e.text) }));
         // a plan that runs out says so once, in the month the cash runs out (the engine's row: how much more it needs, and the most
         // you would be short); the other plans show their lowest cash, or the most bridge money they need
         if (r.minCash >= 0 || r.bridged) rows.push({ t: r.minCashT, o: 1e6, kind: r.minCash < 0 ? "bridge" : "low", text: r.minCash < 0 ? `The most bridge money you need: ${fS(-r.minCash)}.` : `Lowest cash (no growth): ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
@@ -2370,11 +2372,29 @@
           </div>
         );
       };
+      // a loan step as a short card: what kind of loan (and which old loans it refinances), then the cash, the instalments
+      // before → after with their share of income, the rate as quoted and the amount; the full sentence is behind "Details ›"
+      const LoanCardRow = ({ c, onDetails }) => {
+        const pct = (v) => `${Math.round(v)}%`, inst = (a, b, pa, pb, who) => `${fSAR(a)} → ${fSAR(b)}/mo (${pct(pa)} → ${pct(pb)} of ${who || "income"})`;
+        const rows = [
+          [c.cashTo === "seller" ? "Paid to the seller" : "Cash to you", fSAR(c.cash)],
+          [c.instBeforeB != null ? "Your instalments" : "Instalments", inst(c.instBefore, c.instAfter, c.pctBefore, c.pctAfter, c.instBeforeB != null ? "your income" : null)],
+          ...(c.instBeforeB != null ? [["Your spouse's", inst(c.instBeforeB, c.instAfterB, c.pctBeforeB, c.pctAfterB, "their income")]] : []),
+          ["Rate", c.flat ? `${c.quoted}% hamish · ${c.apr.toFixed(2)}% APR` : `${c.apr.toFixed(2)}% APR`],
+          ["Total loan", fSAR(c.amount)],
+        ];
+        return (
+          <span style={{ display: "block" }}>
+            <b>{c.title}</b>{c.name ? <> · <span dir="auto">{calText(c.name)}</span></> : null} <button className="lnk no-print" onClick={onDetails} aria-label="Details of this loan">Details ›</button>
+            <span className="loan-card">{rows.map(([k, v]) => <React.Fragment key={k}><span className="k2">{k}</span><span className="mono">{v}</span></React.Fragment>)}</span>
+          </span>
+        );
+      };
       // what happens, in order — always open, between the loans and "keep or settle?"
       const StepByStep = ({ r, i }) => (
         <Box title={`What happens, in order · ${planName(i)}`} style={{ marginTop: 14 }}>
               <div className="ev" style={{ fontWeight: 600 }}><span className="d">{fCal(0)}</span><span className="k"><EvTag kind="today" /></span><span>Today: {fM(inp.cashAvailable)} cash; {hj ? <>your old loans take {fSAR(hj.existingInstA)}/mo ({household.existingDbr.toFixed(0)}% of your income) and your spouse's {fSAR(hj.existingInstB)}/mo ({hj.existingDbrB.toFixed(0)}% of theirs) · <AR /></> : <>your old loans take {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income)</>}.</span></div>
-              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span><span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}{x.fac ? <> <button className="lnk no-print" onClick={() => setLoanDlg(x.payoff ? { i, key: x.fac, view: "payoff" } : { i, key: x.fac })} aria-label={x.payoff ? "Where the cash for this payoff comes from" : "Details of this loan"}>Details ›</button></> : x.cash ? <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, view: "end" })} aria-label={`How the cash at ${W.doneShort} adds up`}>Details ›</button></> : null}</span></div>)}
+              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span>{x.card ? LoanCardRow({ c: x.card, onDetails: () => setLoanDlg({ i, key: x.fac }) }) : <span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}{x.fac ? <> <button className="lnk no-print" onClick={() => setLoanDlg(x.payoff ? { i, key: x.fac, view: "payoff" } : { i, key: x.fac })} aria-label={x.payoff ? "Where the cash for this payoff comes from" : "Details of this loan"}>Details ›</button></> : x.cash ? <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, view: "end" })} aria-label={`How the cash at ${W.doneShort} adds up`}>Details ›</button></> : null}</span>}</div>)}
               <div className="ev" style={{ borderBottom: "none", fontWeight: 600 }}><span className="d">{endDate}</span><span className="k"><EvTag kind="horizon" /></span><span>{works(r) ? "" : `Only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}: `}{works(r) ? "Wealth" : "wealth"} {fM(r.econEnd)} vs {fM(r.econBaseEnd)} if you {W.baseIf}: <span style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</span>.</span></div>
         </Box>
       );
@@ -2422,7 +2442,7 @@
                 <Row k={d.stillOwed > 0.5 ? `Repaid until ${endDate}` : "Repaid in all"} v={fSAR(d.paid + d.fees + (d.prepaid ? d.prepaid.fee : 0))} sub={d.stillOwed > 0.5 ? `${fSAR(d.stillOwed)} still owed then` : null} />
               </Sec>
               <Sec title="How it ends"><div style={{ fontSize: 13, lineHeight: 1.5 }}>{endTxt}</div></Sec>
-              {d.events.length > 0 && <Sec title="In the step-by-step">{d.events.map((e, k) => <div key={k} style={{ fontSize: 12.5, lineHeight: 1.5, color: K.sub, marginBottom: 6 }}><b>{fCal(e.t)}</b> · {boldNums(calText(e.text))}</div>)}</Sec>}
+              {d.events.length > 0 && <Sec title="The full description">{d.events.map((e, k) => <div key={k} style={{ fontSize: 12.5, lineHeight: 1.5, color: K.sub, marginBottom: 6 }}><b>{fCal(e.t)}</b> · {boldNums(calText(e.text))}</div>)}</Sec>}
               <Sec title="Year by year">
                 <div className="scroll-x"><table className="tbl" style={{ fontSize: 12 }}>
                   <thead><tr><th>Year</th><th>Owed at the start</th><th>Paid</th><th>of which profit</th><th>Paid off</th><th>Owed at the end</th></tr></thead>
