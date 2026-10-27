@@ -45,6 +45,7 @@ test('loan cards: every loan step carries a short card (title, cash, instalments
         assert.ok(f && Math.abs(c.amount - f.amount) < 1, `${e.fac}: amount`);
         assert.ok(c.title && typeof c.title === 'string');
         assert.ok(Number.isFinite(c.instBefore) && Number.isFinite(c.instAfter) && Number.isFinite(c.pctAfter) && c.apr > 0);
+        assert.ok(Math.abs(c.inst - f.pmt) < 1 && c.n === f.n && c.inst * c.n >= c.amount - 1, `${e.fac}: the loan's instalment and its total with profit`);
         if (/^s?pl\d*$/.test(e.fac)) {
           assert.ok(Math.abs(c.cash - (f.refi ? f.refi.net : f.amount)) < 1, `${e.fac}: cash`);
           if (f.topups) assert.ok(/Refinance|refinance/.test(c.title) && f.topups.every((x) => c.name.includes(x.name)));

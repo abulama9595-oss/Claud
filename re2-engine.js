@@ -881,7 +881,7 @@ function rePlanSimulate(p, prj, plan) {
   // a loan step as a short card for the step-by-step (the long sentence stays in the event's text, for the Details panel):
   // title (what kind of loan), the loan(s) it refinances or buys out (or its step), the cash it brings, instalments before →
   // after with their share of income, the rate as quoted and the amount. (who: "A" yours, "B" your spouse's; null: the household)
-  const loanCard = (f, title, name, cashIn, cashTo, before, after, incW, extra) => ({ title, name: name || null, cash: cashIn, cashTo, instBefore: before, instAfter: after, pctBefore: before / incW * 100, pctAfter: after / incW * 100, quoted: f.quoted, apr: f.rate, flat: p.rateQuote === "flat", amount: f.amount, ...(extra || {}) });
+  const loanCard = (f, title, name, cashIn, cashTo, before, after, incW, extra) => ({ title, name: name || null, cash: cashIn, cashTo, instBefore: before, instAfter: after, pctBefore: before / incW * 100, pctAfter: after / incW * 100, quoted: f.quoted, apr: f.rate, flat: p.rateQuote === "flat", amount: f.amount, inst: f.pmt, n: f.n, ...(extra || {}) });
   // bank terms are shared by every strategy (one set per loan type)
   // (land only: land finance — its own LTV (landOnlyLtv), tenure (landTenure) and a rate above the mortgage rate (landRateAdd))
   const lm = prj.isLand ? mk("lm", "Mortgage on the land", p.lmRate + (+p.landRateAdd || 0), p.landTenure, p.lmFeesPct) : mk("lm", prj.build ? "Mortgage on the new land" : "Mortgage on the purchase", p.lmRate, p.lmTenure, p.lmFeesPct);

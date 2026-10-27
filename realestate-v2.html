@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=485c1df397"></script>
-  <script src="re2-engine.js?v=485c1df397"></script>
-  <script src="re2-ui.js?v=485c1df397"></script>
+  <script src="engine.js?v=69b1726bc5"></script>
+  <script src="re2-engine.js?v=69b1726bc5"></script>
+  <script src="re2-ui.js?v=69b1726bc5"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1952,7 +1952,12 @@
         return <>Recommended: <b style={{ color: "#D9B36A" }}>{planName(recIdx)}</b>. {winTxt[0].toUpperCase() + winTxt.slice(1)}{gaps.length ? `, but it ${list(gaps)}` : ""}.</>;
       };
       const LensCards = ({ print }) => {
-        const L = lenses; if (!L || !L.recommended) return null;
+        const L = lenses; if (!L) return null;
+        // no plan works: no recommendation to explain, but the plan picker and the table of every plan stay (each plan's "needs X")
+        if (!L.recommended) return print || !liveIdx.length ? null : (<>
+          <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 13, margin: "0 0 4px" }}>Showing <b style={{ color: colT(focusIdx) }}>{planRef(focusIdx)}</b> below · pick a plan to see where it runs short: <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}</option>)}</select> <span style={{ fontSize: 12.5, color: K.sub }}>or click a row of the table</span></div>
+          {LensTable({ print })}
+        </>);
         const keys = LENS_KEYS.filter((k) => L[k]);
         return (<>
           <div className="recstrip">{lensVerdict()}<span style={{ display: "block", fontSize: 12, opacity: .85 }}>{L.recommended.why}</span></div>
@@ -2381,10 +2386,12 @@
         const pct = (v) => `${Math.round(v)}%`, inst = (a, b, pa, pb, who) => `${fSAR(a)} → ${fSAR(b)}/mo (${pct(pa)} → ${pct(pb)} of ${who || "income"})`;
         const rows = [
           [c.cashTo === "seller" ? "Paid to the seller" : "Cash to you", fSAR(c.cash)],
-          [c.instBeforeB != null ? "Your instalments" : "Instalments", inst(c.instBefore, c.instAfter, c.pctBefore, c.pctAfter, c.instBeforeB != null ? "your income" : null)],
-          ...(c.instBeforeB != null ? [["Your spouse's", inst(c.instBeforeB, c.instAfterB, c.pctBeforeB, c.pctAfterB, "their income")]] : []),
+          ...(c.inst > 0 ? [["This loan's instalment", `${fSAR(c.inst)}/mo`]] : []),
+          ["All your instalments", inst(c.instBefore, c.instAfter, c.pctBefore, c.pctAfter, c.instBeforeB != null ? "your income" : null)],
+          ...(c.instBeforeB != null ? [["Your spouse's instalments", inst(c.instBeforeB, c.instAfterB, c.pctBeforeB, c.pctAfterB, "their income")]] : []),
           ["Rate", c.flat ? `${c.quoted}% hamish · ${c.apr.toFixed(2)}% APR` : `${c.apr.toFixed(2)}% APR`],
-          ["Total loan", fSAR(c.amount)],
+          // everything repaid if the loan runs its term: the loan and its profit (the Details panel has the profit actually paid)
+          ["Total loan", c.inst > 0 && c.n > 0 ? `${fSAR(c.inst * c.n)} (${fM(c.amount)} + ${fM(Math.max(0, c.inst * c.n - c.amount))} profit)` : fSAR(c.amount)],
         ];
         return (
           <span style={{ display: "block" }}>
@@ -2517,12 +2524,14 @@
       };
       // no plan works with your dates: find the earliest later dates at which each plan works (reFindDate), then the tool's best
       // mix at the earliest of them (the same sliced search as the planned start); "Use these dates" moves the start, with undo
-      useEffect(() => { setDates(null); }, [optInp]);
+      // the results stay while only the start dates change (so the options can be compared); any other change clears them
+      const datesKey = (q, n) => JSON.stringify({ ...q, landMonth: 0, buildStart: 0, plans: (q.plans || []).slice(0, n) });
+      useEffect(() => { if (dates && dates.key && datesKey(inp, dates.n) !== dates.key) setDates(null); }, [inp]);
       const shiftOf = (f) => { const q = reAtStart(inp, f.delay, f.landWithBuild); return prj.construct ? { buildStart: q.buildStart, landMonth: q.landMonth } : { landMonth: q.landMonth }; };
       const datesTxt = (f) => prj.construct ? `land ${fCal(f.landMonth)} · construction ${fCal(f.buildStart)} → project end ${fCal(f.occupy)}` : `${isLand ? "land bought" : "purchase"} ${fCal(f.landMonth)}${isLand ? "" : ` → project end ${fCal(f.occupy)}`}`;
       const findDates = () => {
-        const src = inp, idxs = liveIdx.filter((i) => !isTool(i) && src.plans[i]);
-        setDates({ running: true, src });
+        const src = inp, idxs = liveIdx.filter((i) => !isTool(i) && src.plans[i]), meta = { src, key: datesKey(src, src.plans.length), n: src.plans.length };
+        setDates({ running: true, ...meta });
         const rows = []; let k = 0;
         const next = () => {
           if (k < idxs.length) { const i = idxs[k++]; const x = reFindDate(src, src.plans[i]); rows.push({ i, ...x }); setTimeout(next, 0); return; }
@@ -2530,28 +2539,34 @@
           if (!ok.length) {
             const near = rows.slice().sort((a, b) => (b.minCash || -Infinity) - (a.minCash || -Infinity))[0];
             const need = near ? reFindDate(src, src.plans[near.i], { need: true }).need : null;
-            setDates({ rows, tool: null, near: near ? near.i : null, need, src }); return;
+            setDates({ rows, tool: null, near: near ? near.i : null, need, ...meta }); return;
           }
           const f = ok[0].found, shifted = { ...src, ...shiftOf(f) };
-          setDates({ rows, tool: null, toolRunning: true, src });
-          runSlices(shifted, reStartMonth(shifted), true, (r) => { const b = r.start && r.start.best; setDates({ rows, tool: b && b.feasible ? { best: b, at: f } : null, src }); }, () => false);
+          setDates({ rows, tool: null, toolRunning: true, ...meta });
+          runSlices(shifted, reStartMonth(shifted), true, (r) => { const b = r.start && r.start.best; setDates({ rows, tool: b && b.feasible ? { best: b, at: f } : null, ...meta }); }, () => false);
         };
         setTimeout(next, 0);
       };
       const useDates = (f, add) => withUndo(add ? "Moved the start and added the tool's plan" : "Moved the start to the dates that work", () => setInp((s0) => ({ ...s0, ...shiftOf(f), plans: add && s0.plans.length < MAX_PLANS ? [...s0.plans, { ...(add.cleanPlan || add.plan), enabled: true, name: add.name }] : s0.plans })));
       const FindDates = () => {
-        if (bestF) return null;
-        const ok = dates && dates.rows ? dates.rows.filter((x) => x.found).sort((a, b) => a.found.occupy - b.found.occupy) : [];
+        const has = !!(dates && dates.rows);
+        if (bestF && !has) return null;
+        const ok = has ? dates.rows.filter((x) => x.found).sort((a, b) => a.found.occupy - b.found.occupy) : [];
+        const sh = (f) => shiftOf(f), inUse = (f) => Object.entries(sh(f)).every(([k, v]) => inp[k] === v);
+        const orig = has ? { landMonth: dates.src.landMonth, ...(prj.construct ? { buildStart: dates.src.buildStart } : {}) } : null;
+        const moved = has && Object.entries(orig).some(([k, v]) => inp[k] !== v);
+        const UseBtn = ({ f, add, label }) => inUse(f) && !add ? <span className="tag" style={{ background: SOFT, color: K.text }}>in use</span> : <button className="btn small" onClick={() => useDates(f, add)}>{label}</button>;
         return (
-          <Box title="No plan works with these dates" style={{ marginTop: 14 }}>
+          <Box title={moved ? "Dates that work" : "No plan works with these dates"} style={{ marginTop: 14 }}>
+            {moved && <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 12.5, marginBottom: 8 }}>You are now using new dates. <button className="lnk" onClick={() => withUndo("Back to the dates you set", () => setInp((s0) => ({ ...s0, ...orig })))}>Back to the dates you set ({prj.construct ? `construction ${fCal(orig.buildStart)}` : fCal(orig.landMonth)})</button></div>}
             {!dates ? <div style={{ fontSize: 13, lineHeight: 1.55 }}>Your cash runs short with every plan at the dates you set. Starting later lets your savings build up. <button className="btn small" onClick={findDates}>Find dates that work</button></div>
               : dates.running ? <div className="note">Looking for the earliest dates that work…</div>
               : !ok.length ? <div style={{ fontSize: 13, lineHeight: 1.55, color: K.neg }}>No plan works, even starting up to {Math.round((dates.rows[0] ? dates.rows[0].maxWait : 48) / 12)} years later.{dates.near != null && dates.need != null ? ` The closest, ${planRef(dates.near)}, would still need ${fS(dates.need)} more cash in total.` : ""}</div>
               : <>
                 <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 6 }}>The earliest dates at which each plan works every month (your savings build up while you wait):</div>
                 {dates.toolRunning && <div className="note">Looking for the tool's best plan at the earliest of these dates…</div>}
-                {dates.tool && <div className="ev" style={{ gridTemplateColumns: "1fr auto" }}><span><b>The tool's best plan at these dates ★</b> · {dates.tool.best.name}<span style={{ display: "block", fontSize: 12.5, color: K.sub }}>{datesTxt(dates.tool.at)} · cash at project end {fM(dates.tool.best.onHand)} · {fM(dates.tool.best.econAdv)} vs {baseLbl}</span></span><button className="btn small" onClick={() => useDates(dates.tool.at, dates.tool.best)}>Use these dates and add this plan</button></div>}
-                {ok.map((x) => <div key={x.i} className="ev" style={{ gridTemplateColumns: "1fr auto" }}><span><b>{planName(x.i)}</b> works {x.found.wait} month{x.found.wait === 1 ? "" : "s"} later<span style={{ display: "block", fontSize: 12.5, color: K.sub }}>{datesTxt(x.found)} · cash at project end {fM(x.found.onHand)} · {fM(x.found.econAdv)} vs {baseLbl}</span></span><button className="btn small" onClick={() => useDates(x.found)}>Use these dates</button></div>)}
+                {dates.tool && <div className="ev" style={{ gridTemplateColumns: "1fr auto" }}><span><b>The tool's best plan at these dates ★</b> · {dates.tool.best.name}<span style={{ display: "block", fontSize: 12.5, color: K.sub }}>{datesTxt(dates.tool.at)} · cash at project end {fM(dates.tool.best.onHand)} · {fM(dates.tool.best.econAdv)} vs {baseLbl}</span></span><UseBtn f={dates.tool.at} add={dates.tool.best} label="Use these dates and add this plan" /></div>}
+                {ok.map((x) => <div key={x.i} className="ev" style={{ gridTemplateColumns: "1fr auto" }}><span><b>{planName(x.i)}</b> works {x.found.wait} month{x.found.wait === 1 ? "" : "s"} later<span style={{ display: "block", fontSize: 12.5, color: K.sub }}>{datesTxt(x.found)} · cash at project end {fM(x.found.onHand)} · {fM(x.found.econAdv)} vs {baseLbl}</span></span><UseBtn f={x.found} label="Use these dates" /></div>)}
                 {dates.rows.filter((x) => !x.found).map((x) => <div key={x.i} className="note" style={{ marginTop: 4 }}>{planName(x.i)}: no date within {Math.round(x.maxWait / 12)} years works.</div>)}
               </>}
           </Box>
@@ -2566,8 +2581,8 @@
             {FindDates()}
             <div style={{ marginTop: 14 }}>{LensCards({ print: false })}</div>
             {SaveAndBuy()}
-            {LiabilityCard({ r, i, print: false, part: "loans" })}
             {StepByStep({ r, i })}
+            {LiabilityCard({ r, i, print: false, part: "loans" })}
             {LiabilityCard({ r, i, print: false, part: "settle" })}
             {letAll && InvestmentView({ r, i })}
             {WatchOut({ items: watchOut(r) })}
