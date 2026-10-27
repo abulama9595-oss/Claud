@@ -204,13 +204,13 @@ function rePrepayDetail(r, key, inp, prj) {
 
 /* ---------- plain-English description of a strategy, generated from its settings ---------- */
 // (a ready home or building, and land only: "when the land is bought" / "at build start" both mean the purchase)
-const whenTxt = (w, mo, prj) => w === "start" ? "at the start" : w === "land" ? (prj.build ? `when the land is bought (${fCal(prj.landMonth)})` : `at the purchase (${fCal(prj.landMonth)})`) : w === "build" ? (prj.construct ? `when construction starts (${fCal(prj.start)})` : `at the purchase (${fCal(prj.start)})`) : w === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(mo)}`;
+const whenTxt = (w, mo, prj) => w === "start" ? "at the start" : w === "preLand" ? `before the ${prj.build || prj.isLand ? "land" : prj.isBuilding ? "building" : "home"} is bought and its mortgage granted (${fCal(prj.landMonth)})` : w === "land" ? (prj.build ? `when the land is bought (${fCal(prj.landMonth)})` : `at the purchase (${fCal(prj.landMonth)})`) : w === "build" ? (prj.construct ? `when construction starts (${fCal(prj.start)})` : `at the purchase (${fCal(prj.start)})`) : w === "completion" ? `at completion (${fCal(prj.occupy)})` : `in ${fCal(mo)}`;
 const refiTxt = (o) => (o.refiMode === "cash" ? "buying out the old personal loans that put the most cash in your hands" : o.refiMode === "value" ? "buying out old personal loans only where that leaves you richer" : o.refiMode === "pick" ? "buying out only the old loans you chose" : "buying out old personal loans where that leaves you richer (or puts more cash in hand if needed)");
 function describePlan(o, inp, prj, build) {
   // each step with the month it happens; listed in that order (a payoff before the mortgage it makes room for, the loans
   // before what they pay for, the finished home before the loans that need it)
   const s = [], add = (t, k, text) => s.push({ t, k, text });
-  const tw = (w, m) => w === "start" ? 0 : w === "land" ? prj.landMonth : w === "build" ? prj.start : w === "completion" ? prj.occupy : Math.max(0, Math.round(m || 0));
+  const tw = (w, m) => w === "start" ? 0 : w === "land" || w === "preLand" ? prj.landMonth : w === "build" ? prj.start : w === "completion" ? prj.occupy : Math.max(0, Math.round(m || 0));
   (inp.existingLoans || []).filter((l) => l.balance > 0 && l.settleAt != null && l.settleAt > 0).forEach((l) => add(l.settleAt, 0, `settle ${l.name} in ${fCal(l.settleAt)} from your cash`));
   const eqs = rePlanMorts(o);   // mortgages on properties you own (v2: plan.mortgages)
   const mortT = [o.lmUse ? prj.landMonth : null, ...eqs.map((m) => tw(m.when, m.month)), o.coUse ? prj.occupy : null].filter((x) => x != null);
@@ -226,13 +226,15 @@ function describePlan(o, inp, prj, build) {
   });
   // تضامن: whose name the personal loans are in
   const plWho = !(inp.joint && inp.joint.on) ? "take personal loan(s)" : o.plBy === "spouse" ? "your spouse takes personal loan(s) in their name" : o.plBy === "both" ? "each of you takes personal loan(s) in your own name" : "take personal loan(s) in your name";
-  if (o.plWhen !== "none") add(tw(o.plWhen, o.plMonth), 2.2, `${plWho} ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows, ${refiTxt(o)}`);
+  if (o.plWhen !== "none") add(tw(o.plWhen, o.plMonth), o.plWhen === "preLand" ? 1.95 : 2.2, `${plWho} ${whenTxt(o.plWhen, o.plMonth, prj)} for the maximum the bank allows, ${refiTxt(o)}`);
+  (o.plMore || []).filter((x) => x && x.when && x.when !== "none").forEach((x) => add(tw(x.when, x.month), x.when === "preLand" ? 1.95 : x.when === "completion" ? 6.1 : 2.3, `${plWho} again ${whenTxt(x.when, x.month, prj)} for the maximum the bank allows (topping up the earlier ones once they are old enough)`));
   add(prj.landMonth, 3, build ? `buy the land (${fCal(prj.landMonth)})${o.lmUse ? " with that mortgage and your cash" : " in cash — no mortgage on it"}` : `buy the home (${fCal(prj.landMonth)})${o.lmUse ? " with that mortgage and your cash" : " in cash — no mortgage on it"}`);
   if (o.extraMo > 0) add(prj.landMonth, 3.1, `pay ${fSAR(o.extraMo)} a month extra on the land mortgage`);
   const isLand = !!prj.isLand, done = isLand ? "when the land is paid for" : prj.moveIn === false ? "at completion" : "at project end";   // (v2 kinds: land has no build and no move-in; a building let out entirely has no move-in)
   if (build && prj.bm > 0) add(prj.start, 4, `build (${fCal(prj.start + 1)} → ${fCal(prj.start + prj.bm)}), paid from your cash, your salary and those loans`);
   if (o.coUse && !isLand) add(prj.occupy, 5, `when the ${prj.isBuilding ? "building" : "home"} is finished (${fCal(prj.occupy)}), take a cash-out mortgage on it for the maximum the bank allows`);
   if (o.pl2Use) add(prj.occupy, 6, `${plWho} ${done} (${fCal(prj.occupy)}) for the maximum the bank allows, ${refiTxt(o)}`);
+  if (o.plAuto) add(0, 0.5, `whenever your cash would run short, ${plWho} for the maximum the bank allows — in the month the cash runs short, or the first month after it the bank has room`);
   if (o.prepayAfter === "asap") add(prj.occupy, 7, `pay each mortgage that costs more than your cash earns off early from your cash, as soon as the cash above your cushion and three months' outgoings covers it`);
   else if (o.prepayAfter != null && o.prepayAfter !== "") add(prj.occupy + Math.round(o.prepayAfter), 7, `pay the mortgages off early from your cash ${o.prepayAfter} months after ${isLand ? "the land is paid for" : prj.moveIn === false ? "completion" : "move-in"} (${fCal(prj.occupy + Math.round(o.prepayAfter))}) if the cash above your cushion covers it`);
   if (prj.saleAt != null) add(prj.saleAt, 8, `sell the land in ${fCal(prj.saleAt)} (its value then less ${inp.landSellCostPct}% selling costs; the land mortgage is repaid from it)`);
@@ -348,8 +350,9 @@ function rePayoffRows(f, extraMo, feeMonths) {
 function planTitle(o, build, r, joint, props) {
   const when = { start: "now", land: build ? "when the land is bought" : "at the purchase", build: build ? "at build start" : "at the purchase", completion: "at project end", month: "in a month you chose" };
   const cov = r && r.covered ? RE_PL_STEP[r.covered.key] || r.covered.key : null, short = r && r.covered && r.covered.split ? "in two parts, when your cash runs short" : "when your cash runs short";
-  const pl = o.plWhen && o.plWhen !== "none", pl2 = !!o.pl2Use, parts = [];
-  const plW = cov === "pl" ? short : when[o.plWhen], pl2W = cov === "pl2" ? short : "at project end";
+  const pl = o.plWhen && o.plWhen !== "none", pl2 = !!o.pl2Use, more = (o.plMore || []).filter((x) => x && x.when && x.when !== "none"), parts = [];
+  const plWord = { ...when, preLand: build ? "before the land is bought" : "before the purchase", land: build ? "after the land is bought" : "after the purchase" };
+  const plW = cov === "pl" ? short : plWord[o.plWhen], pl2W = cov === "pl2" ? short : "at project end";
   const J = joint != null ? !!joint : !!(r && (r.spl != null || (r.months && r.months[0] && r.months[0].incB != null)));
   const pls = !J ? "personal loans" : o.plBy === "spouse" ? "your spouse's personal loans" : o.plBy === "both" ? "personal loans for both of you" : "your personal loans";
   if (o.lmUse) parts.push(build ? "mortgage the land" : "mortgage the purchase");
@@ -357,7 +360,9 @@ function planTitle(o, build, r, joint, props) {
   const eqs = rePlanMorts(o), eqW = eqs.length ? eqs[0].when : "none";
   const nameOf = (id) => { const P = props && props.find((x) => String(x.id) === String(id)); if (P) return P.name; const f = r && (r.eqs || []).find((x) => x.propId === id); if (f && f.propName) return f.propName; return eqs.length === 1 ? "the property you own" : `property ${id}`; };
   eqs.forEach((m) => parts.push(`mortgage ${nameOf(m.id)} ${cov === `eq:${m.id}` ? short : when[m.when] || ""}`.trim()));
-  if (pl || pl2) parts.push(pl && pl2 ? `${pls} ${plW} and ${pl2W}` : pl ? `${pls} ${plW}` : `${pls} ${pl2W}`);
+  // every moment the plan takes personal loans, in the order they come (the ticked ones, then "whenever your cash runs short")
+  const ws = [pl && plW, ...more.map((x) => plWord[x.when] || ""), pl2 && pl2W, o.plAuto && "whenever your cash runs short"].filter(Boolean);
+  if (ws.length) parts.push(`${pls} ${ws.length > 1 ? `${ws.slice(0, -1).join(", ")} and ${ws[ws.length - 1]}` : ws[0]}`);
   if (o.coUse) parts.push("a cash-out mortgage on the new home at project end");
   if (!parts.length) return "Pay from your cash — no new loans";
   const t = parts.join(", then ");
@@ -394,6 +399,41 @@ const RE_PL_TIMING = [
   ["month+movein", "In a month I choose, and again at project end", { plWhen: "month", pl2Use: true }],
   ["completion", "At project end, before any cash-out (older setting)", { plWhen: "completion", pl2Use: false }],
 ];
+// the plan editor's personal-loan ticks, for this kind of project: [key, label]. Any combination may be ticked; "auto" adds a
+// loan whenever your cash would run short. A ready home or building has no construction and no separate project end; "Now" is
+// left out when the purchase is this month. legacy (o): an old plan's setting no tick covers is shown as an extra ticked line
+function rePlTicks(inp, prj, o) {
+  const what = prj.build || prj.isLand ? "land" : prj.isBuilding ? "building" : inp.kind === "readyVilla" ? "villa" : "home";
+  const t = [];
+  if (prj.landMonth > 0) t.push(["start", `Now (${fCal(0)})`]);
+  t.push(["preLand", `Before the ${what} is bought (${fCal(prj.landMonth)}) — ahead of the mortgage, so it uses your room first`]);
+  t.push(["land", `After the ${what} is bought (${fCal(prj.landMonth)}) — with the room the mortgage leaves`]);
+  if (prj.construct && prj.start !== prj.landMonth) t.push(["build", `When construction starts (${fCal(prj.start)})`]);
+  if (prj.construct) t.push(["done", `At project end (${fCal(prj.occupy)})`]);
+  t.push(["month", "In a month I choose"]);
+  t.push(["auto", "Automatically, whenever my cash would run short"]);
+  if (o && o.plWhen === "completion") t.push(["completion", "At project end, before any cash-out (older setting)"]);
+  if (o && o.pl2Use && !prj.construct) t.push(["done", "At project end (older setting)"]);
+  if (o && o.plWhen === "build" && !t.some(([k]) => k === "build")) t.push(["build", "At the purchase (older setting)"]);
+  return t;
+}
+// which ticks a plan has, and the month of its "in a month I choose" step
+function rePlTicksOf(o) {
+  const sel = new Set(), steps = [{ when: o.plWhen, month: o.plMonth }, ...(o.plMore || [])].filter((x) => x && x.when && x.when !== "none");
+  steps.forEach((x) => sel.add(x.when));
+  if (o.pl2Use) sel.add("done");
+  if (o.plAuto) sel.add("auto");
+  const m = steps.find((x) => x.when === "month");
+  return { sel, month: m ? Math.max(0, Math.round(m.month || 0)) : null };
+}
+// the plan fields for a set of ticks: the earliest step is plWhen, the others plMore (in month order; before the purchase
+// mortgage comes ahead of after it), project end is pl2Use, "auto" is plAuto
+function rePlTicksApply(sel, month, prj) {
+  const rank = { start: 0, preLand: 1, land: 2, build: 3, month: 4, completion: 5 };
+  const at = (w) => w === "month" ? Math.max(0, Math.round(month || 0)) : reStepMonth(prj, w, 0);
+  const early = Object.keys(rank).filter((w) => sel.has(w)).sort((a, b) => at(a) - at(b) || rank[a] - rank[b]).map((w) => ({ when: w, month: w === "month" ? Math.max(0, Math.round(month || 0)) : 0 }));
+  return { plWhen: early.length ? early[0].when : "none", plMonth: early.length ? early[0].month : 0, plMore: early.slice(1), pl2Use: sel.has("done"), plAuto: sel.has("auto") };
+}
 const plTimingOf = (o) => { const w = o.plWhen || "none"; if (w === "completion") return "completion"; return w === "none" ? (o.pl2Use ? "movein" : "none") : w + (o.pl2Use ? "+movein" : ""); };
 
 // instalments running each month by loan, for the borrowing-limit chart (a voluntary extra payment is left out)

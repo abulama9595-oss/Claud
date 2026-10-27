@@ -32,7 +32,7 @@ const mixKey = (o, alts) => { const b = o.planned.best; return JSON.stringify([b
 test('fork parity: the tool\'s pick (optimizer) agrees too — on the old tool\'s three settle policies; the new search adds "only dearer loans" when an old loan is dearer than the mortgage, and then ranks no lower', { skip: !OLD && 'old engine deleted' }, () => {
   let withDearer = 0;
   for (const { label, inp } of scenarios(NEW, 12)) {
-    const a = OLD.optimizeRE(inp, { plannedOnly: true }), q = toNew(inp), b = NEW.optimizeRE(q, { plannedOnly: true, policies: ['asNeeded', 'forMax', 'none'], prepay: false });
+    const a = OLD.optimizeRE(inp, { plannedOnly: true }), q = toNew(inp), b = NEW.optimizeRE(q, { plannedOnly: true, policies: ['asNeeded', 'forMax', 'none'], prepay: false, auto: false });
     assert.equal(b.combos, a.combos, `${label}: combos`);
     const alts = (inp.acquire || 'build') !== 'buy';
     assert.equal(mixKey(b, alts), mixKey(a, alts), label);
@@ -41,7 +41,7 @@ test('fork parity: the tool\'s pick (optimizer) agrees too — on the old tool\'
     const rk = (x) => [NEW.reStanding(x), NEW.reStanding(x) > 0 ? (x.recoveryOk ? 1 : 0) + (x.moveInOk ? 1 : 0) : 0, x.econAdv];
     const noLower = (hi, lo) => hi[0] > lo[0] || (hi[0] === lo[0] && (hi[1] > lo[1] || (hi[1] === lo[1] && hi[2] >= lo[2] - 1e-6)));
     // the default search adds early-payoff reruns of its leading mortgage mixes (prepay), so it never ranks below the search without them
-    const c = NEW.optimizeRE(q, { plannedOnly: true, prepay: false }), d = NEW.optimizeRE(q, { plannedOnly: true });
+    const c = NEW.optimizeRE(q, { plannedOnly: true, prepay: false, auto: false }), d = NEW.optimizeRE(q, { plannedOnly: true });
     assert.ok(noLower(rk(d.planned.best), rk(c.planned.best)), `${label}: early payoff ranks no lower`);
     assert.equal(c.combos, c.dearer.length ? a.combos * 4 / 3 : a.combos, `${label}: default combos`);
     if (!c.dearer.length) { assert.equal(mixKey(c, alts), mixKey(a, alts), `${label}: no dearer loan, the same search`); continue; }
