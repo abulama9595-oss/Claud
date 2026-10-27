@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=dac7feee4f"></script>
-  <script src="re2-engine.js?v=dac7feee4f"></script>
-  <script src="re2-ui.js?v=dac7feee4f"></script>
+  <script src="engine.js?v=23a6115377"></script>
+  <script src="re2-engine.js?v=23a6115377"></script>
+  <script src="re2-ui.js?v=23a6115377"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -350,6 +350,8 @@
     // your inputs are still changing). The most you are short is a different, larger figure: the loans you would take later
     // can cover part of it once the extra cash keeps you going until then
     const needOf = (r) => r && !works(r) && r.needMore != null ? r.needMore : null;
+    // cash at the project end; a plan that runs out shows the one figure that matters: the extra cash it needs to finish
+    const cashEnd = (r) => needOf(r) != null ? `needs ${fS(needOf(r))}` : fCash(r.onHandAtMoveIn);
     // the loans (and the sale of the home you lived in) that land in the month you move in, and the cash they bring you after
     // the old loans the bank clears with them and the bank's fees
     const moveInMoney = (r, occ) => {
@@ -835,13 +837,13 @@
               <thead><tr><th style={{ background: "transparent", color: K.sub, padding: "4px 4px 4px 0" }}>Plan</th><th style={{ background: "transparent", color: K.sub, padding: 4 }}>Cash at {W.doneShort}</th><th style={{ background: "transparent", color: K.sub, padding: "4px 0 4px 4px" }}>vs {baseLbl}</th></tr></thead>
               <tbody>{liveIdx.map((i) => { const r = m.results[i]; return (
                 <tr key={i} style={{ cursor: "pointer", background: i === focusIdx ? SOFT : "transparent" }} onClick={() => { setFocus(i); }}>
-                  <td className="l" style={{ padding: "6px 4px 6px 0", color: colT(i), fontWeight: 700 }}>{planName(i)}{r === lead ? " ★" : ""}{!works(r) && <span style={{ color: K.neg, fontWeight: 400 }}> · runs out{needOf(r) != null ? ` · needs ${fS(needOf(r))}` : ""}</span>}{r.bridged && !r.feasible && <span style={{ color: "#7A4F12", fontWeight: 400 }}> · bridge</span>}{isTool(i) && optStale && <span style={{ color: K.sub, fontWeight: 400 }}> · updating…</span>}</td>
-                  <td style={{ padding: 4, color: r.moveInOk === false ? K.neg : K.text }}>{fCash(r.onHandAtMoveIn)}</td>
+                  <td className="l" style={{ padding: "6px 4px 6px 0", color: colT(i), fontWeight: 700 }}>{planName(i)}{r === lead ? " ★" : ""}{!works(r) && <span style={{ color: K.neg, fontWeight: 400 }}> · runs out</span>}{r.bridged && !r.feasible && <span style={{ color: "#7A4F12", fontWeight: 400 }}> · bridge</span>}{isTool(i) && optStale && <span style={{ color: K.sub, fontWeight: 400 }}> · updating…</span>}</td>
+                  <td style={{ padding: 4, color: r.moveInOk === false ? K.neg : K.text }}>{cashEnd(r)}</td>
                   <td style={{ padding: "4px 0 4px 4px", color: signCol(r.econAdv), fontWeight: 700 }}>{fM(r.econAdv)}</td>
                 </tr>); })}</tbody>
             </table>
           )}
-          <div style={{ fontSize: 12, color: K.sub, marginTop: 6, lineHeight: 1.45 }}><b>Cash at {W.doneShort}</b>: the cash left after paying for it, with no growth counted (short = how much below zero). <b>vs {W.baseline}</b>: how much richer (+) or poorer (−) you end in {endDate} than if you did not do it. ★ the recommended plan · click a row to see that plan in detail.</div>
+          <div style={{ fontSize: 12, color: K.sub, marginTop: 6, lineHeight: 1.45 }}><b>Cash at {W.doneShort}</b>: the cash left after paying for it, with no growth counted ("needs" = a plan that runs out: the extra cash it needs to complete the project). <b>vs {W.baseline}</b>: how much richer (+) or poorer (−) you end in {endDate} than if you did not do it. ★ the recommended plan · click a row to see that plan in detail.</div>
           {cur === "answer" && <div className="grid no-print" style={{ gap: 8, marginTop: 12 }}>
             <button className="btn gold" onClick={saveCurrent} disabled={clean}>{loadedName ? (dirty ? `Save changes to "${loadedName}"` : `Saved to "${loadedName}" ✓`) : "Save this scenario"}</button>
             <button className="btn" onClick={saveAsNew}>Save as a new scenario…</button>
@@ -1471,7 +1473,7 @@
                 <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{st.length ? st.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
                 {r && <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
                   <Status r={r} />
-                  <span>cash at {W.doneShort} <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fCash(r.onHandAtMoveIn)}</b></span>
+                  <span>cash at {W.doneShort} <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{cashEnd(r)}</b></span>
                   <span>vs {baseLbl} <b className="mono" style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b><Hint text={EXPL.econ} label={`vs ${baseLbl}`} /></span>
                   <span style={{ color: K.sub }}>most owed at once <b className="mono" style={{ color: K.text }}>{fS(r.peakDebt)}</b></span>
                 </div>}
@@ -1585,7 +1587,7 @@
             <div className="flex flex-wrap" style={{ gap: 6, margin: "8px 0" }}>{steps2.length ? steps2.map((s, k) => <span key={k} className="chip"><b>{s.label} {fM(s.amount)}</b><span style={{ color: K.sub }}>{fCal(s.t)}</span></span>) : <span className="chip">no new loans — paid from your cash</span>}</div>
             <div className="flex flex-wrap items-center" style={{ gap: "6px 14px", fontSize: 13 }}>
               <Status r={r} />
-              <span>cash at {W.doneShort} <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{fCash(r.onHandAtMoveIn)}</b></span>
+              <span>cash at {W.doneShort} <b className="mono" style={{ color: r.moveInOk === false ? K.neg : K.text }}>{cashEnd(r)}</b></span>
               <span>vs {baseLbl} <b className="mono" style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</b></span>
               <span style={{ color: K.sub }}>most owed at once <b className="mono" style={{ color: K.text }}>{fS(r.peakDebt)}</b></span>
             </div>
@@ -1768,14 +1770,14 @@
         ...(isLand ? [] : [[`Cash-out on the ${isBuilding ? "finished building" : "new home"}`, (r) => facTxt(r.co), null, EXPL.capacity]]),
         [jointOn ? `Your personal loans at ${W.doneShort}` : `Personal loans at ${W.doneShort}`, (r) => facTxt(r.pl2), null, EXPL.refi],
         ...(spouseRows ? [[`Your spouse's personal loans at ${W.doneShort}`, (r) => r.spl2 ? facTxt(r.spl2) : "not taken", null, EXPL.plBy]] : []),
-        [`Cash at ${W.doneShort} (no growth)`, (r) => fCash(r.onHandAtMoveIn), (r) => r.moveInOk === false ? K.neg : K.text, EXPL.cashMoveIn],
+        [`Cash at ${W.doneShort} (no growth)`, (r) => cashEnd(r), (r) => r.moveInOk === false ? K.neg : K.text, EXPL.cashMoveIn],
         ["…money in: your cash and the loans", (r) => fM(moveInParts(r).moneyIn), null, EXPL.loansLeft],
         ["…saved from your salary", (r) => fM(r.salaryToMoveIn), null, EXPL.salaryLeft],
         ["…paid for the project, fees and payoffs", (r) => fM(-moveInParts(r).moneyOut), null, "Land, taxes, construction, bank fees, old loans paid off and any bridge profit, up to the month you move in."],
         [`Bank balance at ${W.doneShort} (with the return on cash)`, (r) => fCash(r.cashAtCompletion), null, EXPL.bankMoveIn],
         [`Cash ${inp.recoveryMonths} months after ${W.doneShort} (no growth)`, (r) => fCash(r.cashAfterWindow), (r) => r.cashAfterWindow >= inp.cashBuffer ? K.pos : K.neg, EXPL.cashAfter],
         ["Lowest cash (no growth)", (r) => `${fCash(r.minCash)} · ${fCal(r.minCashT)}`, (r) => r.minCash < 0 ? K.neg : K.text, EXPL.cashLow],
-        ["More cash needed to carry it out", (r) => works(r) ? "none" : needOf(r) != null ? `${fS(needOf(r))}${r.needMoreBridge != null ? ` (${fS(r.needMoreBridge)} with bridge money)` : ""}` : "working it out…", (r) => works(r) ? K.text : K.neg, EXPL.needMore],
+        ["More cash needed to complete the project", (r) => works(r) ? "none" : needOf(r) != null ? fS(needOf(r)) : "working it out…", (r) => works(r) ? K.text : K.neg, EXPL.needMore],
         ["Months below your cushion", (r) => `${r.belowBufferMonths || 0}`, (r) => r.belowBufferMonths ? "#7A4F12" : K.text, "Months in which your bank balance is below your safety cushion."],
         ["Months of costs the low point covers", (r) => r.reserveMonths == null ? "—" : r.reserveMonths.toFixed(1), null, "Lowest bank balance ÷ that month's living costs, rent, instalments and upkeep."],
         ["Instalments at their highest", (r) => r.peakDbrA != null ? `${fSAR(r.peakInst)}/mo · you ${pct1(r.peakDbrA)} · spouse ${pct1(r.peakDbrB)}` : `${fSAR(r.peakInst)}/mo · ${pct1(r.peakDbr)}`, (r) => (r.peakDbrA != null ? !r.dbrOk : r.peakDbr > inp.dbrCap + 0.5) ? K.neg : K.text, EXPL.peakInst],
@@ -1802,7 +1804,7 @@
         const mi = moveInMoney(r, occ);
         const inWord = isLand ? "The land is paid for" : letAll ? "The building is yours" : "You move in";
         rows.push(r.onHandAtMoveIn >= 0 ? { t: occ, o: 1e6 + 2, kind: "occ", cash: true, text: `${inWord} with ${fM(r.onHandAtMoveIn)} in cash (no growth counted).` }
-          : { t: occ, o: 1e6 + 2, kind: "shortIn", cash: true, text: mi.n ? `${mi.what.charAt(0).toUpperCase() + mi.what.slice(1)} bring${mi.n > 1 || /loans/.test(mi.what) ? "" : "s"} ${fS(mi.net)}${mi.cleared.length ? ` after clearing ${mi.cleared.join(" + ")}` : ""}; you would still be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` : `You would be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` });
+          : { t: occ, o: 1e6 + 2, kind: "shortIn", cash: true, text: mi.n ? `${mi.what.charAt(0).toUpperCase() + mi.what.slice(1)} bring${mi.n > 1 || /loans/.test(mi.what) ? "" : "s"} ${fS(mi.net)}${mi.cleared.length ? ` after clearing ${mi.cleared.join(" + ")}` : ""}; ${needOf(r) != null ? `the project still needs ${fS(needOf(r))} more cash in total` : `you would still be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}`}.` : needOf(r) != null ? `The project needs ${fS(needOf(r))} more cash in total.` : `You would be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` });
         // a plan that runs out: the finished home and the moving in only happen if the money it needs is found
         if (!works(r)) rows.forEach((x) => { if (x.kind === "milestone" && x.t === occ && /Construction complete/.test(x.text)) x.text = `Construction complete — only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}.`; });
         const ord = (a, b) => a.t - b.t || a.o - b.o;
@@ -2274,7 +2276,7 @@
         return (
           <div className="box" style={{ marginTop: 14, padding: "0 18px" }}>
             <div className="flex justify-between items-center flex-wrap" style={{ gap: 8, padding: "12px 0 4px" }}><b style={{ fontSize: 14 }}>Details</b><PlanPicker /></div>
-            <Dis id="wf" title={rc.total >= 0 ? `How the ${fM(rc.total)} at ${W.doneShort} adds up` : `Why you would be ${fS(-rc.total)} short at ${W.doneShort}`} sub="waterfall" open={!!openDis.wf} onToggle={toggleDis}>
+            <Dis id="wf" title={rc.total >= 0 ? `How the ${fM(rc.total)} at ${W.doneShort} adds up` : `Why the cash runs out by ${W.doneShort}`} sub="waterfall" open={!!openDis.wf} onToggle={toggleDis}>
               <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 4 }}>{planName(i)} · money in, what your salary saved, money out — in date order · no return on cash counted<Hint text={EXPL.cashMoveIn} label="Cash at project end" /></div>
               {EndWaterfall({ r })}
               {(rc.salary < 0 || r.moveInOk === false || rc.total < 0) && <div className="note">{rc.salary < 0 ? `Up to ${W.doneShort} your salary did not cover living costs and every instalment — the gap came out of your cash. ` : ""}{rc.total < 0 ? <span style={{ color: K.neg, fontWeight: 600 }}>Money out is more than money in: no loan in this plan covers the {fS(-rc.total)}. </span> : r.moveInOk === false ? <span style={{ color: K.neg }}>This is below your line of {fM(moveLine)}, so this plan ranks after plans that meet it.</span> : null}</div>}

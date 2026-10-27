@@ -360,7 +360,7 @@ test('cash is the money you can spend: no return on cash counted, never shown be
       assert.ok(mp.moneyIn >= 0 && mp.moneyOut <= 0 && near(mp.total, r.onHandAtMoveIn, 0.01), `${at}: move-in parts`);
       // a plan that runs out says so where it starts, with the most you would be short
       if (!r.feasible && !r.bridged) {
-        assert.ok(/^Your cash runs out in month/.test(r.flags[0]) && r.flags[0].includes(`you would be ${E.fS(r.shortfall)} short`) && r.events.some((e) => e.kind === 'short' && e.t === r.shortFrom), `${at}: runs out`);
+        assert.ok(/^Your cash runs out in month/.test(r.flags[0]) && r.flags[0].includes(r.needMore != null ? `you need ${E.fS(r.needMore)} more cash in total` : `you would be ${E.fS(r.shortfall)} short`) && r.events.some((e) => e.kind === 'short' && e.t === r.shortFrom), `${at}: runs out`);
         runsOut++;
       }
     });
@@ -389,7 +389,7 @@ test('a plan that runs out says how much more cash it needs: the least extra cas
       const tol = Math.max(1000, r.needMore * 0.0025);
       if (r.needMore > tol + 1) assert.ok(E.reStanding(run(r.needMore - tol - 1)) < 2, `${at}: the least`);
       // the runs-out flag and row say it
-      assert.ok(r.flags[0].includes(`you need ${E.fS(r.needMore)} more cash to start with`) && r.events.some((e) => e.kind === 'short' && e.text.includes(`you need ${E.fS(r.needMore)} more`)), `${at}: texts`);
+      assert.ok(r.flags[0].includes(`you need ${E.fS(r.needMore)} more cash in total`) && r.events.some((e) => e.kind === 'short' && e.text.includes(`you need ${E.fS(r.needMore)} more`)), `${at}: texts`);
       if (r.needMoreBridge != null) { const b = run(r.needMoreBridge); assert.ok(r.needMoreBridge < r.needMore && b.bridged && !b.feasible && r.needMoreBridgePeak === b.bridgePeak, `${at}: works with bridge money`); n.bridge++; }
       if (r.needMore < r.shortfall - 1000) n.belowPeak++;
       n.found++;

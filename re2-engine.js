@@ -1713,7 +1713,7 @@ function reCoverPart(r, tried, plan, p, J, whose) {
   r2.notes = [note].concat(r2.notes || []);
   let i = r2.events.findIndex((e) => e.t === g.from && (reIsEq(k) ? e.kind === "eq" : e.kind === "pl" || e.kind === "spl"));
   if (i < 0) i = r2.events.findIndex((e) => e.t >= g.from);
-  r2.events.splice(i < 0 ? r2.events.length : i, 0, { t: g.from, kind: "cover", text: `Your cash would run short now, so the ${what} taken now instead of in month ${f0.startedAt}: the bank lends ${fS(amount)}${reach}. Not enough on its own — your cash still runs short, by up to ${fS(-r2.minCash)} instead of ${fS(-r.minCash)}.` });
+  r2.events.splice(i < 0 ? r2.events.length : i, 0, { t: g.from, kind: "cover", text: `Your cash would run short now, so the ${what} taken now instead of in month ${f0.startedAt}: the bank lends ${fS(amount)}${reach}. Not enough on its own — your cash still runs short.` });
   return r2;
 }
 
@@ -1791,11 +1791,11 @@ function reAddNeed(p, prj, r) {
   const n = reNeedMore(p, prj, r.plan, r);
   Object.assign(r, n);
   if (n.needMore == null) return r;
-  const alt = n.needMoreBridge != null ? `; with ${fS(n.needMoreBridge)} more it works only with bridge money (up to ${fS(n.needMoreBridgePeak)} until a loan lands)` : "";
-  const worst = `At the worst, in month ${r.minCashT}, you would be ${fS(r.shortfall)} short`;
+  // one number only: the extra cash that carries the whole project through (the bridge-money figure and the worst month stay
+  // in the result for the tables, not in these sentences)
   const i = r.flags.findIndex((f) => /^Your cash runs out in month/.test(f));
-  if (i >= 0) r.flags[i] = `Your cash runs out in month ${r.shortFrom} and no loan in this plan covers it in time: to carry this plan out you need ${fS(n.needMore)} more cash to start with${alt}. ${worst}.`;
-  r.events.forEach((e) => { if (e.kind === "short") e.text = `Your cash runs out — no loan in this plan covers it in time. To carry this plan out you need ${fS(n.needMore)} more cash to start with${alt}. ${worst}.`; });
+  if (i >= 0) r.flags[i] = `Your cash runs out in month ${r.shortFrom} and no loan in this plan covers it in time. To complete the whole project you need ${fS(n.needMore)} more cash in total.`;
+  r.events.forEach((e) => { if (e.kind === "short") e.text = `Your cash runs out — no loan in this plan covers it in time. To complete the whole project you need ${fS(n.needMore)} more cash in total.`; });
   return r;
 }
 
