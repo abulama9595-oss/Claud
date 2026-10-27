@@ -38,3 +38,22 @@ test('top-ups: each old loan is refinanced by its own bank, nothing is combined 
   assert.equal(E.re2Import({ mode: 'home' }).refiStyle, 'consolidate');
   assert.equal(E.mergeRE({}).refiStyle, 'topup');
 });
+
+test("top-ups: a later step refinances this plan's own earlier personal loan once it is old enough (same instalment, term restarts)", () => {
+  // one personal loan now (taken as one loan) that fills a 33% limit, another step 24 months later, no old loans: the later
+  // step can only top up the earlier one
+  const q = { ...base, existingLoans: [], cashAvailable: 2600000, dbrCap: 33, plans: [{ ...plan, plSplit: false, plWhen: 'start', plMore: [{ when: 'month', month: 24 }] }] };
+  const r = E.computeRE(q).results[0];
+  const a = r.facilities.find((f) => f.key === 'pl'), b = r.facilities.find((f) => f.key === 'pl3');
+  assert.ok(a.amount > 0 && a.startedAt === 0, 'the first loan');
+  assert.ok(b.amount > 0 && b.startedAt === 24 && b.topups && b.topups.length === 1, 'the later step tops it up');
+  const x = b.topups[0];
+  assert.ok(/your personal loan taken in month 0/.test(x.name));
+  assert.ok(a.settledAt === 24 && a.refinancedAt === 24, 'the earlier loan is closed that month');
+  assert.ok(Math.abs(x.inst - a.pmt) < 1 && x.amount > x.payoff + 1 && Math.abs(x.net - (x.amount - x.payoff)) < 1, 'same instalment, the term restarts, the difference to your cash');
+  for (const m of r.months) assert.ok(Math.abs(m.debtPl + m.debtLm + m.debtEq + m.debtCo + m.debtRf - m.debtNew) < 1, `month ${m.t}`);
+  // younger than refiMinMonths: not topped up
+  const y = E.computeRE({ ...q, plans: [{ ...plan, plSplit: false, plWhen: 'start', plMore: [{ when: 'month', month: 6 }] }] }).results[0];
+  const b2 = y.facilities.find((f) => f.key === 'pl3');
+  assert.ok(!(b2.topups && b2.topups.some((t) => /your personal loan/.test(t.name))), 'not before it is 12 months old');
+});

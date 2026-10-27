@@ -1152,8 +1152,10 @@ function rePlanSimulate(p, prj, plan) {
     const oldCount = old.reduce((a, l) => a + loansOf(l), 0);
     const ageOf = (l) => l.kind === "existing" ? (l.ageMonths == null ? Infinity : l.ageMonths + t) : t - l.startedAt;
     const mayRefi = (l) => l.kind !== "existing" || l.canRefi !== false;
+    // an old loan by its name; one of this plan's own earlier personal loans by the month it was taken
+    const nmOld = (l) => l.kind === "existing" ? l.name : `your personal loan taken in month ${l.startedAt}`;
     const eligible = old.filter((l) => mayRefi(l) && ageOf(l) >= minAge).slice(0, 8);
-    const tooYoung = old.filter((l) => mayRefi(l) && ageOf(l) < minAge).map((l) => l.name);
+    const tooYoung = old.filter((l) => mayRefi(l) && ageOf(l) < minAge).map((l) => nmOld(l));
     const instNow = J ? instFor(who) : allInst();
     const maxNew = plan.plSplit === false || plan._oneLoan === f.key ? 1 : 2;   // the first part of a step taken in two parts is one loan
     const onePl = (inst) => Math.min(rePrincipalFor(inst, f.rate, f.n), p.plCap);
@@ -1205,7 +1207,9 @@ function rePlanSimulate(p, prj, plan) {
     // ceiling; the new loan clears the old one with its early-settlement fee and the rest lands in your cash. Loans on the same
     // rate and tenure add up to one exact annuity, so the step stays one facility (f.topups lists the parts).
     if (topupStyle) {
-      const own = eligible.filter((l) => l.kind === "existing"), capInstT = Math.min(perTarget, rePmt(p.plCap, f.rate, f.n));
+      // your old loans, and this plan's own earlier personal loans once they are old enough (a single loan: not one taken as
+      // two, nor a step that topped up two old loans) — each refinanced by its own bank, the term restarting
+      const own = eligible.filter((l) => l.kind === "existing" || loansOf(l) === 1), capInstT = Math.min(perTarget, rePmt(p.plCap, f.rate, f.n));
       for (let mask = 1; mask < (1 << own.length); mask++) {
         const T = own.filter((_, k) => mask & (1 << k)).sort((a, b) => b.rate - a.rate);
         if (picks && !(T.length === pickSet.length && T.every((l) => pickSet.includes(l)))) continue;
@@ -1219,7 +1223,7 @@ function rePlanSimulate(p, prj, plan) {
           const pctTxt = who === "B" ? capPctB : capPctA;
           const why = newInst - oldInst < 1 ? (freeBefore < 1 ? `instalment kept at ${fSAR(newInst)}/mo — your ${pctTxt}% limit (${fSAR(capTarget)}/mo) is already full with your other instalments; the amount grows because the term restarts at ${f.tenure} years` : `instalment kept at ${fSAR(newInst)}/mo — the most one personal loan may take; the amount grows because the term restarts at ${f.tenure} years`)
             : `instalment ${fSAR(oldInst)} → ${fSAR(newInst)}/mo — ${newInst >= capInstT - 1 ? "the most one personal loan may take" : `all the room left under your ${pctTxt}% limit`}`;
-          parts.push({ l, id: idOf(l), name: l.name, oldBal: l.bal, oldInst, payoff, amount, inst: newInst, net: amount - payoff, why });
+          parts.push({ l, id: idOf(l), name: nmOld(l), oldBal: l.bal, oldInst, payoff, amount, inst: newInst, net: amount - payoff, why });
         }
         if (!ok) continue;
         const amount = parts.reduce((a, x) => a + x.amount, 0), payoff = parts.reduce((a, x) => a + x.payoff, 0), freed = parts.reduce((a, x) => a + x.oldInst, 0), net = amount - payoff;
@@ -1237,11 +1241,11 @@ function rePlanSimulate(p, prj, plan) {
     // what was weighed: each option (which old loans the bank clears, the new loans, cash to you, worth in today's money),
     // the old loans' rates against the new loan's, and which rule chose
     f.refiBasis = refiMode === "pick" ? "pick" : refiMode === "cash" ? "cash" : "value";
-    f.refiOld = eligible.map((l) => ({ id: idOf(l), name: l.name, apr: l.rate, bal: l.bal, inst: instOfAny(l) }));
+    f.refiOld = eligible.map((l) => ({ id: idOf(l), name: nmOld(l), apr: l.rate, bal: l.bal, inst: instOfAny(l) }));
     f.refiTooYoung = tooYoung;
     const kept = cands.slice().sort((a, b) => b.value - a.value).slice(0, 16);
     [best, bestCash, bestValue].forEach((c) => { if (c && !kept.includes(c)) kept.push(c); });
-    f.refiOptions = kept.map((c) => ({ ids: c.S.map(idOf), names: c.S.map((l) => l.name), amount: c.amount, payoff: c.payoff, net: c.net, value: c.value, split: c.split, topup: !!c.topups, chosen: c === best, bestValue: c === bestValue, bestCash: c === bestCash }));
+    f.refiOptions = kept.map((c) => ({ ids: c.S.map(idOf), names: c.S.map((l) => nmOld(l)), amount: c.amount, payoff: c.payoff, net: c.net, value: c.value, split: c.split, topup: !!c.topups, chosen: c === best, bestValue: c === bestValue, bestCash: c === bestCash }));
     if (!best || best.net < 1) {
       const reason = best ? "would not release any cash" : (why || "no room left in the bank's debt-burden test") + (tooYoung.length ? `; ${tooYoung.join(" + ")} not yet ${minAge} months old, so not refinanceable` : "");
       f.capacity = { t, cap: 0, limitedBy: reason, want: 0, mode: "max", taken: 0, gap: 0 };
@@ -1249,14 +1253,14 @@ function rePlanSimulate(p, prj, plan) {
       return;
     }
     const before = instNow;
-    const cleared = best.S.map((l) => { const cost = settleCost(l), it = { id: idOf(l), name: l.name, cost, fee: cost - l.bal, old: l.kind === "existing" }; settleFees += it.fee; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; return it; });
+    const cleared = best.S.map((l) => { const cost = settleCost(l), it = { id: idOf(l), name: nmOld(l), cost, fee: cost - l.bal, old: l.kind === "existing" }; settleFees += it.fee; refiTotal += l.bal; l.settledAt = t; l.refinancedAt = t; l.bal = 0; return it; });
     f.bal = best.amount; f.amount = best.amount; f.split = best.split; f.startedAt = t; f.fees = 0;
     f.topups = best.topups ? best.topups.map(({ l, ...x }) => x) : null;
     if (best.topups) best.S.forEach((l) => { l.toppedUpAt = t; });
     f.pmt = best.split ? rePmt(best.split[0], f.rate, f.n) + rePmt(best.split[1], f.rate, f.n) : rePmt(best.amount, f.rate, f.n);
     cash += best.amount - best.payoff; ccash += best.amount - best.payoff;
     f.capacity = { t, cap: best.amount, room: best.room, limitedBy: best.limitedBy, want: best.amount, mode: "max", taken: best.amount, gap: 0 };
-    f.refi = best.S.length ? { names: best.S.map((l) => l.name), payoff: best.payoff, net: best.net, freed: best.freed, items: cleared } : null;
+    f.refi = best.S.length ? { names: best.S.map((l) => nmOld(l)), payoff: best.payoff, net: best.net, freed: best.freed, items: cleared } : null;
     // the NEW loans (one or two) — not to be read as the old loans bought out, which are named after
     const loans = best.topups ? `${fS(best.amount)} by refinancing ${best.topups.length === 1 ? "an old loan with its own bank" : `${best.topups.length} old loans, each with its own bank`} (${best.topups.map((x) => `${x.name}: ${fS(x.payoff)} cleared, ${fS(x.amount)} new, ${fS(x.net)} to your cash — ${x.why}`).join("; ")})` : best.split ? `${fS(best.amount)} as two new personal loans: ${fS(best.split[0])} (${best.whys[0]}) + ${fS(best.split[1])} (${best.whys[1]})` : `one new personal loan of ${fS(best.amount)}`;
     const nOld = f.refi ? f.refi.names.length : 0;
@@ -1264,7 +1268,7 @@ function rePlanSimulate(p, prj, plan) {
     let note = "";
     if (picks && droppedPicks.length) note += ` Not bought out: ${droppedPicks.length} of the loans you chose (not running, not yet ${minAge} months old, or not allowed).`;
     if (picks && pickSet.length && !pickBest) note += " The loans you chose can't be cleared in full by this loan, so none is bought out.";
-    if (refiMode !== "pick" && refiMode !== "cash" && bestCash && !sameS(bestCash, best) && bestCash.net > best.net + 1) note += ` Buying out ${bestCash.S.length ? bestCash.S.map((l) => l.name).join(" + ") : "no loan"} instead would put ${fS(bestCash.net - best.net)} more in your hands now but leave you ${fS((best.value - bestCash.value) / Math.pow(1 + alt, t))} poorer in today's money, so it is not done.`;
+    if (refiMode !== "pick" && refiMode !== "cash" && bestCash && !sameS(bestCash, best) && bestCash.net > best.net + 1) note += ` Buying out ${bestCash.S.length ? bestCash.S.map((l) => nmOld(l)).join(" + ") : "no loan"} instead would put ${fS(bestCash.net - best.net)} more in your hands now but leave you ${fS((best.value - bestCash.value) / Math.pow(1 + alt, t))} poorer in today's money, so it is not done.`;
     // تضامن: whose loan it is, on whose income, and the two limits that size it
     const whoTxt = !J ? "" : ` — on ${who === "B" ? "your spouse's" : "your"} income of ${fSAR(incW)}/mo (one loan's instalment ≤ ${p.perLoanCap}% = ${fSAR(perTarget)}/mo; all ${who === "B" ? "their" : "your"} debts ≤ ${who === "B" ? capPctB : capPctA}% = ${fSAR(capTarget)}/mo)`;
     events.push({ t, kind: f.owner === "B" ? "spl" : "pl", fac: f.key, text: `${f.label}${whoTxt}: the bank lends its maximum — ${loans}${best.split ? ", both" : ""} at ${f.quoted}%${p.rateQuote === "flat" ? ` flat (≈${f.rate.toFixed(2)}% APR)` : ""} over ${f.tenure} yrs${best.split || best.topups ? "" : ` (limited by the ${best.limitedBy})`}.${f.topups ? ` Each bank clears its own old loan (incl. the early-settlement fee) from the new one — no cash from you — and pays you the rest: ${fS(best.net)} in all (chosen for ${basis}; no loans are combined, because a new loan here costs more than the old ones).` : f.refi ? ` It buys out ${nOld === 1 ? "1 old loan" : `${nOld} old loans`}, ${f.refi.names.join(" + ")} (chosen for ${basis}): the bank clears ${fS(best.payoff)} (incl. early-settlement fees) directly — no cash from you — and ${fS(best.net)} of the new loans lands in your cash.` : ` ${fS(best.amount)} lands in your cash; no old loan is bought out.`} ${J ? `${who === "B" ? "Your spouse's" : "Your"} instalments ${fSAR(before)} → ${fSAR(instFor(who))}/mo (${(instFor(who) / incW * 100).toFixed(0)}% of ${who === "B" ? "their" : "your"} income)` : `Instalments ${fSAR(before)} → ${fSAR(allInst())}/mo (${(allInst() / inc * 100).toFixed(0)}% of income)`}.${note}` });
