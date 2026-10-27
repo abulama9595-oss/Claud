@@ -203,6 +203,7 @@ const RE_BASE = {
   refiStyle: "topup",      // a personal-loan step refinances each old personal loan with its own bank ("topup"), or buys several out into new loans ("consolidate", the old tool's way; a new loan buys loans out under "topup" only when it is cheaper than they are)
   settleFeeMonths: 3,      // SAMA: early-settlement cost capped at the next 3 months' term cost
   dearerMargin: 0.25,      // settlePolicy "dearer": an old loan is paid off for a mortgage's room only when its APR is more than this many points above the mortgage's
+  bridgeMaxMonths: 6,     // bridge money is a short gap: a plan "works with bridge money" only if every gap it bridges lasts at most this many months (null = no limit, the old tool's rule — re2Import sets it)
   bridgeRate: null,       // bridge money, % APR, when a plan's cash runs short until one of its loans lands and no loan can cover the gap then (null = the personal-loan APR)
   rateQuote: "apr",        // how NEW-facility rates are entered: "apr" (reducing balance) or "flat" (KSA "hamish" per year on the original principal)
   // bank terms: ONE set per loan type, used by every strategy and by the optimizer (rates as quoted, see rateQuote)
@@ -524,7 +525,7 @@ function re2Import(old) {
   if (out.lmRate == null) out.lmRate = RE2_OLD.lmRate;
   if (out.plRate == null) out.plRate = RE2_OLD.plRate;
   if (out.cashAvailable == null || out.cashAvailable === "") out.cashAvailable = RE2_OLD.cashAvailable;
-  out.propertyValueBasis = "today"; out.samaBands = false; out.rentFreezeUntil = null;
+  out.propertyValueBasis = "today"; out.samaBands = false; out.rentFreezeUntil = null; out.bridgeMaxMonths = null;
   // the property you own → properties[0] ("p1"): the home you live in when you pay no rent today; its keep / let / sell plan
   // only where the old engine applied it (no rent today, the new home not let out)
   const ov = o.ownedValue == null || o.ownedValue === "" ? RE2_OLD.ownedValue : +o.ownedValue || 0;
@@ -1550,7 +1551,9 @@ function rePlanSimulate(p, prj, plan) {
   let bridged = false, bridges = null;
   if (bridging && !feasible) {
     const gs = reGaps(months, facs, sales, landSale);
-    if (gs.length && gs.every((g) => g.closedBy.length)) { bridged = true; bridges = gs.map((g) => ({ ...g, cost: months.filter((m) => m.t > g.from && m.t <= g.to).reduce((a, m) => a + m.bridgeInt, 0) })); }
+    // (bridgeMaxMonths: a gap longer than that is no bridge — the plan runs out)
+    const maxB = p.bridgeMaxMonths == null || p.bridgeMaxMonths === "" || isNaN(+p.bridgeMaxMonths) ? Infinity : +p.bridgeMaxMonths;
+    if (gs.length && gs.every((g) => g.closedBy.length && g.to - g.from <= maxB)) { bridged = true; bridges = gs.map((g) => ({ ...g, cost: months.filter((m) => m.t > g.from && m.t <= g.to).reduce((a, m) => a + m.bridgeInt, 0) })); }
   }
   const recoveryMonths = cashRestoredT != null ? cashRestoredT - prj.occupy : null;
   const recoveryOk = (feasible || bridged) && recoveryMonths != null && recoveryMonths <= p.recoveryMonths;
@@ -2321,6 +2324,32 @@ function reSaveAndBuy(inp, opts) {
   return { cur, maxWait, found, rows, need, later, priceRise, plan };
 }
 
+/* ---------- FIND DATES THAT WORK (reFindDate): when a plan does not work with your dates, the earliest later start at which it
+   does — your savings build up while you wait, as a later start on "When" counts them (reAtStart). A build tries both ways of
+   moving: the land purchase moves with construction (landWithBuild), or the land date stays and only construction moves. Every
+   third month up to opts.maxWait (default 48) months later, then the months just before the first that works, so a plan costs
+   about 20 runs. found = { delay, wait, landWithBuild, landMonth, buildStart, occupy, onHand, econAdv, rulesMet } or null; at the
+   last start tried, minCash, and need (opts.need: how much more cash it would still need there, one reNeedMore search).
+   Pure: it changes nothing in the scenario and does not affect computeRE. ---------- */
+function reFindDate(inp, plan, opts) {
+  opts = opts || {};
+  const p = mergeRE(inp), prj0 = reProject(p), cur = prj0.start, maxWait = Math.max(1, Math.round(opts.maxWait == null ? 48 : +opts.maxWait));
+  const modes = prj0.construct ? [true, false] : [false];
+  const at = (d, lwb) => { const q = mergeRE(reAtStart(p, d, lwb)), prj = reProject(q); return { q, prj, r: reRunPlan(q, prj, { ...plan, enabled: true }) }; };
+  let best = null, last = null;
+  for (const lwb of modes) {
+    let hit = null;
+    for (let w = 3; w <= maxWait && !hit; w += 3) { const x = at(cur + w, lwb); last = last && last.r.minCash > x.r.minCash ? last : { ...x, w, lwb }; if (x.r.feasible) hit = { ...x, w }; }
+    if (!hit) continue;
+    for (let w = hit.w - 2; w < hit.w; w++) { if (w < 1) continue; const x = at(cur + w, lwb); if (x.r.feasible) { hit = { ...x, w }; break; } }
+    const f = { delay: cur + hit.w, wait: hit.w, landWithBuild: lwb, landMonth: hit.q.landMonth, buildStart: hit.prj.start, occupy: hit.prj.occupy, onHand: hit.r.onHandAtMoveIn, econAdv: hit.r.econAdv, rulesMet: (hit.r.recoveryOk ? 1 : 0) + (hit.r.moveInOk ? 1 : 0) };
+    if (!best || f.occupy < best.occupy || (f.occupy === best.occupy && f.landMonth > best.landMonth)) best = f;
+  }
+  let need = null;
+  if (!best && last && opts.need) { const n = reNeedMore(last.q, last.prj, { ...plan, enabled: true }, last.r); need = n.needMore == null ? null : n.needMore; }
+  return { cur, maxWait, found: best, minCash: last ? last.r.minCash : null, need };
+}
+
 /* ---------- OPTIMIZER: fill the debt-burden bucket the best way, for every start month ----------
    Treats dbrCap × income as one bucket; every loan is taken at the bank's maximum. Searches every combination of: land (or
    purchase) mortgage yes/no · personal loan(s) at build start yes/no · a mortgage on a property you own — none, or one of the
@@ -2422,7 +2451,9 @@ function optimizeRE(inp, opts) {
   // works every month → works with bridge money → runs out; then the more of your rules met (recovery, cash at project end) →
   // result → lowest peak instalment
   const met = (x) => (x.recoveryOk ? 1 : 0) + (x.moveInOk ? 1 : 0);
-  const rank = (a, b) => (reStanding(b) - reStanding(a)) || (reStanding(b) > 0 ? met(b) - met(a) : 0) || (b.econAdv - a.econAdv) || (a.peakInst - b.peakInst);
+  // (mixes that run out: the smallest shortfall first — the closest real plan — unless bridge money has no limit, the old tool's rule)
+  const shortFirst = p0.bridgeMaxMonths != null && p0.bridgeMaxMonths !== "";
+  const rank = (a, b) => (reStanding(b) - reStanding(a)) || (reStanding(b) > 0 ? met(b) - met(a) : shortFirst && Math.abs(b.minCash - a.minCash) > 1 ? b.minCash - a.minCash : 0) || (b.econAdv - a.econAdv) || (a.peakInst - b.peakInst);
   let tried = 0, runs = 0;
   // evaluate a slice of the mixes for one start (the page fills the start-date table a slice at a time); only each slice's
   // leader keeps its full result, which is all the finish step needs. Mixes that are one plan share one run (see the comment above).

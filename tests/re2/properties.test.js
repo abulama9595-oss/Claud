@@ -194,7 +194,8 @@ test('a mortgage on a property you own is taken when the cash runs short to cove
   assert.ok(!asSet.feasible && E.reGaps(asSet.months, asSet.facilities, asSet.sales, asSet.landSale).every((g) => g.closedBy.includes('eq:p1')), 'as set, the mortgage at move-in closes the gap');
   assert.match(E.planTitle(cov.plan, true, cov, false, E.mergeRE({ properties: [{ id: 'p1', name: 'Villa A', value: 1 }] }).properties), /^Mortgage Villa A when your cash runs short/);
   // a plot sold in month 12 closes a gap from month 3; a sale cannot be moved, so the plan needs bridge money until then
-  const br = run({ ...TIGHT, properties: [{ id: 'p1', name: 'Plot C', value: 2500000, ltv: 70, plan: 'sell', sellAt: 12 }], plans: [{ enabled: true, lmUse: false, settlePolicy: 'none' }] });
+  // (a 9-month bridge: allow up to 12 months — the default limit is 6)
+  const br = run({ ...TIGHT, bridgeMaxMonths: 12, properties: [{ id: 'p1', name: 'Plot C', value: 2500000, ltv: 70, plan: 'sell', sellAt: 12 }], plans: [{ enabled: true, lmUse: false, settlePolicy: 'none' }] });
   assert.ok(!br.feasible && br.bridged && br.bridges.length === 1, JSON.stringify(br.bridges));
   const g = br.bridges[0];
   assert.ok(g.to === 12 && g.closedBy.length === 1 && g.closedBy[0] === 'sale:p1' && g.closedByLabel === 'sale of Plot C' && g.reason === 'Plot C is sold only in month 12', JSON.stringify(g));

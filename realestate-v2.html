@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=bd533dc09f"></script>
-  <script src="re2-engine.js?v=bd533dc09f"></script>
-  <script src="re2-ui.js?v=bd533dc09f"></script>
+  <script src="engine.js?v=485c1df397"></script>
+  <script src="re2-engine.js?v=485c1df397"></script>
+  <script src="re2-ui.js?v=485c1df397"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -493,6 +493,7 @@
 
       /* optimizer state (debounced inputs; filled a slice of 48 mixes per tick further down) */
       const [optInp, setOptInp] = useState(inp);
+      const [dates, setDates] = useState(null);   // "Find dates that work": { running } | { rows, tool, need, src }
       useEffect(() => { const id = setTimeout(() => setOptInp(inp), 350); return () => clearTimeout(id); }, [inp]);
       const [opt, setOptPlanned] = useState(null);
       const [optRows, setOptRows] = useState({ rows: [], done: false, total: 0 });
@@ -1337,6 +1338,8 @@
               <div style={{ fontSize: 13, fontWeight: 700, margin: "4px 0 8px" }}>Bridge money (while your cash is short)</div>
               <Field label="Profit rate (APR)" value={inp.bridgeRate == null || inp.bridgeRate === "" ? +aprOf("plRate", "plTenure").toFixed(2) : inp.bridgeRate} min={0} max={20} step={0.25} unit="%" onChange={(v) => set("bridgeRate", v)} help={EXPL.bridge}
                 hint={<>{inp.bridgeRate == null || inp.bridgeRate === "" ? "same as your personal loans" : <>you set it · <button className="lnk no-print" onClick={() => set("bridgeRate", null)}>use the personal-loan rate</button></>} · used only when no loan can cover a gap in time</>} />
+              {inp.bridgeMaxMonths == null || inp.bridgeMaxMonths === "" ? <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 10 }}>For at most: no limit (as the previous version of the tool) · <button className="lnk no-print" onClick={() => set("bridgeMaxMonths", 6)}>limit it to 6 months</button></div>
+                : <Field label="For at most" value={inp.bridgeMaxMonths} min={0} max={24} step={1} unit="months" onChange={(v) => set("bridgeMaxMonths", v)} hint="a longer gap is no bridge: the plan runs out of cash and says how much more it needs" />}
             </div>
           </More>
       );
@@ -1377,7 +1380,7 @@
         if (!x) return "working it out…";
         const paid = x.payoffs.filter((p) => p.why !== "planned"), mort = x.lm.amount + x.eq.amount + x.co.amount;
         const parts = [paid.length ? `pays off ${paid.map((p) => p.name).join(" + ")} (${fM(paid.reduce((a, p) => a + p.cost, 0))})` : "pays nothing off", `mortgage${x.lm.amount + x.eq.amount > 0 && x.co.amount > 0 ? "s" : ""} ${fM(mort)}`];
-        return works(x) ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.bridged ? ` · needs a ${bridgeTxt(x)}` : ""}${x.recoveryOk ? "" : " · slow to recover"}${x.moveInOk === false ? ` · below your line at project end (${fCash(x.onHandAtMoveIn)})` : ""}` : `${parts.join(" · ")} · cash runs out ${fCal(x.shortFrom)}${needOf(x) != null ? `: needs ${fS(needOf(x))} more cash to start with` : ""} ✗`;
+        return works(x) ? `${parts.join(" · ")} · ${fM(x.econAdv)} vs ${baseLbl}${x.bridged ? ` · needs a ${bridgeTxt(x)}` : ""}${x.recoveryOk ? "" : " · slow to recover"}${x.moveInOk === false ? ` · below your line at project end (${fCash(x.onHandAtMoveIn)})` : ""}` : `${parts.join(" · ")} · cash runs out ${fCal(x.shortFrom)}${needOf(x) != null ? `: needs ${fS(needOf(x))} more cash in total` : ""} ✗`;
       };
       /* ---------- which old loans the bank buys out: what each personal-loan step weighed, in words and as a table ---------- */
       const refiSteps = (r) => !r ? [] : [r.pl, r.pl2, r.spl, r.spl2].filter((f) => f && f.capacity && ((f.refiOld && f.refiOld.length) || (f.refiTooYoung && f.refiTooYoung.length)));
@@ -1831,7 +1834,7 @@
         const b = [], i = r ? m.results.indexOf(r) : -1, adv = household.settleAdvice || [];
         if (!bestF) {
           const ns = liveIdx.map((k) => [k, needOf(m.results[k])]).filter((x) => x[1] != null).sort((a, c) => a[1] - c[1]);
-          b.push({ warn: true, text: `No plan works every month${ns.length ? ` — the closest, ${planRef(ns[0][0])}, needs ${fS(ns[0][1])} more cash to start with` : ""}. Try a plan with more borrowing, a smaller project, a later start or more cash.` });
+          b.push({ warn: true, text: `No plan works every month${ns.length ? ` — the closest, ${planRef(ns[0][0])}, needs ${fS(ns[0][1])} more cash in total` : ""}. Try a plan with more borrowing, a smaller project, a later start or more cash.` });
         }
         if (!r) return b;
         // 1 · the plan shown runs out of cash, or needs bridge money
@@ -2031,7 +2034,7 @@
       const AnswerLine = ({ one }) => {
         const adv = lead ? lead.econAdv : 0;
         let line;
-        if (!bestF) { const ns = liveIdx.map((k) => [k, needOf(m.results[k])]).filter((x) => x[1] != null).sort((a, c) => a[1] - c[1]); line = <>No plan works — {ns.length ? <>the closest, {planRef(ns[0][0])}, needs <span style={{ color: K.neg }}>{fS(ns[0][1])} more cash</span> to start with.</> : <>every plan runs out of cash.</>}</>; }
+        if (!bestF) { const ns = liveIdx.map((k) => [k, needOf(m.results[k])]).filter((x) => x[1] != null).sort((a, c) => a[1] - c[1]); line = <>No plan works — {ns.length ? <>the closest, {planRef(ns[0][0])}, needs <span style={{ color: K.neg }}>{fS(ns[0][1])} more cash</span> in total.</> : <>every plan runs out of cash.</>}</>; }
         else if (adv >= 0) line = <><span style={{ color: K.pos }}>{W.doIt}</span> — with {planRef(recIdx)} you end up <span style={{ color: K.pos }}>{fS(adv)} richer</span> in {endDate} than {baseLbl}.</>;
         else line = <><span style={{ color: K.neg }}>{W.dont}</span> — every plan that works leaves you poorer; the best, {planRef(recIdx)}, by <span style={{ color: K.neg }}>{fS(-adv)}</span> in {endDate}.</>;
         const okStart = sweepRec && sweepRec.rows.find((x) => x.feasible && x.recoveryOk && x.moveInOk !== false);
@@ -2319,7 +2322,7 @@
             <Dis id="liquid" title="How tight does cash get?" sub="liquidity" open={!!openDis.liquid} onToggle={toggleDis}>
               <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 10 }}>
                 <Tile label={rc.total >= 0 ? `Cash at ${W.doneShort}` : `Short at ${W.doneShort}`} value={rc.total >= 0 ? fM(rc.total) : fS(-rc.total)} tone={rc.total < 0 ? K.neg : K.text} sub="no growth counted" />
-                <Tile label={r.minCash < 0 ? (r.bridged ? `Most bridge money needed · ${fCal(r.minCashT)}` : `Most you are short · ${fCal(r.minCashT)}`) : `Lowest cash · ${fCal(r.minCashT)}`} value={r.minCash < 0 ? fS(-r.minCash) : fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={needOf(r) != null ? `to carry the plan out you need ${fS(needOf(r))} more cash to start with` : r.reserveMonths == null ? null : `covers ${r.reserveMonths.toFixed(1)} months of that month's costs and instalments`} />
+                <Tile label={r.minCash < 0 ? (r.bridged ? `Most bridge money needed · ${fCal(r.minCashT)}` : `Most you are short · ${fCal(r.minCashT)}`) : `Lowest cash · ${fCal(r.minCashT)}`} value={r.minCash < 0 ? fS(-r.minCash) : fM(r.minCash)} tone={r.minCash < 0 ? K.neg : K.text} sub={needOf(r) != null ? `to carry the plan out you need ${fS(needOf(r))} more cash in total` : r.reserveMonths == null ? null : `covers ${r.reserveMonths.toFixed(1)} months of that month's costs and instalments`} />
                 <Tile label="Tightest month" value={r.tightest ? fSARm(r.tightest.surplus) : "—"} sub={r.tightest ? `left from salary in ${fCal(r.tightest.t)} · ${r.thinMonths} months leave less than 5% of income` : null} tone={r.tightest && r.tightest.surplus < 0 ? K.neg : K.text} />
                 <Tile label="Debt-free" value={r.debtFreeT != null ? fCal(r.debtFreeT) : "later"} sub={st ? `survives ${st.filter((x) => x.key !== "base" && x.passes).length} of ${st.length - 1} stress tests` : "stress tests: working…"} />
               </div>
@@ -2512,12 +2515,55 @@
           </Sec>
         </> });
       };
+      // no plan works with your dates: find the earliest later dates at which each plan works (reFindDate), then the tool's best
+      // mix at the earliest of them (the same sliced search as the planned start); "Use these dates" moves the start, with undo
+      useEffect(() => { setDates(null); }, [optInp]);
+      const shiftOf = (f) => { const q = reAtStart(inp, f.delay, f.landWithBuild); return prj.construct ? { buildStart: q.buildStart, landMonth: q.landMonth } : { landMonth: q.landMonth }; };
+      const datesTxt = (f) => prj.construct ? `land ${fCal(f.landMonth)} · construction ${fCal(f.buildStart)} → project end ${fCal(f.occupy)}` : `${isLand ? "land bought" : "purchase"} ${fCal(f.landMonth)}${isLand ? "" : ` → project end ${fCal(f.occupy)}`}`;
+      const findDates = () => {
+        const src = inp, idxs = liveIdx.filter((i) => !isTool(i) && src.plans[i]);
+        setDates({ running: true, src });
+        const rows = []; let k = 0;
+        const next = () => {
+          if (k < idxs.length) { const i = idxs[k++]; const x = reFindDate(src, src.plans[i]); rows.push({ i, ...x }); setTimeout(next, 0); return; }
+          const ok = rows.filter((x) => x.found).sort((a, b) => a.found.occupy - b.found.occupy);
+          if (!ok.length) {
+            const near = rows.slice().sort((a, b) => (b.minCash || -Infinity) - (a.minCash || -Infinity))[0];
+            const need = near ? reFindDate(src, src.plans[near.i], { need: true }).need : null;
+            setDates({ rows, tool: null, near: near ? near.i : null, need, src }); return;
+          }
+          const f = ok[0].found, shifted = { ...src, ...shiftOf(f) };
+          setDates({ rows, tool: null, toolRunning: true, src });
+          runSlices(shifted, reStartMonth(shifted), true, (r) => { const b = r.start && r.start.best; setDates({ rows, tool: b && b.feasible ? { best: b, at: f } : null, src }); }, () => false);
+        };
+        setTimeout(next, 0);
+      };
+      const useDates = (f, add) => withUndo(add ? "Moved the start and added the tool's plan" : "Moved the start to the dates that work", () => setInp((s0) => ({ ...s0, ...shiftOf(f), plans: add && s0.plans.length < MAX_PLANS ? [...s0.plans, { ...(add.cleanPlan || add.plan), enabled: true, name: add.name }] : s0.plans })));
+      const FindDates = () => {
+        if (bestF) return null;
+        const ok = dates && dates.rows ? dates.rows.filter((x) => x.found).sort((a, b) => a.found.occupy - b.found.occupy) : [];
+        return (
+          <Box title="No plan works with these dates" style={{ marginTop: 14 }}>
+            {!dates ? <div style={{ fontSize: 13, lineHeight: 1.55 }}>Your cash runs short with every plan at the dates you set. Starting later lets your savings build up. <button className="btn small" onClick={findDates}>Find dates that work</button></div>
+              : dates.running ? <div className="note">Looking for the earliest dates that work…</div>
+              : !ok.length ? <div style={{ fontSize: 13, lineHeight: 1.55, color: K.neg }}>No plan works, even starting up to {Math.round((dates.rows[0] ? dates.rows[0].maxWait : 48) / 12)} years later.{dates.near != null && dates.need != null ? ` The closest, ${planRef(dates.near)}, would still need ${fS(dates.need)} more cash in total.` : ""}</div>
+              : <>
+                <div style={{ fontSize: 12.5, color: K.sub, marginBottom: 6 }}>The earliest dates at which each plan works every month (your savings build up while you wait):</div>
+                {dates.toolRunning && <div className="note">Looking for the tool's best plan at the earliest of these dates…</div>}
+                {dates.tool && <div className="ev" style={{ gridTemplateColumns: "1fr auto" }}><span><b>The tool's best plan at these dates ★</b> · {dates.tool.best.name}<span style={{ display: "block", fontSize: 12.5, color: K.sub }}>{datesTxt(dates.tool.at)} · cash at project end {fM(dates.tool.best.onHand)} · {fM(dates.tool.best.econAdv)} vs {baseLbl}</span></span><button className="btn small" onClick={() => useDates(dates.tool.at, dates.tool.best)}>Use these dates and add this plan</button></div>}
+                {ok.map((x) => <div key={x.i} className="ev" style={{ gridTemplateColumns: "1fr auto" }}><span><b>{planName(x.i)}</b> works {x.found.wait} month{x.found.wait === 1 ? "" : "s"} later<span style={{ display: "block", fontSize: 12.5, color: K.sub }}>{datesTxt(x.found)} · cash at project end {fM(x.found.onHand)} · {fM(x.found.econAdv)} vs {baseLbl}</span></span><button className="btn small" onClick={() => useDates(x.found)}>Use these dates</button></div>)}
+                {dates.rows.filter((x) => !x.found).map((x) => <div key={x.i} className="note" style={{ marginTop: 4 }}>{planName(x.i)}: no date within {Math.round(x.maxWait / 12)} years works.</div>)}
+              </>}
+          </Box>
+        );
+      };
       const StepAnswer = () => {
         if (!lead) return <div><Head id="answer" title="Your answer" /><Box>Tick at least one plan in How to pay.</Box></div>;
         const r = focusRes, i = focusIdx;
         return (
           <div>
             {AnswerLine({ one: false })}
+            {FindDates()}
             <div style={{ marginTop: 14 }}>{LensCards({ print: false })}</div>
             {SaveAndBuy()}
             {LiabilityCard({ r, i, print: false, part: "loans" })}
