@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=23a6115377"></script>
-  <script src="re2-engine.js?v=23a6115377"></script>
-  <script src="re2-ui.js?v=23a6115377"></script>
+  <script src="engine.js?v=01d41669dc"></script>
+  <script src="re2-engine.js?v=01d41669dc"></script>
+  <script src="re2-ui.js?v=01d41669dc"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -614,7 +614,8 @@
         if (from === "tool") { copyMix(opt && opt.planned); return; }
         const k = inp.plans.length, cp = from.startsWith("copy:"), src = cp ? inp.plans[+from.slice(5)] : RE_PLAN_PRESETS[from.slice(4)];
         if (!src) return;
-        const plan = { ...src, enabled: true, refiPick: cp ? src.refiPick : null, name: cp ? `${src.name} (copy)` : src.name };
+        // a new plan takes personal loans automatically when its cash would run short (not the "pay from your cash" template)
+        const plan = { ...src, enabled: true, refiPick: cp ? src.refiPick : null, name: cp ? `${src.name} (copy)` : src.name, plAuto: cp ? !!src.plAuto : from.slice(4) !== "allCash" };
         withUndo(`Added Plan ${k + 1}`, () => { setInp((s0) => ({ ...s0, plans: [...s0.plans, plan] })); setEditIdx(k); if (focus >= k) setFocus(focus + 1); });
       };
       const deletePlan = (i) => {
@@ -1491,11 +1492,9 @@
       };
       // the timing choices for a mortgage on a property you own, for this kind of project (a property sold at project end: nothing after construction starts)
       const mortOpts = (P) => { const sold = saleMonthOf(P), soldAtDone = sold != null && sold <= prj.occupy; const o = [["none", "No"], ["start", "Now"]]; if (build && prj.landMonth > 0) o.push(["land", "When the land is bought"]); if (prj.construct) o.push(["build", "When construction starts"]); if (!soldAtDone) o.push(["completion", atDone]); o.push(["month", "In a month I choose"]); return o; };
-      // the one personal-loan timing control, worded for this kind of project (no construction: no "when construction starts")
-      const plTimingOpts = RE_PL_TIMING.filter(([k]) => prj.construct || !/^build/.test(k)).map(([k, l]) => [k, l.replace("At project end", atDone).replace("at project end", atDone.toLowerCase()).replace("When the land is bought", build ? "When the land is bought" : "When you buy")]);
       const SETTLE_POLICIES = [["asNeeded", `Only as much as the ${prj.construct ? "build" : "purchase"} needs`], ["forMax", "As much as it takes for the biggest mortgage the property allows"], ["dearer", `Only loans dearer than the new mortgage (more than ${inp.dearerMargin == null ? 0.25 : inp.dearerMargin} points above its rate)`], ["none", "Don't pay them off"]];
       const PlanEditor = ({ o, i }) => {
-        const r = m.results[i], plT = plTimingOf(o), prepayOn = o.prepayAfter != null && o.prepayAfter !== "";
+        const r = m.results[i], plTk = rePlTicksOf(o), plT = plTk.sel.size ? "some" : "none", prepayOn = o.prepayAfter != null && o.prepayAfter !== "";
         const pol = ["forMax", "none", "dearer"].includes(o.settlePolicy) ? o.settlePolicy : "asNeeded";
         const plZero = r && [r.pl, r.pl2, r.spl, r.spl2].find((f) => f && f.capacity && f.amount < 1) || null;
         // تضامن: what each of you could take as personal loans today (two loans, the bank's maximum)
@@ -1521,8 +1520,15 @@
                   {mo.when === "month" && <MonthField label={`…${P.name}, in`} value={mo.month} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setMort(P.id, "month", v)} />}
                 </React.Fragment>); })}
               {!mortgageable.length && <div style={{ marginBottom: 12, fontSize: 12.5, color: K.sub }}>No property to mortgage — <button className="lnk" onClick={() => go("props")}>add one in Your properties</button>.</div>}
-              <Pick label="Personal loans" value={plTimingOpts.some(([k]) => k === plT) ? plT : "none"} onChange={(v) => { const x = RE_PL_TIMING.find((y) => y[0] === v); if (x) setPlanMany(i, x[2]); }} options={plTimingOpts.filter((x) => x[0] !== "completion" || plT === "completion")} help={EXPL.refi} hint={plZero ? `${plZero.label}: nothing — ${plZero.capacity ? plZero.capacity.limitedBy : "no room"}` : `the bank's maximum: one or two loans, each up to ${inp.perLoanCap}% of ${jointOn ? "the borrower's income" : "income"}; never more than two at once`} />
-              {o.plWhen === "month" && <MonthField label="…in" value={o.plMonth} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setPlan(i, "plMonth", v)} />}
+              <div style={{ marginBottom: 12, gridColumn: "1 / -1" }}>
+                <span className="lbl" style={{ display: "block", marginBottom: 2 }}>Personal loans — tick every moment you want one<Hint text={EXPL.refi} label="Personal loans" /></span>
+                <div style={{ fontSize: 12, color: K.sub, marginBottom: 4 }}>{plZero ? `${plZero.label}: nothing — ${plZero.capacity ? plZero.capacity.limitedBy : "no room"}` : `the bank's maximum: one or two loans, each up to ${inp.perLoanCap}% of ${jointOn ? "the borrower's income" : "income"}; never more than two at once`}</div>
+                <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))", gap: "0 18px" }} role="group" aria-label="Personal loans">
+                  {rePlTicks(inp, prj, o).map(([k, l]) => <Tick key={k + l} checked={plTk.sel.has(k)} onChange={(v) => { const sel = new Set(plTk.sel); if (v) sel.add(k); else sel.delete(k); setPlanMany(i, rePlTicksApply(sel, plTk.month == null ? Math.max(prj.landMonth, 12) : plTk.month, prj)); }} label={l} sub={k === "auto" ? "the bank's maximum in the month your cash runs short, or the first month after it the bank has room" : null} />)}
+                </div>
+                {plTk.sel.has("month") && <MonthField label="…in" value={plTk.month == null ? 0 : plTk.month} min={0} max={Math.round(inp.horizon * 12)} onChange={(v) => setPlanMany(i, rePlTicksApply(plTk.sel, v, prj))} />}
+                <div style={{ fontSize: 12, color: K.sub, lineHeight: 1.45 }}>Each moment is the bank's maximum then. A later one tops up or buys out the earlier loans once they are {inp.refiMinMonths == null ? 12 : inp.refiMinMonths} months old, so moments closer together than that usually add little.</div>
+              </div>
               {jointOn && plT !== "none" && <div style={{ marginBottom: 12 }}>
                 <span className="lbl" style={{ display: "block", marginBottom: 4 }}>Personal loans taken by<Hint text={EXPL.plBy} label="Personal loans taken by" /></span>
                 <Seg label="Personal loans taken by" value={plBy} onChange={(v) => setPlan(i, "plBy", v)} options={[["me", "Me"], ["spouse", "My spouse"], ["both", "Both of us"]]} />
@@ -1544,7 +1550,7 @@
               </div>
             </div>
 
-            {(o.plWhen !== "none" || o.pl2Use) && <div style={{ marginTop: 16 }}>
+            {plT !== "none" && <div style={{ marginTop: 16 }}>
               <Pick label="Which old loans the bank buys out when you take personal loans" value={o.refiMode || "auto"} onChange={(v) => setPlan(i, "refiMode", v)} help={EXPL.refi} options={[["auto", "Auto (recommended): best value, or most cash if the plan needs it"], ["value", "Best value: what leaves you richest"], ["cash", "Most cash: what puts the most in your hands now"], ["pick", "Choose them myself"]]} />
               {o.refiMode === "pick" && RefiPicks({ o, i })}
               {r && refiSteps(r).map((f) => <div key={f.key} className="note" style={{ marginTop: 0, marginBottom: 6, background: SOFT, borderRadius: 7, padding: "7px 10px", color: K.text }}><b>{f.label} · {fCal(f.capacity.t)}:</b> {refiStory(r, f).text}</div>)}
