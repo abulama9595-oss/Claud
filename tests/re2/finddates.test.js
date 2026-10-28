@@ -59,3 +59,19 @@ test('reFindDate: the earliest later start at which a plan works, or none and ho
   const poor = E.reFindDate({ ...base, cashAvailable: 400000, income: 50000 }, plan, { maxWait: 12, need: true });
   assert.ok(!poor.found && poor.need > 0, 'none within the wait: how much more it needs');
 });
+
+test('construction runs late: the cash-out never pays for the construction, and an unused cash-out step changes nothing', () => {
+  const short = { kind: 'landVilla', asOf: '2026-10', income: 60000, livingExpenses: 15000, rentNow: 6000, cashAvailable: 900000, existingLoans: [], landArea: 400, landPrice: 1500, buildMonths: 12, buildStart: 3, landMonth: 1, lateMaxMonths: 36 };
+  const p = E.mergeRE(short), prj = E.reProject(p), plan = { ...E.RE_PLAN_DEFAULTS, enabled: true, lmUse: false, plWhen: 'none' };
+  const a = E.reRunPlan(p, prj, plan), b = E.reRunPlan(p, prj, { ...plan, coUse: true });
+  assert.ok(a.late && b.late && a.late.occupy === b.late.occupy, `${a.late && a.late.occupy} vs ${b.late && b.late.occupy}`);
+  // the cash-out, when the bank grants it, comes at the (later) project end — never before the last construction payment
+  if (b.co.amount > 0) assert.ok(b.co.startedAt >= b.late.occupy - 1);
+  else assert.equal(Math.round(a.econAdv), Math.round(b.econAdv));
+  // the optimizer copies a late mix without the steps that took nothing, and the copy stands the same
+  const st = E.optimizeRE({ ...short, plans: [] }, { plannedOnly: true }).planned, best = st.best;
+  if (best.late) {
+    const cp = best.cleanPlan, r = E.reRunPlan(p, prj, { ...cp, enabled: true });
+    assert.ok(!(cp.coUse && !(best.co > 0)) && E.reStanding(r) === E.reStanding(best), JSON.stringify({ co: best.co, coUse: cp.coUse }));
+  }
+});
