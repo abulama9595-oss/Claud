@@ -74,7 +74,7 @@ function audit(label, m, r, bad) {
   const near = (a, b) => Math.abs(a - b) <= TOL * Math.max(1, Math.abs(b) / 1e6);
   const flag = (k, msg) => { if (!bad[k]) bad[k] = `${label} ${msg}`; };
   const grow = (x) => (x > 0 ? x * (1 + alt) : x);
-  let cash, cc, bc, rc, newC = 0, oldC = 0, rsC = 0, riC = 0, upC = 0, cRetCum = 0, retC = 0;
+  let cash, cc, bc, rc, prGap = 0, newC = 0, oldC = 0, rsC = 0, riC = 0, upC = 0, cRetCum = 0, retC = 0;
   for (let t = 0; t <= H; t++) {
     const mo = r.months[t];
     const proceeds = r.facilities.filter((f) => f.startedAt === t && f.amount > 0).reduce((a, f) => a + f.amount - f.fees - (f.refi ? f.refi.payoff : 0), 0);
@@ -114,7 +114,9 @@ function audit(label, m, r, bad) {
     // what only this side sold is no longer yours while the other side still owns it
     const gone = sales.filter((s) => s.side === 'strategy' && s.t <= t).reduce((a, s) => { const P = p.properties.find((x) => x.id === s.id); return a + P.value * Math.pow(1 + p.appreciation / 100, t / 12); }, 0);
     if (!near(mo.ownGone, gone)) flag('property sold on this side only', `M${t}: engine ${mo.ownGone} vs ${gone}`);
-    const nw = mo.ccash - mo.newInstCum + mo.oldSavedCum + mo.rentSavedCum + mo.rentInCum - mo.upkeepCum + mo.value - mo.debtNew + (ren.debt[t] - mo.debtExisting) - mo.ownGone;
+    // (+ your properties' rent this side earns less what the other side earns — rule 7 counts it; imported scenarios keep the old rule)
+    if (p.coverAny !== false) prGap += (mo.propRentIn || 0) - (mo.propRentBase || 0);
+    const nw = mo.ccash - mo.newInstCum + mo.oldSavedCum + mo.rentSavedCum + mo.rentInCum + prGap - mo.upkeepCum + mo.value - mo.debtNew + (ren.debt[t] - mo.debtExisting) - mo.ownGone;
     if (!near(mo.netWorth, nw)) flag('net worth', `M${t}: engine ${mo.netWorth} vs ${nw}`);
     if (!near(mo.renterNW, mo.bcash) || !near(mo.advantage, mo.netWorth - mo.renterNW)) flag('baseline / advantage', `M${t}`);
     if (!near(mo.debt, mo.debtNew + mo.debtExisting)) flag('debt = new + existing', `M${t}`);

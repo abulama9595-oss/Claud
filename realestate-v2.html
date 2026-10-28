@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=69b1726bc5"></script>
-  <script src="re2-engine.js?v=69b1726bc5"></script>
-  <script src="re2-ui.js?v=69b1726bc5"></script>
+  <script src="engine.js?v=7fa6408d74"></script>
+  <script src="re2-engine.js?v=7fa6408d74"></script>
+  <script src="re2-ui.js?v=7fa6408d74"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1036,7 +1036,7 @@
 
       /* ---------- step 0: your project — the picker, then the project's fields in shared blocks ---------- */
       const KIND_CARDS = [["landVilla", "Buy land and build a villa", "You buy a plot, build, and move in when it is finished."], ["land", "Buy land only", "You buy a plot and hold it — to sell later, or to build on later."], ["landBuilding", "Buy land and build a residential building", "You build units to let; you may live in one of them."], ["readyBuilding", "Buy a ready residential building", "You buy a finished building with units; you may live in one."], ["readyVilla", "Buy a ready villa", "You buy a finished home and move in after finishing it."]];
-      const pickKind = (k) => setInp((s) => { const q = { ...s, kind: k }; if (/Building$/.test(k) && !(+s.unitCount > 0)) { q.unitCount = 4; q.unitRentBasis = "pct"; if (!(+s.unitRentPct > 0)) q.unitRentPct = 6; } if ((s.buildStart || 0) < (s.landMonth || 0)) q.buildStart = s.landMonth; return q; });
+      const pickKind = (k) => setInp((s) => { const q = { ...s, kind: k, acquire: RE_KINDS[k] && RE_KINDS[k].acquire ? RE_KINDS[k].acquire : s.acquire }; if (/Building$/.test(k) && !(+s.unitCount > 0)) { q.unitCount = 4; q.unitRentBasis = "pct"; if (!(+s.unitRentPct > 0)) q.unitRentPct = 6; } if ((s.buildStart || 0) < (s.landMonth || 0)) q.buildStart = s.landMonth; return q; });
       // "Build later" is not a sixth kind: the villa, with construction 24 months after the land is bought
       const buildLater = () => setInp((s) => ({ ...s, kind: "landVilla", buildStart: (s.landMonth || 0) + 24 }));
       const laterGap = inp.kind === "landVilla" && prj.start > prj.landMonth ? prj.start - prj.landMonth : 0;
