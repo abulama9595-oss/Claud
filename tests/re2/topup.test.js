@@ -51,7 +51,7 @@ test("top-ups: a later step refinances this plan's own earlier personal loan onc
   assert.ok(/your personal loan taken in month 0/.test(x.name));
   assert.ok(a.settledAt === 24 && a.refinancedAt === 24, 'the earlier loan is closed that month');
   assert.ok(Math.abs(x.inst - a.pmt) < 1 && x.amount > x.payoff + 1 && Math.abs(x.net - (x.amount - x.payoff)) < 1, 'same instalment, the term restarts, the difference to your cash');
-  for (const m of r.months) assert.ok(Math.abs(m.debtPl + m.debtLm + m.debtEq + m.debtCo + m.debtRf - m.debtNew) < 1, `month ${m.t}`);
+  for (const m of r.months) assert.ok(Math.abs(m.debtPl + m.debtLm + m.debtEq + m.debtCo - m.debtNew) < 1, `month ${m.t}`);
   // younger than refiMinMonths: not topped up
   const y = E.computeRE({ ...q, plans: [{ ...plan, plSplit: false, plWhen: 'start', plMore: [{ when: 'month', month: 6 }] }] }).results[0];
   const b2 = y.facilities.find((f) => f.key === 'pl3');

@@ -29,7 +29,7 @@ test('rePeakSpan: the months at the peak hold the plan\'s highest instalment (wi
     const m = E.computeRE(inp, { noNeed: true });
     m.results.forEach((r, i) => {
       if (!r) return;
-      const sp = E.rePeakSpan(r), inst = (x) => x.existInst + x.lmPay + x.eqPay + x.plPay + x.coPay + x.rfPay - (x.extraPay || 0);
+      const sp = E.rePeakSpan(r), inst = (x) => x.existInst + x.lmPay + x.eqPay + x.plPay + x.coPay - (x.extraPay || 0);
       assert.ok(sp.from <= r.peakInstT && r.peakInstT <= sp.to, `${label} S${i + 1}: span holds the peak month`);
       for (let t = sp.from; t <= sp.to; t++) assert.ok(inst(r.months[t]) >= sp.peak * 0.995 - 1, `${label} S${i + 1}: month ${t} is at the peak`);
       if (sp.from > 1) assert.ok(inst(r.months[sp.from - 1]) < sp.peak * 0.995 - 1, `${label} S${i + 1}: the span starts where the peak starts`);
@@ -47,7 +47,7 @@ test('reDebtCover: rent received ÷ the new loans\' instalments per year, from t
     const dc = E.reDebtCover(r), H = r.months.length - 1;
     for (const row of dc.rows) {
       const part = r.months.filter((x) => x.t >= row.year * 12 - 11 && x.t <= Math.min(H, row.year * 12) && x.t > r.occupy);
-      assert.ok(near(row.rent, part.reduce((a, x) => a + x.rentIn, 0)) && near(row.inst, part.reduce((a, x) => a + x.lmPay + x.eqPay + x.plPay + x.coPay + x.rfPay - (x.extraPay || 0), 0)), `S${i + 1} Y${row.year}: sums`);
+      assert.ok(near(row.rent, part.reduce((a, x) => a + x.rentIn, 0)) && near(row.inst, part.reduce((a, x) => a + x.lmPay + x.eqPay + x.plPay + x.coPay - (x.extraPay || 0), 0)), `S${i + 1} Y${row.year}: sums`);
       if (row.cover != null) assert.ok(near(row.cover, row.rent / row.inst) && row.inst > 0.5, `S${i + 1} Y${row.year}: cover`);
     }
     const withInst = dc.rows.filter((x) => x.cover != null);

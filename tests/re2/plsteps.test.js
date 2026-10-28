@@ -33,7 +33,7 @@ test('several steps: each is the bank maximum in its month, a later one tops up 
   assert.ok(three.events.some((e) => e.fac === 'pl3'), 'the extra step is in the step-by-step');
   assert.ok(three.minCash >= one.minCash - 1, 'more steps never leave less cash at the lowest point');
   // the extra steps count in the personal-loan debt: every month the parts add up to the new debt
-  for (const m of three.months) assert.ok(Math.abs(m.debtPl + m.debtLm + m.debtEq + m.debtCo + m.debtRf - m.debtNew) < 1, `month ${m.t}`);
+  for (const m of three.months) assert.ok(Math.abs(m.debtPl + m.debtLm + m.debtEq + m.debtCo - m.debtNew) < 1, `month ${m.t}`);
 });
 
 test('before the purchase mortgage takes the room first; after it fills what is left', () => {
@@ -45,7 +45,8 @@ test('before the purchase mortgage takes the room first; after it fills what is 
 });
 
 test('automatically: a plan that runs out takes the bank maximum where the cash runs short and stands better', () => {
-  const off = run({}).r, on = run({ plAuto: true }).r;
+  // (construction may not run late here: this test is about the automatic loans)
+  const off = run({}, { lateMaxMonths: 0 }).r, on = run({ plAuto: true }, { lateMaxMonths: 0 }).r;
   assert.ok(!off.feasible, 'the mortgage alone runs out');
   assert.ok(E.reStanding(on) > E.reStanding(off) || on.minCash > off.minCash + 1, 'auto helps');
   assert.ok(on.plan._plAuto.length >= 1 && pls(on).some((f) => f.label.includes('when your cash runs short')));

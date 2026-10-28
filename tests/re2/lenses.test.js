@@ -80,7 +80,7 @@ test('the figures the lenses read: peakDebt = max of all debt with its month, pe
       assert.equal(r.peakDebt, Math.max(...ms.map((x) => x.debt)), `${at}: peakDebt`);
       assert.equal(ms[r.peakDebtT].debt, r.peakDebt, `${at}: peakDebtT`);
       assert.equal(r.peakNewDebt, Math.max(...ms.map((x) => x.debtNew)), `${at}: peakNewDebt`);
-      const inst = (x) => x.existInst + x.lmPay + x.eqPay + x.plPay + x.coPay + x.rfPay - x.extraPay;
+      const inst = (x) => x.existInst + x.lmPay + x.eqPay + x.plPay + x.coPay - x.extraPay;
       assert.equal(inst(ms[r.peakInstT]), r.peakInst, `${at}: peakInstT`);
       assert.ok(near(r.peakInstPct, ms[r.peakInstT].dbr), `${at}: peakInstPct`);
       assert.equal(r.profitPaid, r.newDebtInterest, `${at}: profitPaid`);

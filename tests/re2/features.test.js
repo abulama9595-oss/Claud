@@ -75,7 +75,7 @@ test('liquidity: months of reserve at the low point and thin-surplus months', ()
     m.results.forEach((r) => {
       if (!r) return;
       const lm = r.months[Math.max(1, Math.min(r.months.length - 1, r.minCashT))];
-      const out = lm.liv + lm.rentPaid + lm.existInst + lm.lmPay + lm.eqPay + lm.plPay + lm.coPay + lm.rfPay - lm.extraPay + lm.ownerCost;
+      const out = lm.liv + lm.rentPaid + lm.existInst + lm.lmPay + lm.eqPay + lm.plPay + lm.coPay - lm.extraPay + lm.ownerCost;
       if (out > 0) assert.ok(near(r.reserveMonths, Math.max(0, r.minCash) / out, 1e-9), label);
       assert.ok(r.thinMonths >= 0 && r.thinMonths <= r.months.length - 1, label);
     });

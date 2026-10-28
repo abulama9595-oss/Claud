@@ -160,8 +160,8 @@ test('reLetting: the units you let, the rent per unit (per unit or per m²), gro
 });
 
 test('a building you live in: the let units are an annex of your home — the same numbers as a villa-style annex rent of the net figure', () => {
-  // (bridge money without a limit, the old rule: this test is about the letting channel and the verdict's wording, not the cash)
-  const units = { kind: 'landBuilding', occupancy: 'liveLet', unitCount: 6, unitRentBasis: 'unit', unitRent: 3500, floors: 3, builtPct: 60, landArea: 900, rentNow: 9000, bridgeMaxMonths: null };
+  // (enough cash for a plan to work: this test is about the letting channel and the verdict's wording, not the cash)
+  const units = { kind: 'landBuilding', occupancy: 'liveLet', unitCount: 6, unitRentBasis: 'unit', unitRent: 3500, floors: 3, builtPct: 60, landArea: 900, rentNow: 9000, cashAvailable: 8000000 };
   const a = run(units), net = a.prj.letting.netAnnual;
   assert.ok(net > 0 && a.prj.letting.letUnits === 5);
   const b = run({ ...units, unitCount: 0, partRentAnnual: net });
