@@ -1489,7 +1489,8 @@ function reLate(p, prj, plan, r0) {
   if (!(max > 0)) return null;
   let cur = prj, first = null, peak = 0;
   for (let round = 0; round < 6; round++) {
-    const d = rePlanSimulate(p, cur, { ...plan, _defer: true });
+    // (the trial leaves the cash-out out: it needs the finished home, so it can never pay for the construction)
+    const d = rePlanSimulate(p, cur, { ...plan, coUse: false, _defer: true });
     if (d.deferredFrom === null || d.owedLeft > 0.5 || d.minCash < 0) return null;   // nothing can wait, it can't all be paid, or the land itself is short
     if (first === null) first = d.deferredFrom;
     peak = Math.max(peak, d.owedPeak);
@@ -2445,8 +2446,6 @@ function optimizeRE(inp, opts) {
       // automatic loans were taken), so the copy keeps it — otherwise "Copy to my plans" would not give the mix's figures
       const keepPl = !!(o.plAuto && x.plAutoAt && x.plAutoAt.length);
       x.cleanPlan = { ...o, name: x.name, lmUse: lmKeep, mortgages: eqKeep ? reNormMorts(o.mortgages) : {}, plWhen: x.pl > 0 || x.spl > 0 || keepPl ? o.plWhen : "none", coUse: coKeep, pl2Use: x.pl2 > 0 || x.spl2 > 0 || (keepPl && !!o.pl2Use), rfWhen: "none", plBy: J0 ? (aPl && bPl ? "both" : bPl ? "spouse" : aPl ? "me" : o.plBy) : o.plBy, plAuto: !!(o.plAuto && x.plAutoAt.length) };
-      // (a plan whose construction runs late: its timeline was worked out with every step it has, so it is copied as searched)
-      if (x.late) x.cleanPlan = { ...o, name: x.name };
     });
     const best = { ...list[0] };
     const r = best._r; delete best._r;
