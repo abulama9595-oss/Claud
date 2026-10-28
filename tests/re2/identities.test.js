@@ -38,7 +38,7 @@ function renterSchedule(p, H) {
 
 // each new facility's instalments rebuilt from its amount, rate and instalment (every mortgage on a property you own → eq)
 function facilityPays(r, H) {
-  const pays = { lm: [], eq: [], pl: [], co: [], rf: [] };
+  const pays = { lm: [], eq: [], pl: [], co: [] };
   for (const k of Object.keys(pays)) pays[k] = new Array(H + 1).fill(0);
   for (const f of r.facilities) {
     if (f.startedAt == null || !(f.amount > 0)) continue;
@@ -81,8 +81,8 @@ function audit(label, m, r, bad) {
     const payoffs = r.payoffs.concat(r.prepaid || []).filter((x) => x.t === t).reduce((a, x) => a + x.cost, 0);   // old-loan payoffs and early mortgage payoffs
     const saleNet = sales.filter((s) => s.t === t).reduce((a, s) => a + s.net, 0) + (r.landSale && r.landSale.t === t ? r.landSale.net : 0);   // a sale lands net of the loans it repays
     const flows = proceeds - payoffs - mo.spend + saleNet;
-    for (const k of ['lm', 'eq', 'pl', 'co', 'rf']) if (!near(mo[k + 'Pay'], fp[k][t])) flag('instalments:' + k, `M${t}: engine ${mo[k + 'Pay']} vs rebuilt ${fp[k][t]}`);
-    const newPay = mo.lmPay + mo.eqPay + mo.plPay + mo.coPay + mo.rfPay;
+    for (const k of ['lm', 'eq', 'pl', 'co']) if (!near(mo[k + 'Pay'], fp[k][t])) flag('instalments:' + k, `M${t}: engine ${mo[k + 'Pay']} vs rebuilt ${fp[k][t]}`);
+    const newPay = mo.lmPay + mo.eqPay + mo.plPay + mo.coPay;
     // the rent your properties earn, on both sides
     const pr = propRent(p, r, t, 'strategy'), prB = propRent(p, r, t, 'base');
     if (!near(mo.propRentIn || 0, pr) || !near(mo.propRentBase || 0, prB)) flag('rent your properties earn', `M${t}: engine ${mo.propRentIn} / ${mo.propRentBase} vs rebuilt ${pr} / ${prB}`);

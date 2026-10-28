@@ -123,7 +123,7 @@ test('reLiability: the new loans\' rows add up to newDebtTotal, the old loans ca
       if (!r) return;
       const at = `${label} S${i + 1}`, L = E.reLiability(r, p, m.prj), H = r.months.length - 1;
       assert.ok(near(L.rows.reduce((a, x) => a + x.amount, 0), r.newDebtTotal), `${at}: rows sum to newDebtTotal`);
-      assert.equal(L.rows.length, r.facilities.filter((f) => f.amount > 0 && f.key !== 'rf').length, `${at}: one row per loan taken`);
+      assert.equal(L.rows.length, r.facilities.filter((f) => f.amount > 0).length, `${at}: one row per loan taken`);
       for (const x of L.rows) assert.ok(x.from === r.facilities.find((f) => f.key === x.key).startedAt && x.to >= x.from && x.inst > 0 && x.apr >= 0 && x.effective >= x.apr - 1e-9 && typeof x.securedOn === 'string' && (['you', 'your spouse'].includes(x.borrower) || /you \+ spouse/.test(x.borrower)), `${at} ${x.key}: row`);
       assert.equal(L.old.length, p.existingLoans.filter((l) => l.balance > 0 && l.installment > 0).length, `${at}: one row per old loan`);
       for (const o of L.old) { states[o.state.kind] = (states[o.state.kind] || 0) + 1; const e = r.loansEnd.find((x) => `old:${x.id}` === o.key); assert.ok(e && (o.state.kind !== 'kept') === (e.settledAt != null), `${at} ${o.label}: state ${o.state.kind}`); }

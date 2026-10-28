@@ -57,3 +57,16 @@ test('texts: a bridge names the loan, lens texts say "within 2%" when the pick i
   const L = E.reLensPick([row(0, 2000000, 1015000), row(1, 1000000, 1000000)], {}).leastLiability;
   assert.match(L.why, /within 2% of the least/);
 });
+
+test('tidy-ups: "is this loan worth it?" covers the extra steps; a short comparison gets no verdict; no income gives no NaN; no old rental engine', () => {
+  const inp = { kind: 'landVilla', asOf: '2026-10', income: 60000, livingExpenses: 20000, cashAvailable: 1500000, rentNow: 8000, existingLoans: [], plans: [{ enabled: true, name: 'x', lmUse: true, plMore: [{ when: 'build' }] }] };
+  const keys = E.computeRE(inp, { noNeed: true }).results[0].facilities.filter((f) => f.amount > 0).map((f) => f.key);
+  const rows = E.loanWorthRE(inp, 0);
+  assert.deepEqual(rows.map((x) => x.key).join(), keys.join(), 'one row per loan taken, the extra step included');
+  assert.ok(rows.find((x) => x.key === 'pl3').without.econAdv !== E.computeRE(inp, { noNeed: true }).results[0].econAdv, 'without it the plan differs');
+  const m = E.computeRE({ kind: 'landVilla', asOf: '2026-10', horizon: 1 }, { noNeed: true });
+  assert.equal(m.verdict, 'COMPARISON TOO SHORT');
+  assert.ok(Number.isFinite(E.computeRE({ kind: 'landVilla', asOf: '2026-10', income: 0 }, { noNeed: true }).results[0].peakDbr));
+  assert.equal(typeof E.reSimulate, 'undefined');
+  assert.ok(!('rf' in E.computeRE({ asOf: '2026-10' }, { noNeed: true }).results[0]), 'no empty buy-out facility');
+});

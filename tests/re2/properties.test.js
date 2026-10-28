@@ -194,15 +194,18 @@ test('a mortgage on a property you own is taken when the cash runs short to cove
   assert.ok(!asSet.feasible && E.reGaps(asSet.months, asSet.facilities, asSet.sales, asSet.landSale).every((g) => g.closedBy.includes('eq:p1')), 'as set, the mortgage at move-in closes the gap');
   assert.match(E.planTitle(cov.plan, true, cov, false, E.mergeRE({ properties: [{ id: 'p1', name: 'Villa A', value: 1 }] }).properties), /^Mortgage Villa A when your cash runs short/);
   // a plot sold in month 12 closes a gap from month 3; a sale cannot be moved, so the plan needs bridge money until then
-  // (a 9-month bridge: allow up to 12 months — the default limit is 6)
-  const br = run({ ...TIGHT, bridgeMaxMonths: 12, properties: [{ id: 'p1', name: 'Plot C', value: 2500000, ltv: 70, plan: 'sell', sellAt: 12 }], plans: [{ enabled: true, lmUse: false, settlePolicy: 'none' }] });
+  // (bridge money is the old tool's rule, kept for imported scenarios only — coverAny false; a 9-month bridge: allow up to 12 months)
+  const br = run({ ...TIGHT, coverAny: false, bridgeMaxMonths: 12, properties: [{ id: 'p1', name: 'Plot C', value: 2500000, ltv: 70, plan: 'sell', sellAt: 12 }], plans: [{ enabled: true, lmUse: false, settlePolicy: 'none' }] });
   assert.ok(!br.feasible && br.bridged && br.bridges.length === 1, JSON.stringify(br.bridges));
   const g = br.bridges[0];
   assert.ok(g.to === 12 && g.closedBy.length === 1 && g.closedBy[0] === 'sale:p1' && g.closedByLabel === 'sale of Plot C' && g.reason === 'Plot C is sold only in month 12', JSON.stringify(g));
   assert.match(br.flags[0], /^Needs bridge money: .* until the sale of Plot C in month 12 closes the gap\. No loan can cover it in time: Plot C is sold only in month 12\./);
   assert.ok(near(br.months[12].renterSale, br.sales[0].net, 1e-6));
+  // the same plan in a scenario made here: no bridge money — the construction waits for the sale, or the plan runs out
+  const v2 = run({ ...TIGHT, lateMaxMonths: 24, properties: [{ id: 'p1', name: 'Plot C', value: 2500000, ltv: 70, plan: 'sell', sellAt: 12 }], plans: [{ enabled: true, lmUse: false, settlePolicy: 'none' }] });
+  assert.ok(!v2.bridged && (v2.feasible ? v2.late && v2.late.months >= 0 : true), JSON.stringify(v2.late));
   // the same gap, the home you live in sold at move-in: the old wording
-  const hb = run({ ...TIGHT, cashAvailable: 2000000, properties: [{ id: 'p1', name: 'Our home', value: 2500000, isHome: true, plan: 'sell' }], plans: [{ enabled: true, lmUse: false, settlePolicy: 'none' }] });
+  const hb = run({ ...TIGHT, coverAny: false, cashAvailable: 2000000, properties: [{ id: 'p1', name: 'Our home', value: 2500000, isHome: true, plan: 'sell' }], plans: [{ enabled: true, lmUse: false, settlePolicy: 'none' }] });
   if (hb.bridged) assert.ok(hb.bridges[0].closedBy.includes('sale:p1') && hb.bridges[0].closedByLabel === 'sale of the home you live in' && /sold only at move-in/.test(hb.bridges[0].reason));
 });
 
