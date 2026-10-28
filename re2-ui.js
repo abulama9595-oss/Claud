@@ -110,7 +110,7 @@ function fundingBridgeRows(r, upto, inp, prj) {
   const inRange = (t) => t !== null && t !== undefined && t <= upto;
   add("Your own cash", r.cashStart, "the cash you have, set in step 1", 0);
   r.payoffs.filter((x) => inRange(x.t)).forEach((x) => add(`Old loan paid off early: ${x.name}`, -x.cost, `${fCal(x.t)} · incl. ${fSAR(x.fee)} early-settlement fee`, x.t));
-  const build = inp.acquire === "build";
+  const build = !!prj.build;   // (from the project, not inp.acquire: the page may change the kind without it)
   const landPart = inRange(prj.landMonth) ? (build ? prj.land + prj.rett + (prj.landBroker || 0) : prj.total) : 0;
   const spend = r.months.filter((x) => x.t <= upto).reduce((a, x) => a + x.spend, 0);
   if (landPart) rePurchaseParts(inp, prj).forEach((x) => add(x.label, -x.v, `${fCal(prj.landMonth)}${x.note ? ` · ${x.note}` : ""}`, prj.landMonth + 0.5));
@@ -444,7 +444,7 @@ const bucketOf = (r) => r.months.map((m) => ({ t: m.t, inc: m.t >= 1 ? m.inc : (
    the debt still owed. What is left: */
 function reWealthParts(r) {
   const ms = r.months, end = ms[ms.length - 1], sum = (k) => ms.reduce((a, m) => a + (m[k] || 0), 0);
-  const refi = [r.pl, r.pl2, r.spl, r.spl2].filter((f) => f && f.refi && f.refi.items).flatMap((f) => f.refi.items);
+  const refi = (r.facilities || []).filter((f) => f && f.refi && f.refi.items).flatMap((f) => f.refi.items);   // every personal-loan step (pl3+ and your spouse's too)
   const oldPaid = (r.payoffs || []).filter((x) => x.old !== false).reduce((a, x) => a + x.cost, 0) + refi.filter((x) => x.old).reduce((a, x) => a + x.cost, 0);
   // the properties you sold: a sale repays the plan's mortgage on it (its fee is a new-loan cost) and any old loan secured on it
   // (its payoff is an old-loan cost); what only this side sold counts against what it would be worth (ownGone); a property sold

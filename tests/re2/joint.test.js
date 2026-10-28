@@ -81,7 +81,7 @@ test('while your own debts are over your limit no joint mortgage is lent; your s
   // SAMA's other limits warn about your spouse's loans: over their limit, over 45% below 25,000
   const w = s.household.warnings.join(' | ');
   assert.ok(/above their 55% limit/.test(w) && /SAMA allows 45%/.test(w), w);
-  assert.ok(/salary-deducted personal finance, SAMA allows 33.33%/.test(E.computeRE({ ...BASE, joint: { on: true, income: 10000, loans: [{ name: 'L', balance: 150000, installment: 4000, monthsLeft: 48, rate: 6 }] } }, { noNeed: true }).household.warnings.join(' ')));
+  assert.ok(/your spouse's loan L takes 40% of their income — above the \d+% one personal loan may take/.test(E.computeRE({ ...BASE, joint: { on: true, income: 10000, loans: [{ name: 'L', balance: 150000, installment: 4000, monthsLeft: 48, rate: 6 }] } }, { noNeed: true }).household.warnings.join(' ')));
   assert.ok(/income is 0/.test(E.computeRE({ ...BASE, joint: { on: true, income: 0, loans: [] } }, { noNeed: true }).household.warnings.join(' ')));
 });
 
