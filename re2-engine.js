@@ -1525,7 +1525,7 @@ function reCarryOutAuto(p, prj, plan) {
   const H = r.months.length - 1, minAge = p.refiMinMonths == null ? 12 : p.refiMinMonths;
   let auto = (plan._plAuto || []).slice();
   for (let round = 0; round < 4 && !r.feasible; round++) {
-    const low = r.months.find((m) => m.t >= 1 && (m.avail == null ? m.cash : m.avail) < p.cashBuffer - 0.5);
+    const low = r.months.find((m) => m.t >= 0 && (m.avail == null ? m.cash : m.avail) < p.cashBuffer - 0.5);
     if (!low) break;
     const from = low.t, back = r.months.find((m) => m.t > from && (m.avail == null ? m.cash : m.avail) >= p.cashBuffer - 0.5), to = back ? back.t : H;
     // the months in the gap the bank's room can change: its start, each old loan's last instalment, each personal loan's refinance age

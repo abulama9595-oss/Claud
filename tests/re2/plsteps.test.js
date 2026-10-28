@@ -62,3 +62,14 @@ test('old plans run exactly as before (no extra steps, no auto)', () => {
   const a = run({ plWhen: 'build', pl2Use: true }).r, b = run({ plWhen: 'build', pl2Use: true, plMore: [], plAuto: false }).r;
   assert.equal(a.econAdv, b.econAdv); assert.equal(a.minCash, b.minCash);
 });
+
+test('automatically: a purchase today (month 0) that the cash cannot cover gets its loan in month 0, as the "before the purchase" tick does', () => {
+  const ready = { asOf: '2026-10', kind: 'readyVilla', landMonth: 0, propertyPrice: 3000000, income: 80000, livingExpenses: 25000, cashAvailable: 2600000, cashBuffer: 100000, rentNow: 0, properties: [], joint: { on: false },
+    existingLoans: [{ id: 1, name: 'Loan K', balance: 300000, installment: 9000, monthsLeft: 40, rate: 5.5, type: 'personal', canSettle: true, canRefi: true, ageMonths: 30 }] };
+  const p = E.mergeRE(ready), prj = E.reProject(p), go = (plan) => E.reRunPlan(p, prj, { ...E.RE_PLAN_DEFAULTS, enabled: true, lmUse: false, ...plan });
+  const none = go({ plWhen: 'none' }), auto = go({ plWhen: 'none', plAuto: true }), before = go({ plWhen: 'preLand' });
+  assert.ok(!none.feasible && none.minCashT === 0, 'short in month 0 without a loan');
+  assert.ok(before.feasible, 'the "before the purchase" tick works');
+  assert.ok(auto.feasible && auto.plan._plAuto[0] === 0, JSON.stringify(auto.plan._plAuto));
+  assert.ok(Math.abs(auto.minCash - before.minCash) < 1, `${auto.minCash} vs ${before.minCash}`);
+});
