@@ -1411,10 +1411,24 @@ function rePlanSimulate(p, prj, plan) {
   let thinMonths = 0, tightest = null;
   months.forEach((m) => { if (m.t < 1) return; const surplus = m.inc - outgo(m) + m.rentIn + m.propRentIn; if (surplus < 0.05 * m.inc) thinMonths++; if (!tightest || surplus < tightest.surplus) tightest = { t: m.t, surplus }; });
   if (prj.occupy > H) flags.push(prj.isLand ? `The land is not paid for before the end of the comparison (month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.` : `The ${prj.isBuilding ? "building" : "home"} is not finished before the end of the comparison (${livesIn ? "move-in" : "completion"} month ${prj.occupy}, horizon month ${H}) — lengthen the horizon to judge it.`);
+  // the cash runs out after the purchase / project end (coverAny only): not from the project — each month costs more than you
+  // earn. shortWhy says by how much (the month it runs out) and when it turns (the first month after the low point that adds to
+  // your cash, and what ends then)
+  let shortWhy = null;
+  if (shortfall > 0 && !bridged && p.coverAny !== false && shortFrom > prj.occupy) {
+    const netOf = (m) => m.inc + m.rentIn + m.propRentIn - outgo(m), m0 = months[shortFrom];
+    if (netOf(m0) < 0) {
+      const inst = (m) => m.existInst + m.lmPay + m.eqPay + m.plPay + m.coPay - m.extraPay;
+      const rec = months.find((m) => m.t > minCashT && netOf(m) > 0) || null, prev = rec ? months[rec.t - 1] : null;
+      const ends = !rec ? [] : [prev.plPay - rec.plPay > 1 && "your new personal loans end", prev.lmPay + prev.eqPay + prev.coPay - rec.lmPay - rec.eqPay - rec.coPay > 1 && "a mortgage ends", prev.existInst - rec.existInst > 1 && "your old loans end"].filter(Boolean);
+      shortWhy = { t: shortFrom, deficit: -netOf(m0), inc: m0.inc, liv: m0.liv + m0.rentPaid, inst: inst(m0), upkeep: m0.ownerCost + m0.holding, rentIn: m0.rentIn + m0.propRentIn, recT: rec ? rec.t : null, recWhy: ends.join(" and ") };
+    }
+  }
+  const whyTxt = (w) => `not from the ${prj.construct ? "project" : prj.isLand ? "land" : "purchase"} (paid by month ${prj.occupy - 1}), but because each month you pay out more than you earn: salary ${fSAR(w.inc)}${w.rentIn > 0.5 ? ` + rent ${fSAR(w.rentIn)}` : ""}; living costs ${fSAR(w.liv)}, instalments ${fSAR(w.inst)}${w.upkeep > 0.5 ? `, upkeep ${fSAR(w.upkeep)}` : ""} → about ${fSAR(w.deficit)} short a month.${w.recT != null ? ` It recovers in month ${w.recT}${w.recWhy ? `, when ${w.recWhy}` : ""}.` : ""}`;
   if (shortfall > 0 && !bridged) {
     // computeRE adds how much more cash the plan needs (reAddNeed); the most you are short is not that figure
-    flags.unshift(`Your cash runs out in month ${shortFrom} and no loan in this plan covers it in time. At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.`);
-    events.push({ t: shortFrom, kind: "short", text: `Your cash runs out — no loan in this plan covers it in time. At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.` });
+    flags.unshift(shortWhy ? `Your cash runs out in month ${shortFrom} — ${whyTxt(shortWhy)} At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.` : `Your cash runs out in month ${shortFrom} and no loan in this plan covers it in time. At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.`);
+    events.push({ t: shortFrom, kind: "short", why: shortWhy ? whyTxt(shortWhy) : null, text: shortWhy ? `Your cash runs out — ${whyTxt(shortWhy)} At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.` : `Your cash runs out — no loan in this plan covers it in time. At the worst, in month ${minCashT}, you would be ${fS(shortfall)} short.` });
     events.sort((a, b) => a.t - b.t);
   }
   else if (!recoveryOk) flags.push(cashRestoredT == null ? `Cash never gets back to your ${fS(p.cashBuffer)} buffer after the project end within the horizon.` : `Cash gets back to your ${fS(p.cashBuffer)} buffer ${recoveryMonths} months after the project end (you asked for ${p.recoveryMonths}).`);
@@ -1422,7 +1436,7 @@ function rePlanSimulate(p, prj, plan) {
   events.sort((a, b) => a.t - b.t);
   // (one copy per facility, so r.lm, r.eq / r.eqs[i] and the same entry of r.facilities are one object)
   const outs = new Map(), facOut = (f) => { if (!outs.has(f)) { const { pay, int, extra, ...rest } = f; outs.set(f, rest); } return outs.get(f); };
-  return { plan, months, years, events, flags, notes: [], ...(deferring ? { paid, owedLeft: owed, owedPeak, deferredFrom } : {}), feasible, shortFrom, bridged, bridges, bridgeCost: bridgeCum, bridgePeak: bridged ? Math.max(...bridges.map((b) => b.peak)) : 0, bridgeRate: bridgeApr, recoveryOk, onHandAtMoveIn, loansLeftAtMoveIn, salaryToMoveIn, moveInOk, end,
+  return { plan, months, years, events, flags, notes: [], ...(deferring ? { paid, owedLeft: owed, owedPeak, deferredFrom } : {}), feasible, shortFrom, shortWhy, bridged, bridges, bridgeCost: bridgeCum, bridgePeak: bridged ? Math.max(...bridges.map((b) => b.peak)) : 0, bridgeRate: bridgeApr, recoveryOk, onHandAtMoveIn, loansLeftAtMoveIn, salaryToMoveIn, moveInOk, end,
     lm: facOut(lm), eq: facOut(eqs[0] || eqBlank()), eqs: eqs.map(facOut), pl: facOut(pl), pl2: facOut(pl2), co: facOut(co), ...(byB ? { spl: facOut(spl), spl2: facOut(spl2) } : {}), refiTotal, roomSettled, annualRentOut, rentInTotal: rentInCum, facilities: facs.map(facOut), loansEnd: loans.map((l) => ({ id: l.id, name: l.name, settledAt: l.settledAt, refinancedAt: l.refinancedAt == null ? null : l.refinancedAt, toppedUpAt: l.toppedUpAt == null ? null : l.toppedUpAt, soldAt: l.soldAt == null ? null : l.soldAt, bal: l.bal })),
     cashStart: p.cashAvailable, minCash, minCashT, belowBufferMonths, shortfall, cashAtCompletion: months[Math.min(H, prj.occupy)].cash, cashEnd: end.cash,
     cashRestoredT, recoveryMonths, cashAfterWindow: months[after].avail, payoffs, newDebtTotal: facs.reduce((a, f) => a + f.amount, 0),
@@ -1765,8 +1779,10 @@ function reAddNeed(p, prj, r) {
   // one number only: the extra cash that carries the whole project through (the bridge-money figure and the worst month stay
   // in the result for the tables, not in these sentences)
   const i = r.flags.findIndex((f) => /^Your cash runs out in month/.test(f));
-  if (i >= 0) r.flags[i] = `Your cash runs out in month ${r.shortFrom} and no loan in this plan covers it in time. To complete the whole project you need ${fS(n.needMore)} more cash in total.`;
-  r.events.forEach((e) => { if (e.kind === "short") e.text = `Your cash runs out — no loan in this plan covers it in time. To complete the whole project you need ${fS(n.needMore)} more cash in total.`; });
+  // (a run-out after the project end: why — each month costs more than you earn — and "to get through", not "to complete")
+  const ev = r.events.find((e) => e.kind === "short"), why = ev && ev.why;
+  if (i >= 0) r.flags[i] = why ? `Your cash runs out in month ${r.shortFrom} — ${why} To get through, you need ${fS(n.needMore)} more cash in total.` : `Your cash runs out in month ${r.shortFrom} and no loan in this plan covers it in time. To complete the whole project you need ${fS(n.needMore)} more cash in total.`;
+  r.events.forEach((e) => { if (e.kind === "short") e.text = e.why ? `Your cash runs out — ${e.why} To get through, you need ${fS(n.needMore)} more cash in total.` : `Your cash runs out — no loan in this plan covers it in time. To complete the whole project you need ${fS(n.needMore)} more cash in total.`; });
   return r;
 }
 

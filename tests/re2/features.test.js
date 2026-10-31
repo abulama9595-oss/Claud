@@ -398,3 +398,18 @@ test('a plan that runs out says how much more cash it needs: the least extra cas
   // a loan of the plan taken early can carry part of the shortfall, so the need is often below the most you are short
   assert.ok(n.found > 0 && n.belowPeak > 0, JSON.stringify(n));
 });
+
+test('a run-out after the purchase says why: each month costs more than you earn, and when it turns', () => {
+  const inp = { asOf: '2026-10', kind: 'readyVilla', landMonth: 0, propertyPrice: 3000000, income: 60000, livingExpenses: 26000, cashBuffer: 0, rentNow: 0, maintPct: 1, insurance: 3000, appreciation: 0, properties: [], existingLoans: [], joint: { on: false }, cashAvailable: 1750000,
+    plans: [{ ...E.RE_PLAN_DEFAULTS, enabled: true, name: 'x', lmUse: false, plWhen: 'start' }] };
+  const r = E.computeRE(inp).results[0], w = r.shortWhy;
+  assert.ok(!r.feasible && r.shortFrom > r.occupy && w, JSON.stringify(w));
+  assert.ok(Math.abs(w.deficit - (w.liv + w.inst + w.upkeep - w.inc - w.rentIn)) < 1 && w.deficit > 0);
+  assert.ok(w.recT > r.minCashT && /new personal loans end/.test(w.recWhy));
+  const ev = r.events.find((e) => e.kind === 'short');
+  assert.match(ev.text, /^Your cash runs out — not from the purchase .* short a month\. It recovers in month \d+, when your new personal loans end\. To get through, you need .* more cash in total\.$/);
+  assert.match(r.flags[0], /^Your cash runs out in month \d+ — not from the purchase/);
+  // short at the purchase itself: the old words
+  const r0 = E.computeRE({ ...inp, cashAvailable: 1200000 }).results[0];
+  assert.ok(!r0.shortWhy && /To complete the whole project you need/.test(r0.events.find((e) => e.kind === 'short').text));
+});
