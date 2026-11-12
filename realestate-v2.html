@@ -390,7 +390,7 @@
         if (out.converted.length) out.backup = { cur: curRaw, store: storeRaw };
         if (localStorage.getItem(ROLL_SKIP_KEY) === now) return out;
         const cur = readJSON(CUR_KEY), store = loadStore();
-        if (cur && cur.asOf) { const R = reRollForward(cur, now); if (R) { localStorage.setItem(CUR_KEY, JSON.stringify(R.inp)); out.cur = true; out.notes.push(...R.notes); } }
+        if (cur && cur.asOf) { const R = reRollForward(cur, now); if (R) { localStorage.setItem(CUR_KEY, JSON.stringify(R.inp)); out.cur = { from: R.from, to: R.to, notes: R.notes }; out.notes.push(...R.notes); } }
         let changed = false;
         // (on the studio site a scenario someone else owns cannot be saved back: it is brought up to date when you open it)
         const mine = (n) => !(window.STUDIO && typeof window.STUDIO.mine === "function") || window.STUDIO.mine(STORE_KEY, n);
@@ -494,7 +494,8 @@
       const [snap, setSnap] = useState(() => { const s0 = loadedName && saved[loadedName]; return JSON.stringify(s0 ? { ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) } : inp); });   // your inputs as last saved or loaded
       useEffect(() => { try { if (loadedName) localStorage.setItem(OPEN_KEY, loadedName); else localStorage.removeItem(OPEN_KEY); } catch (e) {} }, [loadedName]);
       const [showScen, setShowScen] = useState(false);
-      const [rollNote, setRollNote] = useState(() => !!ROLLED.backup);   // the "brought up to date" note (ROLLED)
+      // the open scenario's loans brought up to date this month ({ from, to, notes }) — said on the loans step only
+      const [rollInfo, setRollInfo] = useState(() => ROLLED.cur || null);
       const [undo, setUndo] = useState(null);
       const [openDis, setOpenDis] = useState({});
       const [measure, setMeasure] = useState("econ");
@@ -754,7 +755,9 @@
       const doLoad = (n) => {
         const s0 = saved[n]; if (!s0) return;
         if (dirty && !window.confirm(`Load "${n}"? The changes you have not saved here are replaced (you can undo for 10 seconds).`)) return;
-        withUndo(`Loaded "${n}"`, () => { const q0 = reFixOcc({ ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }), R = reRollForward(q0, ROLLED.now), q = R ? R.inp : q0; setInp(q); setLoadedName(n); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(false); });
+        withUndo(`Loaded "${n}"`, () => { const q0 = reFixOcc({ ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }), R = reRollForward(q0, ROLLED.now), q = R ? R.inp : q0;
+          const rolledHere = ROLLED.names.includes(n) ? { from: reAsOfOf(s0.inp, s0.savedAt) === ROLLED.now ? null : reAsOfOf(s0.inp, s0.savedAt), to: ROLLED.now, notes: [] } : null;
+          setRollInfo(R ? { from: R.from, to: R.to, notes: R.notes } : rolledHere && ROLLED.backup ? (() => { try { const b = JSON.parse(ROLLED.backup.store || "{}")[n]; const f0 = b && b.inp ? reAsOfOf(b.inp, b.savedAt) : null; return f0 && f0 !== ROLLED.now ? { from: f0, to: ROLLED.now, notes: ROLLED.notes.filter((x) => x.startsWith(`${n}: `)).map((x) => x.slice(n.length + 2)) } : null; } catch (e) { return null; } })() : null); setInp(q); setLoadedName(n); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(false); });
       };
       const doDelete = (n) => { if (!window.confirm(`Delete the saved scenario "${n}"?`)) return; withUndo(`Deleted "${n}"`, () => { const o = { ...saved }; delete o[n]; persist(o); if (loadedName === n) setLoadedName(null); }); };
       const resetAll = () => { if (!window.confirm("Start again from the tool's defaults? Your inputs here are replaced (you can undo for 10 seconds).")) return; withUndo("Started from the defaults", () => { const q = { ...mergeRE({}), asOf: reAsOfOf(null) }; setInp(q); setLoadedName(null); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(true); }); };
@@ -1044,6 +1047,8 @@
             <Head id="loans" title="What do you already owe?" sub={jointOn ? "The bank counts these instalments first, each against its owner's income; what is left of each of your limits decides how much it can lend (a joint mortgage may use both). Paying one off, or the bank buying one of yours out, frees room." : `The bank counts these instalments first; what is left of your ${inp.dbrCap}% limit decides how much it can lend. Paying one off, or the bank buying it out with a new personal loan, frees room.`} />
             <Box title={`Your loans · ${fSAR(inst)}/mo · ${inp.income > 0 ? (inst / inp.income * 100).toFixed(0) : 0}% of ${jointOn ? "your " : ""}income`} right={<button className="lnk no-print" onClick={() => setLoanMore(!loanMore)}>{loanMore ? "Fewer columns" : "More: age, settle date, permissions"}</button>}>
               {loanTable(loans, setLoans, false)}
+              {rollInfo && rollInfo.from && (() => { const mon = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k || ""); return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }) : k; }; return (
+                <div className="no-print" style={{ fontSize: 12, color: K.sub, marginTop: 6, lineHeight: 1.45 }}>Brought up to date to {mon(rollInfo.to)}: balances, months left and ages recalculated for the months since {mon(rollInfo.from)}.{rollInfo.notes && rollInfo.notes.length ? ` ${rollInfo.notes.join("; ")}.` : ""}{ROLLED.backup && <> <button className="lnk" style={{ fontSize: 12 }} onClick={() => { try { const b = ROLLED.backup; if (b.cur != null) localStorage.setItem(CUR_KEY, b.cur); if (b.store != null) localStorage.setItem(STORE_KEY, b.store); localStorage.setItem(ROLL_SKIP_KEY, ROLLED.now); } catch (e) {} location.reload(); }}>Undo — keep the old numbers this month</button></>}</div>); })()}
               {household.warnings.filter((w) => !/^Plan \d+ mortgages/.test(w)).length > 0 && <div style={{ background: SOFT_AMB, borderRadius: 8, padding: "8px 12px", marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>{household.warnings.filter((w) => !/^Plan \d+ mortgages/.test(w)).map((w, k) => <div key={k} className="flex items-start" style={{ gap: 6 }}><AlertTriangle size={14} color={K.brassTx} style={{ flex: "none", marginTop: 3 }} /><span>{w}</span></div>)}</div>}
               <div className="note">"May be paid off from cash" unticked: no plan pays it off early (keep cheap debt). "May the bank buy it out" unticked: no new personal loan clears it. "Settle in month": you clear it from your cash then — whether you {W.act.replace(/^(buy|build)ing/, "$1")} or not. The bank can buy a personal loan out once it is {inp.refiMinMonths} months old. A flat (hamish) rate is converted to the yearly rate (APR) it amortises at, over its whole term (months since it started + months left).</div>
               <More title="Import or paste loans (Qist export, or one per line: name, balance, instalment, months, rate)">
@@ -2771,12 +2776,6 @@
           <div className="shell">
             <aside className="rail rail-l" aria-label="Your inputs">{InputsRail()}</aside>
             <main style={{ minWidth: 0 }}>
-              {rollNote && <div className="box no-print" role="status" style={{ marginBottom: 12, padding: "10px 14px", background: SOFT, fontSize: 13, lineHeight: 1.5 }}>
-                {(ROLLED.cur || ROLLED.names.length > 0) && <><b>Brought up to date to {(() => { const m = /^(\d{4})-(\d{2})$/.exec(ROLLED.now); return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }) : ROLLED.now; })()}</b>{ROLLED.names.length ? <> — {ROLLED.names.join(", ")}{ROLLED.cur ? " and your working copy" : ""}</> : " — your working copy"}: your loans' balances, months left and ages were recalculated for the months that passed, and the project and plan dates kept their calendar months. Your cash is as you entered it.</>}
-                {ROLLED.converted.length > 0 && <div style={{ marginTop: 4 }}><b>"I live in one unit, the rest is let" is no longer offered</b> — {ROLLED.converted.join(", ")} now let{ROLLED.converted.length === 1 && ROLLED.converted[0] !== "your working copy" ? "s" : ""} the building out entirely, so {ROLLED.converted.length === 1 ? "its" : "their"} numbers change. You can choose "Sell the apartments" instead in Your project.</div>}
-                {ROLLED.notes.length > 0 && <ul style={{ margin: "4px 0 0 18px" }}>{ROLLED.notes.map((x, k) => <li key={k}>{x}</li>)}</ul>}
-                <div className="flex flex-wrap" style={{ gap: 8, marginTop: 6 }}><button className="btn small" onClick={() => setRollNote(false)}>OK</button>{(ROLLED.cur || ROLLED.names.length > 0) && <button className="btn small" onClick={() => { try { const b = ROLLED.backup; if (b.cur != null) localStorage.setItem(CUR_KEY, b.cur); if (b.store != null) localStorage.setItem(STORE_KEY, b.store); localStorage.setItem(ROLL_SKIP_KEY, ROLLED.now); } catch (e) {} location.reload(); }}>Undo — keep the old numbers this month</button>}</div>
-              </div>}
               <details className="box sum-compact no-print" style={{ marginBottom: 12, padding: "10px 14px" }}><summary style={{ cursor: "pointer", fontSize: 13 }}><b>Your inputs:</b> <span style={{ color: K.sub }}>{compactSummary}</span></summary>{InputsSummary()}</details>
               {!printAll && StepNav({ top: true })}
               {printAll ? PrintAnswer() : panels[cur]()}
