@@ -2207,7 +2207,7 @@
         const S = prj.sale; if (!S) return null;
         const sold = r.salesTotal || 0, costs = r.salesCosts || 0, profit = sold - costs - prj.total, out = r.soldOutT;
         return (
-          <Box title="Developer view" style={{ marginTop: 14 }} help={EXPL.sale}>
+          <Box title="Developer view" style={{ marginTop: 14, marginBottom: 14 }} help={EXPL.sale}>
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))", gap: 10 }}>
               <Tile label="Sales" value={fM(sold)} sub={`${(r.unitSales || []).reduce((a, x) => a + x.units, 0)} of ${S.units} apartments${out != null ? `, sold out ${fCal(out)}` : " by the end of the comparison"}`} />
               <Tile label="Selling costs" value={fM(costs)} sub={`${S.costPct}% of the price`} />
@@ -2690,6 +2690,7 @@
         return (
           <div>
             {AnswerLine({ one: false })}
+            {sellAll && SalesView({ r, i })}
             {FindDates()}
             <div style={{ marginTop: 14 }}>{LensCards({ print: false })}</div>
             {SaveAndBuy()}
@@ -2697,7 +2698,6 @@
             {LiabilityCard({ r, i, print: false, part: "loans" })}
             {LiabilityCard({ r, i, print: false, part: "settle" })}
             {letAll && InvestmentView({ r, i })}
-            {sellAll && SalesView({ r, i })}
             {WatchOut({ items: watchOut(r) })}
             {DetailsBox({ r, i })}
             {loanDlg && (loanDlg.view === "end" ? CashEndDetails() : loanDlg.view === "payoff" ? PayoffDetails() : LoanDetails())}
