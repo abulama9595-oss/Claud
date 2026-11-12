@@ -382,8 +382,10 @@
         const cur = readJSON(CUR_KEY), store = loadStore();
         if (cur && cur.asOf) { const R = reRollForward(cur, now); if (R) { localStorage.setItem(CUR_KEY, JSON.stringify(R.inp)); out.cur = true; out.notes.push(...R.notes); } }
         let changed = false;
+        // (on the studio site a scenario someone else owns cannot be saved back: it is brought up to date when you open it)
+        const mine = (n) => !(window.STUDIO && typeof window.STUDIO.mine === "function") || window.STUDIO.mine(STORE_KEY, n);
         for (const [n, sv] of Object.entries(store)) {
-          if (!sv || !sv.inp) continue;
+          if (!sv || !sv.inp || !mine(n)) continue;
           const R = reRollForward({ ...sv.inp, asOf: reAsOfOf(sv.inp, sv.savedAt) }, now);
           if (R) { store[n] = { ...sv, inp: R.inp }; out.names.push(n); changed = true; R.notes.forEach((x) => out.notes.push(`${n}: ${x}`)); }
         }
@@ -742,7 +744,7 @@
       const doLoad = (n) => {
         const s0 = saved[n]; if (!s0) return;
         if (dirty && !window.confirm(`Load "${n}"? The changes you have not saved here are replaced (you can undo for 10 seconds).`)) return;
-        withUndo(`Loaded "${n}"`, () => { const q = { ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }; setInp(q); setLoadedName(n); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(false); });
+        withUndo(`Loaded "${n}"`, () => { const q0 = { ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }, R = reRollForward(q0, ROLLED.now), q = R ? R.inp : q0; setInp(q); setLoadedName(n); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(false); });
       };
       const doDelete = (n) => { if (!window.confirm(`Delete the saved scenario "${n}"?`)) return; withUndo(`Deleted "${n}"`, () => { const o = { ...saved }; delete o[n]; persist(o); if (loadedName === n) setLoadedName(null); }); };
       const resetAll = () => { if (!window.confirm("Start again from the tool's defaults? Your inputs here are replaced (you can undo for 10 seconds).")) return; withUndo("Started from the defaults", () => { const q = { ...mergeRE({}), asOf: reAsOfOf(null) }; setInp(q); setLoadedName(null); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(true); }); };
