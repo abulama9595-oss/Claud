@@ -778,7 +778,7 @@
             <Row k={jointOn ? "Your income" : "Income"} v={`${fSAR(inp.income)}/mo`} />
             {jointOn && <Row k="Your spouse's income" v={`${fSAR(jt.income || 0)}/mo`} sub={<><span lang="ar">تضامن</span>: joint mortgages</>} />}
             <Row k="Living costs" v={`${fSAR(inp.livingExpenses)}/mo`} />
-            {inp.rentNow > 0 && <Row k="Rent today" v={`${fSAR(inp.rentNow)}/mo`} />}
+            {inp.rentNow > 0 && <Row k="Rent today" v={`${fSAR(inp.rentNow * 12)}/yr`} />}
             <Row k="Cash today" v={fM(inp.cashAvailable)} />
             <Row k="Safety cushion" v={fM(inp.cashBuffer)} />
             <Row k={`Cash at ${W.doneShort} at least`} v={fM(moveLine)} />
@@ -879,7 +879,7 @@
             <Box title="Each month">
               <Field label={jointOn ? "Your income the bank recognises" : "Income the bank recognises"} value={inp.income} min={5000} max={250000} step={1000} unit="SAR/mo" onChange={(v) => set("income", v)} />
               <Field label={jointOn ? "Living costs of the household (not rent or loans)" : "Living costs (not rent or loans)"} value={inp.livingExpenses} min={2000} max={100000} step={500} unit="SAR/mo" onChange={(v) => set("livingExpenses", v)} />
-              <Field label="Rent you pay today" value={inp.rentNow} min={0} max={40000} step={500} unit="SAR/mo" onChange={(v) => set("rentNow", v)} hint={rentHint} />
+              <Field label="Rent you pay today" value={Math.round((inp.rentNow || 0) * 12)} min={0} max={480000} step={1000} unit="SAR/yr" onChange={(v) => set("rentNow", v / 12)} hint={rentHint} />
               <div className="note" style={{ marginTop: 0 }}>Left each month today: <b className="mono" style={{ color: household.savings >= 0 ? K.text : K.neg }}>{fSARm(household.savings)}</b> after living costs, rent and your loans.<Hint text={EXPL.savings} /></div>
             </Box>
             <Box title="What you have">
