@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=29151d6546"></script>
-  <script src="re2-engine.js?v=29151d6546"></script>
-  <script src="re2-ui.js?v=29151d6546"></script>
+  <script src="engine.js?v=79c2c8a6c6"></script>
+  <script src="re2-engine.js?v=79c2c8a6c6"></script>
+  <script src="re2-ui.js?v=79c2c8a6c6"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -374,11 +374,21 @@
     // every saved scenario are rolled forward to this month (reRollForward: loans paid down, the project kept on its calendar
     // dates, cash as entered) and saved back; ROLLED says what changed and keeps what was there, for undo
     const ROLL_SKIP_KEY = "re2_roll_skip";
+    // a building can no longer be "I live in one unit, the rest is let": such scenarios are let out entirely now (the engine still
+    // understands liveLet, for the tests and imports)
+    const reFixOcc = (q) => q && (q.kind === "landBuilding" || q.kind === "readyBuilding") && q.occupancy !== "let" && q.occupancy !== "sell" ? { ...q, occupancy: "let" } : q;
     const ROLLED = (() => {
-      const now = reMonthKey(new Date()), out = { now, names: [], cur: false, notes: [], backup: null };
+      const now = reMonthKey(new Date()), out = { now, names: [], cur: false, notes: [], converted: [], backup: null };
       try {
-        if (localStorage.getItem(ROLL_SKIP_KEY) === now) return out;
         const curRaw = localStorage.getItem(CUR_KEY), storeRaw = localStorage.getItem(STORE_KEY);
+        const mine0 = (n) => !(window.STUDIO && typeof window.STUDIO.mine === "function") || window.STUDIO.mine(STORE_KEY, n);
+        // (once: the old "I live in one unit" buildings, let out entirely from now on)
+        let conv = false; const cur0 = readJSON(CUR_KEY), store0 = loadStore();
+        if (cur0 && reFixOcc(cur0) !== cur0) { localStorage.setItem(CUR_KEY, JSON.stringify(reFixOcc(cur0))); out.converted.push("your working copy"); }
+        for (const [n, sv] of Object.entries(store0)) if (sv && sv.inp && mine0(n) && reFixOcc(sv.inp) !== sv.inp) { store0[n] = { ...sv, inp: reFixOcc(sv.inp) }; out.converted.push(n); conv = true; }
+        if (conv) saveStore(store0);
+        if (out.converted.length) out.backup = { cur: curRaw, store: storeRaw };
+        if (localStorage.getItem(ROLL_SKIP_KEY) === now) return out;
         const cur = readJSON(CUR_KEY), store = loadStore();
         if (cur && cur.asOf) { const R = reRollForward(cur, now); if (R) { localStorage.setItem(CUR_KEY, JSON.stringify(R.inp)); out.cur = true; out.notes.push(...R.notes); } }
         let changed = false;
@@ -390,7 +400,7 @@
           if (R) { store[n] = { ...sv, inp: R.inp }; out.names.push(n); changed = true; R.notes.forEach((x) => out.notes.push(`${n}: ${x}`)); }
         }
         if (changed) saveStore(store);
-        if (out.cur || changed) out.backup = { cur: curRaw, store: storeRaw };
+        if (out.cur || changed || out.converted.length) out.backup = { cur: curRaw, store: storeRaw };
       } catch (e) {}
       return out;
     })();
@@ -538,7 +548,7 @@
       const home = true;                        // one engine for every project (the household simulation)
       // the project in words — one source: the kind and whether you move in (reKindWords)
       const W = useMemo(() => reKindWords(inp, prj), [inp, prj]);
-      const { build, isLand, isBuilding, letAll, renting } = W, baseLbl = W.baseline;
+      const { build, isLand, isBuilding, letAll, sellAll, renting } = W, baseLbl = W.baseline;
       const props = p2.properties || [];        // the properties you own, normalised
       // تضامن is on: your spouse's income and loans count (hj = the household figures for both of you)
       const jointOn = !!(inp.joint && inp.joint.on), hj = jointOn ? household.joint || null : null, jt = inp.joint || RE_BASE.joint;
@@ -744,7 +754,7 @@
       const doLoad = (n) => {
         const s0 = saved[n]; if (!s0) return;
         if (dirty && !window.confirm(`Load "${n}"? The changes you have not saved here are replaced (you can undo for 10 seconds).`)) return;
-        withUndo(`Loaded "${n}"`, () => { const q0 = { ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }, R = reRollForward(q0, ROLLED.now), q = R ? R.inp : q0; setInp(q); setLoadedName(n); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(false); });
+        withUndo(`Loaded "${n}"`, () => { const q0 = reFixOcc({ ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) }), R = reRollForward(q0, ROLLED.now), q = R ? R.inp : q0; setInp(q); setLoadedName(n); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(false); });
       };
       const doDelete = (n) => { if (!window.confirm(`Delete the saved scenario "${n}"?`)) return; withUndo(`Deleted "${n}"`, () => { const o = { ...saved }; delete o[n]; persist(o); if (loadedName === n) setLoadedName(null); }); };
       const resetAll = () => { if (!window.confirm("Start again from the tool's defaults? Your inputs here are replaced (you can undo for 10 seconds).")) return; withUndo("Started from the defaults", () => { const q = { ...mergeRE({}), asOf: reAsOfOf(null) }; setInp(q); setLoadedName(null); setSnap(JSON.stringify(q)); setFocus(-1); setEditIdx(-1); setPickOpen(true); }); };
@@ -791,10 +801,11 @@
       const InputsSummary = () => (
         <>
           <RailGroup title="Project" onEdit={() => go("project")}>
-            <div style={{ fontSize: 12.5, padding: "2px 0 4px" }}>{W.label}{isBuilding ? <span style={{ color: K.sub }}> · {letAll ? "let out entirely" : "you live in one unit"}</span> : null}</div>
+            <div style={{ fontSize: 12.5, padding: "2px 0 4px" }}>{W.label}{isBuilding ? <span style={{ color: K.sub }}> · {sellAll ? "apartments to sell" : letAll ? "let out entirely" : "you live in one unit"}</span> : null}</div>
             {build ? <Row k={`Land ${inp.landArea} m² · ${fCal(prj.landMonth)}`} v={fM(prj.land)} /> : <Row k={`Price · ${fCal(prj.landMonth)}`} v={fM(prj.price)} />}
             {prj.construct && <Row k={`Build ${Math.round(prj.builtArea)} m² · ${prj.bm} mo`} v={fM(prj.hard)} />}
-            {isBuilding && <Row k={`${prj.letting.letUnits} unit${prj.letting.letUnits === 1 ? "" : "s"} let`} v={`${fSAR(prj.letting.netAnnual)}/yr`} sub="after empty months and management" />}
+            {isBuilding && (prj.sale ? <Row k={`${prj.sale.units} apartment${prj.sale.units === 1 ? "" : "s"} to sell`} v={`${fM(prj.sale.price0)} each`} sub={`today's price · sold over ${prj.sale.months} month${prj.sale.months === 1 ? "" : "s"} from ${fCal(prj.occupy)}`} />
+              : <Row k={`${prj.letting.letUnits} unit${prj.letting.letUnits === 1 ? "" : "s"} let`} v={`${fSAR(prj.letting.netAnnual)}/yr`} sub="after empty months and management" />)}
             <Row k="All-in cost" v={fM(prj.total)} />
             {!isLand && <Row k={`Value at ${W.doneShort}`} v={fM(prj.value0)} />}
             <Row k={W.doneLabel} v={fCal(prj.occupy)} />
@@ -1083,12 +1094,13 @@
 
       /* ---------- step 0: your project — the picker, then the project's fields in shared blocks ---------- */
       const KIND_CARDS = [["landVilla", "Buy land and build a villa", "You buy a plot, build, and move in when it is finished."], ["land", "Buy land only", "You buy a plot and hold it — to sell later, or to build on later."], ["landBuilding", "Buy land and build a residential building", "You build units to let; you may live in one of them."], ["readyBuilding", "Buy a ready residential building", "You buy a finished building with units; you may live in one."], ["readyVilla", "Buy a ready villa", "You buy a finished home and move in after finishing it."]];
-      const pickKind = (k) => setInp((s) => { const q = { ...s, kind: k, acquire: RE_KINDS[k] && RE_KINDS[k].acquire ? RE_KINDS[k].acquire : s.acquire }; if (/Building$/.test(k) && !(+s.unitCount > 0)) { q.unitCount = 4; q.unitRentBasis = "pct"; if (!(+s.unitRentPct > 0)) q.unitRentPct = 6; } if ((s.buildStart || 0) < (s.landMonth || 0)) q.buildStart = s.landMonth; return q; });
+      const pickKind = (k) => setInp((s) => { const q = { ...s, kind: k, acquire: RE_KINDS[k] && RE_KINDS[k].acquire ? RE_KINDS[k].acquire : s.acquire }; if (/Building$/.test(k) && q.occupancy !== "sell") q.occupancy = "let";
+        if (/Building$/.test(k) && !(+s.unitCount > 0)) { q.unitCount = 4; q.unitRentBasis = "pct"; if (!(+s.unitRentPct > 0)) q.unitRentPct = 6; } if ((s.buildStart || 0) < (s.landMonth || 0)) q.buildStart = s.landMonth; return q; });
       // "Build later" is not a sixth kind: the villa, with construction 24 months after the land is bought
       const buildLater = () => setInp((s) => ({ ...s, kind: "landVilla", buildStart: (s.landMonth || 0) + 24 }));
       const laterGap = inp.kind === "landVilla" && prj.start > prj.landMonth ? prj.start - prj.landMonth : 0;
       const sellYearOpts = [["0", "never — hold it"], ...Array.from({ length: inp.horizon }, (_, k) => [String(k + 1), `year ${k + 1} (${fCal((k + 1) * 12)})`])];
-      const kindLine = `${W.gerund}${isBuilding ? (letAll ? " — let out entirely" : " — you live in one unit, the rest is let") : isLand ? (inp.landSellYear > 0 ? ` — sold in year ${inp.landSellYear}` : " — held") : ""}`;
+      const kindLine = `${W.gerund}${isBuilding ? (sellAll ? " — the apartments sold" : letAll ? " — let out entirely" : " — you live in one unit, the rest is let") : isLand ? (inp.landSellYear > 0 ? ` — sold in year ${inp.landSellYear}` : " — held") : ""}`;
       const KindPicker = () => {
         if (!pickOpen) return <div className="box flex items-center flex-wrap" style={{ gap: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13.5 }}><span>You are <b>{kindLine}</b>{laterGap > 0 ? <span className="chip" style={{ marginLeft: 8 }}>land first, construction {laterGap} months later</span> : null}</span><button className="lnk no-print" onClick={() => setPickOpen(true)}>change</button></div>;
         const focusCard = (el, j) => { const c = el && el.parentElement && el.parentElement.children[j]; if (c && c.focus) c.focus(); };
@@ -1106,8 +1118,9 @@
                 <div key={k} role="radio" aria-checked={on} tabIndex={on ? 0 : -1} className={"kcard" + (on ? " on" : "")} onClick={() => pickKind(k)} onKeyDown={(e) => onKey(e, k, i)}>
                   <div className="flex items-start" style={{ gap: 8 }}><span className="kmark" aria-hidden="true">{on ? "✓" : ""}</span><div style={{ minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{title}</div><div style={{ fontSize: 12.5, color: K.sub, lineHeight: 1.45, marginTop: 3 }}>{line}</div></div></div>
                   {on && /Building$/.test(k) && <div className="ksub" {...stopIn}>
-                    <Seg label="Who lives in it" value={inp.occupancy === "let" ? "let" : "liveLet"} onChange={(v) => set("occupancy", v)} options={[["liveLet", "I live in one unit, the rest is let"], ["let", "Let out entirely"]]} />
-                    <div className="note" style={{ marginTop: 6 }}>Live in one: you move in and the other units' rent comes in. Let entirely: you stay where you are.</div>
+                    {k === "landBuilding" ? <Seg label="What you do with it" value={inp.occupancy === "sell" ? "sell" : "let"} onChange={(v) => setInp((s0) => ({ ...s0, occupancy: v, ...(v === "sell" && !(+s0.salePriceUnit > 0) && !(+s0.salePriceSqm > 0) ? { salePriceBasis: "unit", salePriceUnit: Math.round(prj.total * 1.25 / Math.max(1, +s0.unitCount || 4) / 10000) * 10000 } : {}) }))} options={[["let", "Let out entirely"], ["sell", "Sell the apartments"]]} />
+                      : <Seg label="What you do with it" value="let" onChange={() => {}} options={[["let", "Let out entirely"]]} />}
+                    <div className="note" style={{ marginTop: 6 }}>{k === "landBuilding" ? "Let entirely: the units' rent comes in and you stay where you are. Sell: the apartments go on sale when the building is finished." : "The units' rent comes in and you stay where you are."}</div>
                   </div>}
                   {on && k === "land" && <div className="ksub" {...stopIn}>
                     <Seg label="Hold it or build later" value="hold" onChange={(v) => { if (v === "later") buildLater(); }} options={[["hold", `Hold it — sell in year ${inp.landSellYear > 0 ? inp.landSellYear : "…"}`], ["later", "Build later"]]} />
@@ -1143,7 +1156,7 @@
           {inp.builtPct > 0 ? <Field label="Floors" value={inp.floors} min={1} max={isBuilding ? 8 : 4} step={0.5} unit="floors" onChange={(v) => set("floors", v)} hint={`built-up ${Math.round(prj.builtArea)} m²`} /> : <Field label="Total built-up area" value={inp.builtArea} min={100} max={isBuilding ? 6000 : 2500} step={10} unit="m²" onChange={(v) => set("builtArea", v)} />}
           <Field label="Construction cost, turnkey" value={inp.buildCost} min={1000} max={7000} step={50} unit="SAR/m²" onChange={(v) => set("buildCost", v)} hint={`${fM(prj.hard)} before VAT${prj.inflate > 1 ? `, incl. ${((prj.inflate - 1) * 100).toFixed(0)}% price rises to the start` : ""}`} />
           <Field label="Construction takes" value={inp.buildMonths} min={6} max={36} step={1} unit="months" onChange={(v) => set("buildMonths", v)} />
-          <MonthField label="Start building in" value={curStart} min={0} max={72} onChange={(v) => setInp((s) => ({ ...s, buildStart: Math.max(v, s.landMonth) }))} hint={`${letAll ? "let from" : "you move in"} ${fCal(prj.occupy)}${prj.inflate > 1 ? ` · construction ${((prj.inflate - 1) * 100).toFixed(0)}% dearer than today` : ""} · not sure? the When step tests every start`} />
+          <MonthField label="Start building in" value={curStart} min={0} max={72} onChange={(v) => setInp((s) => ({ ...s, buildStart: Math.max(v, s.landMonth) }))} hint={`${sellAll ? "on sale from" : letAll ? "let from" : "you move in"} ${fCal(prj.occupy)}${prj.inflate > 1 ? ` · construction ${((prj.inflate - 1) * 100).toFixed(0)}% dearer than today` : ""} · not sure? the When step tests every start`} />
           <More title="More: design and permits, contingency, overrun, extras, price rises, value uplift, the building's ageing">
             <Field label="Design, permits, supervision" value={inp.softPct} min={0} max={20} step={0.5} unit="% of construction" onChange={(v) => set("softPct", v)} />
             <Field label="Contingency" value={inp.contPct} min={0} max={25} step={1} unit="%" onChange={(v) => set("contPct", v)} hint="overruns are the norm — keep at least 5%" />
@@ -1171,6 +1184,21 @@
             <Field label={isBuilding ? "Property values grow" : "Home values grow"} value={inp.appreciation} min={-5} max={12} step={0.5} unit="%/yr" onChange={(v) => set("appreciation", v)} help={EXPL.value} />
             {TaxFields()}
           </More>
+        </Box>); };
+      // "Sell the apartments": how many, the sellable area, the price (per apartment or per m², today's), how fast, selling costs
+      const SaleFields = () => { const S = prj.sale, per = inp.salePriceBasis === "sqm", area = S ? S.areaPerUnit : 0, n = Math.max(0, Math.round(+inp.unitCount || 0));
+        const sMo = Math.max(1, Math.round(+inp.saleMonths || 12)), grown = (t) => Math.pow(1 + inp.appreciation / 100, t / 12);
+        const atGrowth = S ? Array.from({ length: n }, (_, j) => S.price0 * grown(prj.occupy + Math.floor(j * sMo / Math.max(1, n)))).reduce((a, x) => a + x, 0) : 0;
+        return (
+        <Box title="The apartments" help={EXPL.sale}>
+          <Field label="Number of apartments" value={n} min={1} max={60} step={1} unit="apartments" onChange={(v) => set("unitCount", Math.round(v))} />
+          <Field label="Sellable share of the built area" value={inp.netLettablePct} min={50} max={100} step={1} unit="%" onChange={(v) => set("netLettablePct", v)} hint={`≈ ${Math.round(area)} m² per apartment, of ${fSAR(prj.builtArea)} m² built`} />
+          <div style={{ marginBottom: 10 }}><Seg label="Price entered as" value={per ? "sqm" : "unit"} onChange={(v) => setInp((s0) => ({ ...s0, salePriceBasis: v, ...(v === "sqm" && !(+s0.salePriceSqm > 0) && S && area > 0 ? { salePriceSqm: Math.round(S.price0 / area / 100) * 100 } : {}), ...(v === "unit" && !(+s0.salePriceUnit > 0) && S ? { salePriceUnit: Math.round(S.price0 / 10000) * 10000 } : {}) }))} options={[["unit", "Price per apartment"], ["sqm", "Price per m²"]]} /></div>
+          {per ? <Field label="Price per m², today" value={+inp.salePriceSqm || 0} min={0} max={40000} step={100} unit="SAR/m²" onChange={(v) => set("salePriceSqm", v)} hint={`= ${fSAR(S ? S.price0 : 0)} per apartment today`} />
+            : <Field label="Price per apartment, today" value={+inp.salePriceUnit || 0} min={0} max={10000000} step={10000} unit="SAR" onChange={(v) => set("salePriceUnit", v)} hint={area > 0 ? `= ${fSAR((+inp.salePriceUnit || 0) / area)} per m² of sellable area` : null} />}
+          <Field label="Sell them all within" value={sMo} min={1} max={36} step={1} unit="months from completion" onChange={(v) => set("saleMonths", Math.round(v))} />
+          <Field label="Selling costs" value={inp.saleCostPct == null ? 2.5 : +inp.saleCostPct} min={0} max={10} step={0.5} unit="% of the price" onChange={(v) => set("saleCostPct", v)} hint="broker and marketing" />
+          <div className="note" style={{ marginTop: 0 }}><b>{n} apartment{n === 1 ? "" : "s"}</b> → <b className="mono">{fSAR(S ? S.price0 * n : 0)}</b> at today's prices, about <b className="mono">{fSAR(atGrowth)}</b> with the market growth ({inp.appreciation}%/yr) to the sales · on sale {fCal(prj.occupy)}{sMo > 1 ? ` to ${fCal(prj.occupy + sMo - 1)}` : ""}; all-in cost {fM(prj.total)}. RETT on a sale is the buyer's, and residential sales carry no VAT.</div>
         </Box>); };
       const UnitsFields = () => { const L = prj.letting, pct = inp.unitRentBasis !== "unit"; return (
         <Box title="The units" help={EXPL.letting}>
@@ -1241,13 +1269,13 @@
             {prj.construct ? <>
               <tr><td>Land, grown {inp.appreciation}% a year to {fCal(prj.occupy)}</td><td className="v">{fSAR(vw.landMove)}</td></tr>
               <tr><td>Building: (construction + design + extras) × (1 + {inp.devMarginPct}% uplift)<div className="n">contingency, overrun, VAT, tax and fees add no value</div></td><td className="v">{fSAR(prj.buildValue)}</td></tr>
-              <tr className="tot"><td>Value {letAll ? "when it is let" : "when you move in"} ({fCal(prj.occupy)})</td><td className="v" style={{ color: prj.value0 >= prj.total ? K.pos : K.neg }}>{fSAR(prj.value0)}</td></tr>
+              <tr className="tot"><td>Value {sellAll ? "when it is finished" : letAll ? "when it is let" : "when you move in"} ({fCal(prj.occupy)})</td><td className="v" style={{ color: prj.value0 >= prj.total ? K.pos : K.neg }}>{fSAR(prj.value0)}</td></tr>
               <tr><td>Value in {endDate}<div className="n">land {fM(vw.landEnd)} (still growing) + building {fM(vw.bldEnd)} (after {vw.yrs} years at −{dep}% a year)</div></td><td className="v">{fSAR(vw.end)}</td></tr>
             </> : isLand ? <>
               <tr><td>Land, grown {inp.appreciation}% a year{prj.saleAt != null ? ` to ${fCal(prj.saleAt)}` : ` to ${endDate}`}<div className="n">tax and the broker's fee add no value{prj.holding && (prj.holding.whitePct > 0 || prj.holding.zakatPct > 0) ? `; holding it costs ${fSAR(prj.holdingAt(prj.landMonth + 13) * 12)} a year at first` : ""}</div></td><td className="v">{fSAR(prj.saleAt != null ? prj.valueAt(prj.saleAt) : vw.end)}</td></tr>
               {prj.saleAt != null && <tr className="tot"><td>Sold in {fCal(prj.saleAt)} for … after {inp.landSellCostPct}% selling costs</td><td className="v">{fSAR(prj.valueAt(prj.saleAt) * (1 - inp.landSellCostPct / 100))}</td></tr>}
             </> : <>
-              <tr className="tot"><td>Value {letAll ? "when it is let" : "when you move in"} ({fCal(prj.occupy)})</td><td className="v" style={{ color: prj.value0 >= prj.total ? K.pos : K.neg }}>{fSAR(prj.value0)}</td></tr>
+              <tr className="tot"><td>Value {sellAll ? "when it is finished" : letAll ? "when it is let" : "when you move in"} ({fCal(prj.occupy)})</td><td className="v" style={{ color: prj.value0 >= prj.total ? K.pos : K.neg }}>{fSAR(prj.value0)}</td></tr>
               <tr><td>Value in {endDate}<div className="n">{inp.readyLandShare != null && inp.readyLandShare !== "" ? `land ${fM(vw.landEnd)} (growing) + building ${fM(vw.bldEnd)} (ageing ${dep}% a year)` : `growing ${inp.appreciation}% a year`}</div></td><td className="v">{fSAR(vw.end)}</td></tr>
             </>}
           </tbody></table>
@@ -1261,7 +1289,7 @@
           <div className="grid" style={twoCol}>
             {build ? LandFields() : ReadyFields()}
             {prj.construct ? BuildFields() : isLand ? HoldFields() : isBuilding ? UnitsFields() : LettingFields()}
-            {prj.construct && (isBuilding ? UnitsFields() : LettingFields())}
+            {prj.construct && (isBuilding ? (sellAll ? SaleFields() : UnitsFields()) : LettingFields())}
             {MarketFields()}
             <div style={{ gridColumn: "1 / -1" }}>{CostBox()}</div>
           </div>
@@ -1864,7 +1892,7 @@
         if (r.minCash >= 0 || r.bridged) rows.push({ t: r.minCashT, o: 1e6, kind: r.minCash < 0 ? "bridge" : "low", text: r.minCash < 0 ? `The most bridge money you need: ${fS(-r.minCash)}.` : `Lowest cash (no growth): ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
         if (r.debtFreeT != null) rows.push({ t: r.debtFreeT, o: 1e6 + 1, kind: "end", text: "Debt-free." });
         const mi = moveInMoney(r, occ);
-        const inWord = isLand ? "The land is paid for" : letAll ? "The building is yours" : "You move in";
+        const inWord = isLand ? "The land is paid for" : sellAll ? "The building is finished" : letAll ? "The building is yours" : "You move in";
         rows.push(r.onHandAtMoveIn >= 0 ? { t: occ, o: 1e6 + 2, kind: "occ", cash: true, text: `${inWord} with ${fM(r.onHandAtMoveIn)} in cash (no growth counted).` }
           : { t: occ, o: 1e6 + 2, kind: "shortIn", cash: true, text: mi.n ? `${mi.what.charAt(0).toUpperCase() + mi.what.slice(1)} bring${mi.n > 1 || /loans/.test(mi.what) ? "" : "s"} ${fS(mi.net)}${mi.cleared.length ? ` after clearing ${mi.cleared.join(" + ")}` : ""}; ${needOf(r) != null ? `the project still needs ${fS(needOf(r))} more cash in total` : `you would still be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}`}.` : needOf(r) != null ? `The project needs ${fS(needOf(r))} more cash in total.` : `You would be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` });
         // a plan that runs out: the finished home and the moving in only happen if the money it needs is found
@@ -2169,6 +2197,23 @@
         );
       };
       // a building let out entirely: the investment view (return on the money the project takes, yields, debt cover)
+      // "Sell the apartments": what the sales bring against what the building cost
+      const SalesView = ({ r }) => {
+        const S = prj.sale; if (!S) return null;
+        const sold = r.salesTotal || 0, costs = r.salesCosts || 0, profit = sold - costs - prj.total, out = r.soldOutT;
+        return (
+          <Box title="Developer view" style={{ marginTop: 14 }} help={EXPL.sale}>
+            <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))", gap: 10 }}>
+              <Tile label="Sales" value={fM(sold)} sub={`${(r.unitSales || []).reduce((a, x) => a + x.units, 0)} of ${S.units} apartments${out != null ? `, sold out ${fCal(out)}` : " by the end of the comparison"}`} />
+              <Tile label="Selling costs" value={fM(costs)} sub={`${S.costPct}% of the price`} />
+              <Tile label="All-in cost of the building" value={fM(prj.total)} sub="land, taxes, construction, finishing" />
+              <Tile label="Profit before financing" value={fM(profit)} tone={profit >= 0 ? K.pos : K.neg} sub={prj.total > 0 ? `${(profit / prj.total * 100).toFixed(1)}% on the cost` : null} />
+              <Tile label="Cost of the money" value={fM(r.newDebtInterest)} sub="profit and fees on this plan's loans" />
+              <Tile label={`Cash when ${out != null ? "sold out" : "the comparison ends"}`} value={fCash(r.months[out != null ? out : r.months.length - 1].avail)} sub={out != null ? fCal(out) : null} />
+            </div>
+          </Box>
+        );
+      };
       const InvestmentView = ({ r, i }) => {
         const irr = econIrr[i], L = prj.letting, dc = reDebtCover(r), low = dc.lowest;
         return (
@@ -2647,6 +2692,7 @@
             {LiabilityCard({ r, i, print: false, part: "loans" })}
             {LiabilityCard({ r, i, print: false, part: "settle" })}
             {letAll && InvestmentView({ r, i })}
+            {sellAll && SalesView({ r, i })}
             {WatchOut({ items: watchOut(r) })}
             {DetailsBox({ r, i })}
             {loanDlg && (loanDlg.view === "end" ? CashEndDetails() : loanDlg.view === "payoff" ? PayoffDetails() : LoanDetails())}
@@ -2697,7 +2743,7 @@
         </nav>
       );
       const panels = { project: StepProject, money: StepMoney, loans: StepLoans, props: StepProps, pay: StepPay, when: StepWhen, answer: StepAnswer };
-      const compactSummary = `${W.label}${isBuilding ? ` (${letAll ? "let out entirely" : "you live in one unit"})` : ""} · ${fSAR(inp.income)}/mo income · ${fM(inp.cashAvailable)} cash · ${inp.existingLoans.filter((l) => l.balance > 0).length} old loans · ${props.length} propert${props.length === 1 ? "y" : "ies"} · ${build ? `${inp.landArea} m² land${prj.construct ? `, ${Math.round(prj.builtArea)} m² build` : ""}` : `${Math.round(prj.builtArea)} m² ready`} · ${fM(prj.total)} all-in`;
+      const compactSummary = `${W.label}${isBuilding ? ` (${sellAll ? `${prj.sale.units} apartments to sell · ${fM(prj.sale.price0)} each` : letAll ? "let out entirely" : "you live in one unit"})` : ""} · ${fSAR(inp.income)}/mo income · ${fM(inp.cashAvailable)} cash · ${inp.existingLoans.filter((l) => l.balance > 0).length} old loans · ${props.length} propert${props.length === 1 ? "y" : "ies"} · ${build ? `${inp.landArea} m² land${prj.construct ? `, ${Math.round(prj.builtArea)} m² build` : ""}` : `${Math.round(prj.builtArea)} m² ready`} · ${fM(prj.total)} all-in`;
 
       return (
         <div>
@@ -2726,9 +2772,10 @@
             <aside className="rail rail-l" aria-label="Your inputs">{InputsRail()}</aside>
             <main style={{ minWidth: 0 }}>
               {rollNote && <div className="box no-print" role="status" style={{ marginBottom: 12, padding: "10px 14px", background: SOFT, fontSize: 13, lineHeight: 1.5 }}>
-                <b>Brought up to date to {(() => { const m = /^(\d{4})-(\d{2})$/.exec(ROLLED.now); return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }) : ROLLED.now; })()}</b>{ROLLED.names.length ? <> — {ROLLED.names.join(", ")}{ROLLED.cur ? " and your working copy" : ""}</> : " — your working copy"}: your loans' balances, months left and ages were recalculated for the months that passed, and the project and plan dates kept their calendar months. Your cash is as you entered it.
+                {(ROLLED.cur || ROLLED.names.length > 0) && <><b>Brought up to date to {(() => { const m = /^(\d{4})-(\d{2})$/.exec(ROLLED.now); return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }) : ROLLED.now; })()}</b>{ROLLED.names.length ? <> — {ROLLED.names.join(", ")}{ROLLED.cur ? " and your working copy" : ""}</> : " — your working copy"}: your loans' balances, months left and ages were recalculated for the months that passed, and the project and plan dates kept their calendar months. Your cash is as you entered it.</>}
+                {ROLLED.converted.length > 0 && <div style={{ marginTop: 4 }}><b>"I live in one unit, the rest is let" is no longer offered</b> — {ROLLED.converted.join(", ")} now let{ROLLED.converted.length === 1 && ROLLED.converted[0] !== "your working copy" ? "s" : ""} the building out entirely, so {ROLLED.converted.length === 1 ? "its" : "their"} numbers change. You can choose "Sell the apartments" instead in Your project.</div>}
                 {ROLLED.notes.length > 0 && <ul style={{ margin: "4px 0 0 18px" }}>{ROLLED.notes.map((x, k) => <li key={k}>{x}</li>)}</ul>}
-                <div className="flex flex-wrap" style={{ gap: 8, marginTop: 6 }}><button className="btn small" onClick={() => setRollNote(false)}>OK</button><button className="btn small" onClick={() => { try { const b = ROLLED.backup; if (b.cur != null) localStorage.setItem(CUR_KEY, b.cur); if (b.store != null) localStorage.setItem(STORE_KEY, b.store); localStorage.setItem(ROLL_SKIP_KEY, ROLLED.now); } catch (e) {} location.reload(); }}>Undo — keep the old numbers this month</button></div>
+                <div className="flex flex-wrap" style={{ gap: 8, marginTop: 6 }}><button className="btn small" onClick={() => setRollNote(false)}>OK</button>{(ROLLED.cur || ROLLED.names.length > 0) && <button className="btn small" onClick={() => { try { const b = ROLLED.backup; if (b.cur != null) localStorage.setItem(CUR_KEY, b.cur); if (b.store != null) localStorage.setItem(STORE_KEY, b.store); localStorage.setItem(ROLL_SKIP_KEY, ROLLED.now); } catch (e) {} location.reload(); }}>Undo — keep the old numbers this month</button>}</div>
               </div>}
               <details className="box sum-compact no-print" style={{ marginBottom: 12, padding: "10px 14px" }}><summary style={{ cursor: "pointer", fontSize: 13 }}><b>Your inputs:</b> <span style={{ color: K.sub }}>{compactSummary}</span></summary>{InputsSummary()}</details>
               {!printAll && StepNav({ top: true })}

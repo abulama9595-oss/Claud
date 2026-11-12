@@ -15,7 +15,11 @@
                    early-settlement fee, the value 0 after — r.landSale), land finance for its purchase mortgage (landOnlyLtv,
                    landTenure, lmRate + landRateAdd) and no cash-out. RETT first-home relief (firstHomeExempt) applies to the
                    villa kinds only. A ready asset with readyLandShare set is land + a building readyAge years old that ages.
-   inp.occupancy   buildings: "liveLet" (you live in one unit, the rest is let — their rent joins the annex channel, partIn) |
+   inp.occupancy   buildings: "sell" (a building you build — landBuilding — whose apartments are sold from completion: saleMonths,
+                   evenly; the price per apartment (salePriceBasis "unit": salePriceUnit) or per m² of sellable area (builtArea ×
+                   netLettablePct, spread over unitCount; "sqm": salePriceSqm), grown with the market to each sale; saleCostPct of
+                   each sale in selling costs; the land mortgage repaid in proportion to the apartments sold — r.unitSales) |
+                   "liveLet" (you live in one unit, the rest is let — their rent joins the annex channel, partIn) |
                    "let" (let out entirely — the whole-home channel, letIn; you do not move in and keep paying your rent);
                    unitCount, unitRentBasis "pct" (default: the building's rent a year = unitRentPct % of the all-in cost, spread over the
                    units) or "unit" (unitRent SAR/mo per unit); "sqm" (SAR/m²/yr on builtArea × netLettablePct) is read for older saved
@@ -129,7 +133,8 @@
 const RE_BASE = {
   // the project (v2): mode and acquire are derived from the kind in mergeRE (see the data model above)
   kind: "landVilla",       // "landVilla" | "readyVilla" | "land" | "landBuilding" | "readyBuilding"
-  occupancy: "liveLet",    // buildings: "liveLet" (you live in one unit, the rest is let) | "let" (let out entirely)
+  occupancy: "liveLet",    // buildings: "liveLet" (you live in one unit, the rest is let) | "let" (let out entirely) | "sell" (build and sell the apartments — landBuilding only)
+  salePriceBasis: "unit", salePriceUnit: 0, salePriceSqm: 0, saleMonths: 12, saleCostPct: 2.5,   // "sell": price per apartment or per m² of sellable area (today's prices), sold evenly over saleMonths from completion, selling costs %
   unitCount: 0, unitRentBasis: "pct", unitRentPct: 6, unitRent: 0, netLettablePct: 85, // buildings: units and their rent (SAR/mo per unit, or SAR/m²/yr on the net lettable share of the built area)
   landSellYear: null, landSellCostPct: 7.5, landZakat: "none",         // land only: sell in year … (null = hold); selling costs (2.5% broker + 5% RETT); zakat on land held to sell ("trade" = 2.5%/yr)
   whiteLandPct: 0, whiteLandOtherArea: 0,                                // white-land fee, %/yr of the land's value (Riyadh tiers; 0 outside) and your other undeveloped plots in the same city (m²)
@@ -318,7 +323,8 @@ function mergeRE(inp) {
   // the project kind says how it is acquired; the household simulation is the one engine of v2 (mode "home")
   if (!RE_KINDS[p.kind]) p.kind = RE_BASE.kind;
   p.mode = "home"; p.acquire = RE_KINDS[p.kind].acquire;
-  if (p.occupancy !== "let") p.occupancy = "liveLet";
+  if (p.occupancy === "sell" && p.kind !== "landBuilding") p.occupancy = "let";   // (selling the apartments: a building you build)
+  if (p.occupancy !== "let" && p.occupancy !== "sell") p.occupancy = "liveLet";
   if (p.unitRentBasis !== "sqm" && p.unitRentBasis !== "pct") p.unitRentBasis = "unit";
   if (p.landZakat !== "trade") p.landZakat = "none";
   // one set of bank terms per loan type: migrate an older scenario once, from its raw strategies; shared terms you already
@@ -392,7 +398,7 @@ function reCalMonth(p, t) { const z = reAsOf(p); return ((z.m - 1 + Math.round(t
 function reLetting(p, prj) {
   const K = RE_KINDS[p.kind], isB = prj && prj.isBuilding != null ? !!prj.isBuilding : !!(K && K.building);
   const units = isB ? Math.max(0, Math.round(+p.unitCount || 0)) : 0;
-  const letUnits = Math.max(0, units - (p.occupancy === "liveLet" ? 1 : 0));
+  const letUnits = p.occupancy === "sell" ? 0 : Math.max(0, units - (p.occupancy === "liveLet" ? 1 : 0));
   const rent = Math.max(0, +p.unitRent || 0);
   // "pct" (the default): the whole building's rent a year as a % of the all-in cost, spread over the units; "unit": SAR a month
   // per unit; "sqm" (older saved scenarios only — the page converts them to "pct"): SAR/m² a year on the net lettable area
@@ -528,7 +534,7 @@ function reProject(p) {
   const build = K.acquire === "build";                 // land is bought (and, except for land only, built on)
   const construct = build && !K.land;                  // there is a construction
   const isLand = !!K.land, isBuilding = !!K.building;
-  const moveIn = !!K.home || (isBuilding && p.occupancy !== "let");   // you live in it (a building let out entirely, land: no)
+  const moveIn = !!K.home || (isBuilding && p.occupancy !== "let" && p.occupancy !== "sell");   // you live in it (a building let out entirely or sold, land: no)
   const g = p.appreciation / 100;
   const landMonth = Math.max(0, Math.round(p.landMonth || 0));
   const start = construct ? Math.max(landMonth, Math.round(p.buildStart || 0)) : landMonth;
@@ -593,6 +599,14 @@ function reProject(p) {
   const landValueAt = (t) => t < landMonth ? 0 : (ready ? ready.land : split ? split.land : build ? land : price + finish) * Math.pow(1 + g, (t - landMonth) / 12);
   // buildings: the units and their rent; land: the sale you planned and the holding costs (charged month by month in rePlanSimulate)
   const letting = reLetting(p, { kind, isBuilding, builtArea, total });
+  // "sell" (a building you build): the apartments, the sellable area of each (builtArea × netLettablePct, spread over them) and
+  // today's price of one (per apartment, or per m² × its area); rePlanSimulate sells them evenly over `months` from the month after
+  // completion (prj.occupy — so a late construction moves the sales with it), each at today's price grown with the market
+  const sale = isBuilding && construct && p.occupancy === "sell" && letting.units > 0 ? (() => {
+    const units = letting.units, areaPerUnit = builtArea * (+p.netLettablePct || 0) / 100 / units;
+    const price0 = p.salePriceBasis === "sqm" ? Math.max(0, +p.salePriceSqm || 0) * areaPerUnit : Math.max(0, +p.salePriceUnit || 0);
+    return { units, areaPerUnit, price0, months: Math.max(1, Math.round(+p.saleMonths || 12)), costPct: Math.max(0, +p.saleCostPct || 0) };
+  })() : null;
   const sellAt = isLand && +p.landSellYear > 0 ? Math.round(+p.landSellYear * 12) : null;
   const saleAt = sellAt != null && sellAt > landMonth ? sellAt : null;   // you cannot sell before you own it
   const area = (+p.landArea || 0) + (+p.whiteLandOtherArea || 0);
@@ -603,7 +617,7 @@ function reProject(p) {
   const holdingAt = (t) => !holding || t <= landMonth ? 0 : landValueAt(t) * ((holding.whiteFrom != null && t >= holding.whiteFrom ? holding.whitePct : 0) + holding.zakatPct) / 100 / 12;
   return { kind, build, construct, isLand, isBuilding, moveIn, units: letting.units, letting, saleAt, holding, holdingAt,
     land, landToday, price, hard, soft, cont, finish, overrun, vat: vatConstr + vatFinish + vatOverrun, broker, landBroker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), buildValue, landValueAt, bm, occupy, start, landMonth, inflate, schedule, valueAt,
-    builtArea, dep, costPerSqm: construct && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
+    builtArea, dep, sale, costPerSqm: construct && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
 }
 
 /* ---------- rate quoting ---------- */
@@ -827,7 +841,9 @@ function rePlanSimulate(p, prj, plan) {
     }
   });
   props.forEach((P) => { const d = datedSale(P); if (d != null && d <= H) renterSale[d] += propAt(P, d) * (1 - (P.sellCostPct || 0) / 100); });
-  let landSale = null, holdingCum = 0;   // land only: the sale you planned (once), and what holding the land has cost so far
+  let landSale = null, holdingCum = 0;
+  const sale = prj.sale || null, unitSales = [];   // "sell": the apartments sold, month by month
+  let soldUnits = 0, saleFeeCum = 0;   // land only: the sale you planned (once), and what holding the land has cost so far
   // the Riyadh rent freeze (rentFreezeUntil, YYYY-MM, from the scenario's month 0): no rent growth — received or paid — until
   // that month; a rent set before it stays flat until then and takes its yearly steps from then on (the first one a year after
   // the freeze ends: rents are reviewed yearly). rentYears(t, s0) = the growth steps in month t of a rent first paid in month s0
@@ -1150,7 +1166,7 @@ function rePlanSimulate(p, prj, plan) {
   const leverageNow = (t, value, RA, RB) => {
     let ltv = 0;
     props.forEach((P) => { if (!P.canMortgage || !(P.value > 0)) return; const f = eqs.find((x) => x.propId === P.id); ltv += Math.max(0, propLtvCap(P, t) - (f && f.settledAt === null ? f.bal : 0)); });
-    if (!prj.isLand && t >= prj.occupy - 1) ltv += Math.max(0, value * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0) - (co.settledAt === null ? co.bal : 0));
+    if (!prj.isLand && !sale && t >= prj.occupy - 1) ltv += Math.max(0, value * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0) - (co.settledAt === null ? co.bal : 0));
     const roomA = Math.max(0, Math.min(RA.dbr, RA.mort)), roomB = RB && RA.dbr >= -0.5 ? Math.max(0, Math.min(RB.dbr, RB.mort)) : 0;
     const split = RB && RA.dbr >= -0.5 ? jointSplit(roomA, roomB) : { room: roomA, shareA: 1 }, room = split.room;
     const mortgage = Math.max(0, Math.min(ltv, room * eqPerInst));
@@ -1199,7 +1215,7 @@ function rePlanSimulate(p, prj, plan) {
     // mortgage, the sale of a property, each mortgage on a property you own, the personal loans, the cash-out, the personal
     // loans at project end — each loan with any payoff that makes room for it — then what that money pays for
     // (a building let out entirely: no move-in; land: no construction and no move-in — only "Land bought")
-    if (t === prj.occupy && prj.construct) events.push({ t, kind: "milestone", text: letB ? `Building complete — let from month ${t + 1}. Upkeep starts.` : `Construction complete — move in. Upkeep starts.` });
+    if (t === prj.occupy && prj.construct) events.push({ t, kind: "milestone", text: sale ? `Building complete — the ${sale.units} apartments go on sale, over ${sale.months} month${sale.months === 1 ? "" : "s"}. Upkeep is paid on the unsold ones.` : letB ? `Building complete — let from month ${t + 1}. Upkeep starts.` : `Construction complete — move in. Upkeep starts.` });
     // a ready home or building (bought, not built): the month after the purchase you move in — or it is let
     else if (t === prj.occupy && !prj.build) events.push({ t, kind: "milestone", text: livesIn ? `Move in. Upkeep starts.` : `${prj.isBuilding ? "Building" : "Home"} ready — let from month ${t + 1}. Upkeep starts.` });
     // land only: the sale you planned — the land's market value then less selling costs; the mortgage on the land is repaid
@@ -1211,6 +1227,27 @@ function rePlanSimulate(p, prj, plan) {
       const net = value - costs - payoff;
       cash += net; ccash += net; landSale = { t, value, costs, payoff, fee, net };
       events.push({ t, kind: "cash", text: `Land sold for ${fSAR(value)} after ${fSAR(costs)} selling costs${payoff > 0 ? `; the land mortgage of ${fSAR(payoff)} (incl. ${fSAR(fee)} early-settlement fee) is repaid` : ""} — ${fSAR(net)} lands in your cash.` });
+    }
+    // "sell": this month's apartments (evenly over sale.months from prj.occupy), each at today's price grown with the market, less
+    // selling costs; the land mortgage is repaid in proportion to the apartments sold (the bank releases each title deed against
+    // it): its balance and instalment fall by the share sold, with the early-settlement fee on that part; repaid in full at the last
+    if (sale && t >= prj.occupy && soldUnits < sale.units) {
+      const k = Math.min(sale.units, Math.round(sale.units * (t - prj.occupy + 1) / sale.months)) - soldUnits;
+      if (k > 0) {
+        const price = sale.price0 * Math.pow(1 + p.appreciation / 100, t / 12), gross = k * price, costs = gross * sale.costPct / 100, last = soldUnits + k >= sale.units;
+        let payoff = 0, fee = 0;
+        if (lm.bal > 0.5 && lm.settledAt === null && lm.startedAt !== null && lm.startedAt < t) {
+          const share = k / (sale.units - soldUnits), full = settleCost(lm);
+          payoff = full * share; fee = (full - lm.bal) * share;
+          if (last) { lm.bal = 0; lm.settledAt = t; lm.soldAt = t; } else { lm.bal *= 1 - share; lm.pmt *= 1 - share; }
+        }
+        soldUnits += k; saleFeeCum += fee;
+        const net = gross - costs - payoff;
+        cash += net; ccash += net;
+        unitSales.push({ t, units: k, price, gross, costs, payoff, fee, net });
+        events.push({ t, kind: "cash", text: `Sold ${k} apartment${k === 1 ? "" : "s"} at ${fSAR(price)} each: ${fSAR(gross)} less ${fSAR(costs)} selling costs${payoff > 0.5 ? `; ${fSAR(payoff)}${fee > 0.5 ? ` (incl. ${fSAR(fee)} early-settlement fee)` : ""} repays ${last ? "the rest of" : "part of"} the land mortgage` : ""} — ${fSAR(net)} lands in your cash.` });
+        if (last) events.push({ t, kind: "milestone", text: `Sold out: all ${sale.units} apartments sold for ${fSAR(unitSales.reduce((a, x) => a + x.gross, 0))} in all.` });
+      }
     }
     // facilities, in order: land mortgage → existing property → personal loan → cash-out
     const landValue = prj.build ? prj.land : prj.price;   // buying ready: the purchase mortgage is sized on the purchase price
@@ -1251,7 +1288,7 @@ function rePlanSimulate(p, prj, plan) {
     if (!preA && t === plT) takePersonal(t, pl);
     if (!preA && t === splT) takePersonal(t, spl);
     // the land mortgage is still secured on the same home, so the cash-out may only lend up to the LTV less what is still owed on it
-    if (t === coT) originate(t, co, "max", 0, Math.max(0, prj.valueAt(t) * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0)), Infinity);
+    if (t === coT) originate(t, co, "max", 0, sale ? 0 : Math.max(0, prj.valueAt(t) * p.cashoutLtv / 100 - (lm.settledAt === null ? lm.bal : 0)), Infinity, false, sale ? "you sell the apartments — there is nothing to mortgage" : undefined);
     if (plan.coUse && prj.isLand && t === prj.occupy) events.push({ t, kind: "co", text: `${co.label}: not available on land — there is no finished home to mortgage.` });
     if (t === pl2T) takePersonal(t, pl2);          // after the cash-out: personal loan(s) fill what is left
     if (t === spl2T) takePersonal(t, spl2);
@@ -1279,7 +1316,7 @@ function rePlanSimulate(p, prj, plan) {
       }
       f.pay = pay; f.int = int; f.extra = extra;
     }
-    const value = landSale !== null ? 0 : prj.valueAt(t);   // land sold: no longer yours
+    const value = landSale !== null ? 0 : sale ? prj.valueAt(t) * (1 - soldUnits / sale.units) : prj.valueAt(t);   // land sold: no longer yours; "sell": the unsold apartments
     const ownerCost = occupied && !prj.isLand ? value * p.maintPct / 100 / 12 + p.insurance / 12 : 0;   // (land: no upkeep — its holding costs are below)
     // land only: the white-land fee and zakat on land held to sell, while you own it (out of your cash in both measures)
     const holding = prj.isLand && landSale === null ? prj.holdingAt(t) : 0;
@@ -1368,7 +1405,7 @@ function rePlanSimulate(p, prj, plan) {
       instMo: (sum("existInst") + sum("lmPay") + sum("eqPay") + sum("plPay") + sum("coPay")) / (y === 0 ? 1 : 12) });
   }
   const end = months[H];
-  const newDebtInterest = facs.reduce((a, f) => a + f.interestPaid + f.fees, 0) + settleFees + prepayFees + sales.reduce((a, s) => a + s.fee, 0) + (landSale ? landSale.fee : 0) + bridgeCum;   // profit + bank fees + early-settlement fees (a sale's, on the plan's mortgage; an old loan's are in settleFees) + bridge money
+  const newDebtInterest = facs.reduce((a, f) => a + f.interestPaid + f.fees, 0) + settleFees + prepayFees + sales.reduce((a, s) => a + s.fee, 0) + (landSale ? landSale.fee : 0) + saleFeeCum + bridgeCum;   // profit + bank fees + early-settlement fees (a sale's, on the plan's mortgage; an old loan's are in settleFees) + bridge money
   const totalInterest = newDebtInterest + loans.reduce((a, l) => a + l.interestPaid, 0);
   const peakDbr = Math.max(...months.map((m) => m.dbr));
   // تضامن: each of you against your own limit
@@ -1445,7 +1482,8 @@ function rePlanSimulate(p, prj, plan) {
     netWorthEnd: end.netWorth, renterEnd: end.renterNW, advantage: end.advantage,
     econEnd: end.econNW, econBaseEnd: end.econBase, econAdv: end.econAdv, econPV: end.econAdv / Math.pow(1 + alt, H), econBreakEven, endDebt: end.debt, endValue: end.value, start: prj.start, landMonth: prj.landMonth, occupy: prj.occupy,
     netReturn: (Math.pow(1 + alt, 12) - 1) * 100, reserveMonths, thinMonths, tightest, partRentTotal: partRentCum, ownRentTotal: ownRentCum, propRentTotal: propRentCum, ownPlan, ownSale, sales,
-    kind: prj.kind, livesIn, lettingOut, landSale, holdingCost: holdingCum,   // the project kind; whether you move in; land: the sale and what holding it cost
+    kind: prj.kind, livesIn, lettingOut, landSale, holdingCost: holdingCum,
+    unitSales, salesTotal: unitSales.reduce((a, x) => a + x.gross, 0), salesCosts: unitSales.reduce((a, x) => a + x.costs, 0), soldOutT: sale && soldUnits >= sale.units ? unitSales[unitSales.length - 1].t : null,   // the project kind; whether you move in; land: the sale and what holding it cost
     dbrOk: J ? months.every((m) => m.dbrA <= m.capA + 0.5 && m.dbrB <= m.capB + 0.5) : dbrOverA <= 0.5, ...(jointPeak || {}) };
 }
 
@@ -1909,7 +1947,7 @@ function computeRE(inp, opts) {
     // the baseline is renting only if you pay rent today, otherwise it is not building (or not buying) and keeping the cash invested
     // the words: land — BUYING LAND; a villa or a building — BUILDING (built) or BUYING (ready); OWNING / RENTING only when you
     // pay rent today AND move in (a building let out entirely or land: you keep renting either way, so it is BUYING vs NOT)
-    const lead = bestFeasible, renting = p.rentNow > 0 && prj.moveIn, act = prj.isLand ? "BUYING LAND" : prj.build ? "BUILDING" : "BUYING";
+    const lead = bestFeasible, renting = p.rentNow > 0 && prj.moveIn, act = prj.isLand ? "BUYING LAND" : prj.sale ? "BUILDING TO SELL" : prj.build ? "BUILDING" : "BUYING";
     if (!lead) { verdict = "NO EXECUTABLE STRATEGY"; vColor = C.neg; }
     // the project isn't finished (or, land, paid for) before the comparison ends: no verdict — lengthen the horizon
     else if (p.coverAny !== false && lead.occupy > lead.months.length - 1) { verdict = "COMPARISON TOO SHORT"; vColor = C.sub; }   // (imported scenarios: the old verdict)

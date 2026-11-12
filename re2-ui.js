@@ -160,7 +160,8 @@ function reExpl(inp) {
     terms: "One set of terms per loan type, used by every strategy and by the optimizer. Rates are entered as your bank quotes them (flat \"hamish\" or APR — the switch on this card); the tool converts a flat rate to the APR it amortises with, and shows the effective yearly rate (monthly compounding) next to it.",
     // the project (step 0) and the settings the new tool added
     kind: "What you are deciding on. Buy land and build a villa: the land now, construction when you say, you move in when it is finished. Buy a ready villa: one purchase, move in the month after. Buy land only: hold it (a sale year is optional; the white-land fee and zakat on land held to sell are counted) or build later. Buy land and build a residential building, or buy a ready one: priced and valued like the villa, with its units let out — you live in one or let it out entirely. Every project runs through the same household simulation: your cash, your salary, your loans and your properties, month by month.",
-    occupancy: "A building: 'I live in one unit' lets the other units like an annex of your home (you move in when it is finished and stop paying rent). 'Let out entirely' lets every unit from the month after completion and you do not move in — you keep paying the rent you pay today. Rent received goes into your cash; the bank never counts it as income.",
+    sale: `Selling the apartments: they go on sale when the building is finished and sell evenly over the months you set; each buyer pays in full. The price is today's — per apartment, or per m² of sellable area (the built area × the sellable share, spread over the apartments) — grown with the market growth you set to the month of each sale. The selling costs (broker, marketing) come off each sale. The land mortgage is repaid in proportion to the apartments sold (the bank releases each title deed against it), with its early-settlement fee on that part, and in full with the last one. Upkeep is paid on the unsold apartments only. RETT on the sale is the buyer's, as is usual, and residential sales carry no VAT — neither is counted. No cash-out mortgage: there is nothing left to mortgage.`,
+    occupancy: "A building: 'Let out entirely' lets every unit from the month after completion and you do not move in — you keep paying the rent you pay today; rent received goes into your cash, and the bank never counts it as income. 'Sell the apartments' (a building you build) sells them from completion over the months you set — see The apartments. (The older 'I live in one unit' is no longer offered: such scenarios are let out entirely.)",
     readyAsset: `A ready home or building is land plus a building that ages. The land share is the part of the price that is land — it grows with the market (${inp.appreciation}% a year) — and the rest, with the finishing, is the building, already ${inp.readyAge || 0} years old, which loses ${inp.buildDeprPct == null ? 2 : inp.buildDeprPct}% of its as-new value a year. Leave the land share blank and the whole price grows with the market, as a market price does.`,
     valueBasis: "What a mortgage on a property you own is sized on: its market value at the time (grown with the market from today) or today's value. The bank lends up to the property's share of that, less what is still owed on a loan secured on it.",
     samaBands: `SAMA's debt-burden bands for a single borrower (Responsible Lending Principles ¶15–17): all instalments together at most 55% of income up to 15,000 a month (65% with a Ministry of Housing / REDF-supported mortgage), 65% from 15,000 to 25,000, and your bank's own limit (${dbr}%) from 25,000. On: the stricter of the band and your bank's limit, month by month as your income grows. Off: your bank's limit alone.`,
@@ -622,20 +623,21 @@ function reLiability(r, p, prj) {
    where you are); renting = you pay rent today AND move in (the comparison is then with renting on). */
 function reKindWords(inp, prj) {
   const kind = prj.kind, K = RE_KINDS[kind] || RE_KINDS.landVilla, build = !!prj.build, isLand = !!prj.isLand, isBuilding = !!prj.isBuilding;
-  const letAll = isBuilding && !prj.moveIn, renting = (+inp.rentNow || 0) > 0 && !!prj.moveIn;
+  // sellAll = a building you build to sell its apartments (prj.sale); letAll = one let out entirely
+  const sellAll = isBuilding && !!prj.sale, letAll = isBuilding && !prj.moveIn && !sellAll, renting = (+inp.rentNow || 0) > 0 && !!prj.moveIn;
   const gerund = { landVilla: "buying land and building a villa", readyVilla: "buying a ready villa", land: "buying land only", landBuilding: "buying land and building a residential building", readyBuilding: "buying a ready residential building" }[kind];
   const short = { landVilla: "Build a villa", readyVilla: "Buy a ready villa", land: "Buy land", landBuilding: "Build a residential building", readyBuilding: "Buy a residential building" }[kind];
   return {
-    kind, label: K.label, gerund, short, build, isLand, isBuilding, letAll, renting,
+    kind, label: K.label, gerund: sellAll ? "buying land and building apartments to sell" : gerund, short: sellAll ? "Build and sell apartments" : short, build, isLand, isBuilding, letAll, sellAll, renting,
     // what you are compared with ("vs …"), and the same as a condition ("if you …")
-    baseline: renting ? "renting" : isLand ? "not buying the land" : letAll ? "keeping your cash invested" : build ? "not building" : "not buying",
-    baseIf: renting ? "keep renting" : isLand ? "don't buy the land" : letAll ? "keep your cash invested" : build ? "don't build" : "don't buy",
+    baseline: renting ? "renting" : isLand ? "not buying the land" : letAll || sellAll ? "keeping your cash invested" : build ? "not building" : "not buying",
+    baseIf: renting ? "keep renting" : isLand ? "don't buy the land" : letAll || sellAll ? "keep your cash invested" : build ? "don't build" : "don't buy",
     // the answer's verbs
-    doIt: isLand ? "Buy the land" : letAll ? (build ? "Build the building" : "Buy the building") : renting ? "Own it" : build ? "Build it" : "Buy it",
-    dont: isLand ? "Don't buy the land" : letAll ? (build ? "Don't build the building" : "Don't buy the building") : renting ? "Keep renting" : build ? "Don't build" : "Don't buy",
-    act: isLand ? "buying the land" : letAll ? (build ? "building it" : "buying it") : build ? "building" : "buying",   // inside a sentence
+    doIt: isLand ? "Buy the land" : sellAll ? "Build and sell" : letAll ? (build ? "Build the building" : "Buy the building") : renting ? "Own it" : build ? "Build it" : "Buy it",
+    dont: isLand ? "Don't buy the land" : sellAll ? "Don't build" : letAll ? (build ? "Don't build the building" : "Don't buy the building") : renting ? "Keep renting" : build ? "Don't build" : "Don't buy",
+    act: isLand ? "buying the land" : sellAll ? "building to sell" : letAll ? (build ? "building it" : "buying it") : build ? "building" : "buying",   // inside a sentence
     // the moment the project is complete: you move in, the building is let, or the land is paid for
-    done: isLand ? "the land is paid for" : letAll ? "completion" : "move-in",
+    done: isLand ? "the land is paid for" : letAll || sellAll ? "completion" : "move-in",
     doneLabel: isLand ? "Land paid for" : "Project end",
     doneShort: isLand ? "purchase" : "project end",
     thing: isLand ? "the land" : isBuilding ? "the building" : "the home",
