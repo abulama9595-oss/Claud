@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=337df209bf"></script>
-  <script src="re2-engine.js?v=337df209bf"></script>
-  <script src="re2-ui.js?v=337df209bf"></script>
+  <script src="engine.js?v=29151d6546"></script>
+  <script src="re2-engine.js?v=29151d6546"></script>
+  <script src="re2-ui.js?v=29151d6546"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -370,6 +370,28 @@
     const loadStore = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch (e) { return {}; } };
     const saveStore = (o) => { try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {} };
     const readJSON = (k) => { try { const j = JSON.parse(localStorage.getItem(k) || "null"); return j && typeof j === "object" ? j : null; } catch (e) { return null; } };
+    // your loans keep themselves up to date: when the page opens in a later month than a scenario's month 0, the working copy and
+    // every saved scenario are rolled forward to this month (reRollForward: loans paid down, the project kept on its calendar
+    // dates, cash as entered) and saved back; ROLLED says what changed and keeps what was there, for undo
+    const ROLL_SKIP_KEY = "re2_roll_skip";
+    const ROLLED = (() => {
+      const now = reMonthKey(new Date()), out = { now, names: [], cur: false, notes: [], backup: null };
+      try {
+        if (localStorage.getItem(ROLL_SKIP_KEY) === now) return out;
+        const curRaw = localStorage.getItem(CUR_KEY), storeRaw = localStorage.getItem(STORE_KEY);
+        const cur = readJSON(CUR_KEY), store = loadStore();
+        if (cur && cur.asOf) { const R = reRollForward(cur, now); if (R) { localStorage.setItem(CUR_KEY, JSON.stringify(R.inp)); out.cur = true; out.notes.push(...R.notes); } }
+        let changed = false;
+        for (const [n, sv] of Object.entries(store)) {
+          if (!sv || !sv.inp) continue;
+          const R = reRollForward({ ...sv.inp, asOf: reAsOfOf(sv.inp, sv.savedAt) }, now);
+          if (R) { store[n] = { ...sv, inp: R.inp }; out.names.push(n); changed = true; R.notes.forEach((x) => out.notes.push(`${n}: ${x}`)); }
+        }
+        if (changed) saveStore(store);
+        if (out.cur || changed) out.backup = { cur: curRaw, store: storeRaw };
+      } catch (e) {}
+      return out;
+    })();
 
     /* ---------- pictures (plain HTML/CSS bars: crisp, print well) ---------- */
     // how a figure adds up, as a waterfall: each step starts where the last one ended. A `head` row opens a group and a
@@ -460,11 +482,13 @@
       const [snap, setSnap] = useState(() => { const s0 = loadedName && saved[loadedName]; return JSON.stringify(s0 ? { ...mergeRE(s0.inp), asOf: reAsOfOf(s0.inp, s0.savedAt) } : inp); });   // your inputs as last saved or loaded
       useEffect(() => { try { if (loadedName) localStorage.setItem(OPEN_KEY, loadedName); else localStorage.removeItem(OPEN_KEY); } catch (e) {} }, [loadedName]);
       const [showScen, setShowScen] = useState(false);
+      const [rollNote, setRollNote] = useState(() => !!ROLLED.backup);   // the "brought up to date" note (ROLLED)
       const [undo, setUndo] = useState(null);
       const [openDis, setOpenDis] = useState({});
       const [measure, setMeasure] = useState("econ");
       const [loanTxt, setLoanTxt] = useState("");
       const [loanMore, setLoanMore] = useState(false);
+      const [cEdit, setCEdit] = useState(null);   // the loan whose contract is open ("m3" / "s0": yours or your spouse's, by row)
       const [whatIf, setWhatIf] = useState({});
       const [whyLine, setWhyLine] = useState("plan");   // "why this start": your plan as set, or the best mix for each date
       const [whyDate, setWhyDate] = useState(null);      // …the start date compared with yours (null = the best one)
@@ -921,7 +945,7 @@
                 <div style={{ marginBottom: 12 }}>
                   <label className="lbl" style={{ display: "block", marginBottom: 4 }}>Month 0 of this scenario</label>
                   <input type="month" value={inp.asOf || ""} onChange={(e) => e.target.value && set("asOf", e.target.value)} />
-                  <div className="note" style={{ marginTop: 3 }}>Every date counts from here. A saved scenario keeps its own month 0; changing it moves the dates only — bring your cash and loans up to date too.</div>
+                  <div className="note" style={{ marginTop: 3 }}>Every date counts from here. When you open the tool in a later month, it moves month 0 to the current month by itself: your loans are paid down for the months that passed and the project keeps its calendar dates — your cash stays as you entered it. Changing month 0 here moves the dates only.</div>
                 </div>
               </div>
             </div>
@@ -936,7 +960,13 @@
       const verdictCol = (v) => v === "keep" ? K.pos : v === "room" ? K.brassTx : K.text;
       // a list of existing loans (yours, or your spouse's under تضامن) as an editable table
       const loanTable = (loans, setList, spouse) => {
-        const upd = (i, k, v) => setList(loans.map((l, j) => j === i ? { ...l, [k]: v } : l));
+        // a loan with a contract is recomputed from it (reLoanFromContract) whenever its instalment or its contract changes
+        const fromC = (l) => l.contract ? reLoanFromContract(l, inp.asOf) || l : l;
+        const upd = (i, k, v) => setList(loans.map((l, j) => j === i ? fromC({ ...l, [k]: v }) : l));
+        const updC = (i, patch) => setList(loans.map((l, j) => j === i ? fromC({ ...l, contract: { ...reContractOf(l, inp.asOf), ...patch } }) : l));
+        const dropC = (i) => setList(loans.map((l, j) => { if (j !== i) return l; const { contract, ...rest } = l; return rest; }));
+        const ck = (i) => `${spouse ? "s" : "m"}${i}`, nCols = 8 + (loanMore ? 4 : 0);
+        const hasC = (l) => !!(l.contract && reLoanFromContract(l, inp.asOf));   // a complete contract: its figures are worked out
         const inst = loans.reduce((a, l) => a + (l.balance > 0 ? +l.installment || 0 : 0), 0), bal = loans.reduce((a, l) => a + (+l.balance || 0), 0);
         const word = spouse ? "Spouse's loan" : "Loan";
         const securedOnProp = (l) => props.find((P) => reSecuredOn(l, P)) || null;
@@ -946,16 +976,16 @@
                   <thead><tr><th>Loan</th><th>Type</th><th>Balance</th><th>Monthly</th><th>Months left</th><th>Rate</th>{loanMore && <><th>Months since it started</th><th>Settle in month</th><th>May be paid off from cash?</th><th>May the bank buy it out?</th></>}<th style={{ minWidth: 190 }}>Keep or settle?<Hint text={EXPL.settleAdvice} label="Keep or settle?" /></th><th className="no-print" style={{ width: 36 }}></th></tr></thead>
                   <tbody>
                     {loans.map((l, i) => { const P = securedOnProp(l), a = l.balance > 0 && l.installment > 0 ? adviceFor(l, spouse) : null; return (
-                      <tr key={l.id || i}>
-                        <td className="l"><input type="text" dir="auto" aria-label={`${word} name`} value={l.name} onChange={(e) => upd(i, "name", e.target.value)} style={{ width: "100%", minWidth: 120 }} />{P && <div className="chip" style={{ marginTop: 4, fontSize: 11.5 }}>secured on <b dir="auto">{P.name}</b> — set in Your properties</div>}</td>
+                      <React.Fragment key={l.id || i}><tr>
+                        <td className="l"><input type="text" dir="auto" aria-label={`${word} name`} value={l.name} onChange={(e) => upd(i, "name", e.target.value)} style={{ width: "100%", minWidth: 120 }} />{P && <div className="chip" style={{ marginTop: 4, fontSize: 11.5 }}>secured on <b dir="auto">{P.name}</b> — set in Your properties</div>}<div className="no-print"><button className="lnk" style={{ fontSize: 12 }} aria-expanded={cEdit === ck(i)} onClick={() => setCEdit(cEdit === ck(i) ? null : ck(i))}>{hasC(l) ? "From the contract ›" : "Contract ›"}</button></div></td>
                         <td><select aria-label={`${l.name}: type`} value={P || l.type === "mortgage" ? "mortgage" : "personal"} disabled={!!P} onChange={(e) => upd(i, "type", e.target.value)} style={{ minHeight: 30, padding: "3px 4px", fontSize: 12 }}><option value="personal">Personal</option><option value="mortgage">Mortgage</option></select></td>
-                        <td><NumIn v={l.balance} on={(v) => upd(i, "balance", v)} w={108} label={`${l.name}: balance`} /></td>
+                        <td>{hasC(l) ? <span title="worked out from the contract">{fSAR(l.balance)}</span> : <NumIn v={l.balance} on={(v) => upd(i, "balance", v)} w={108} label={`${l.name}: balance`} />}</td>
                         <td><NumIn v={l.installment} on={(v) => upd(i, "installment", v)} w={86} label={`${l.name}: monthly instalment`} /></td>
-                        <td><NumIn v={l.monthsLeft} on={(v) => upd(i, "monthsLeft", Math.round(v))} w={56} label={`${l.name}: months left`} /><div style={{ fontSize: 12, color: K.sub }}>ends {fCal(loanEnds(l))}</div></td>
-                        <td>
+                        <td>{hasC(l) ? <span>{l.monthsLeft}</span> : <NumIn v={l.monthsLeft} on={(v) => upd(i, "monthsLeft", Math.round(v))} w={56} label={`${l.name}: months left`} />}<div style={{ fontSize: 12, color: K.sub }}>ends {fCal(loanEnds(l))}</div></td>
+                        <td>{hasC(l) ? <span>{(+l.rate || 0).toFixed(2)}% APR<div style={{ fontSize: 12, color: K.sub }}>{l.contract.impliedFlat > 0 ? `≈ ${l.contract.impliedFlat.toFixed(2)}% hamish` : ""}</div></span> : <>
                           <span className="flex items-center" style={{ gap: 4, justifyContent: "flex-end" }}><NumIn v={l.rate} on={(v) => upd(i, "rate", v)} w={56} dec label={`${l.name}: rate`} /><select aria-label={`${l.name}: rate type`} value={l.rateType === "flat" ? "flat" : "apr"} onChange={(e) => upd(i, "rateType", e.target.value)} style={{ minHeight: 30, padding: "3px 4px", fontSize: 12 }}><option value="apr">APR</option><option value="flat">hamish</option></select></span>
                           {l.rateType === "flat" && <div style={{ fontSize: 12, color: K.sub }}>≈ {reFlatToApr(l.rate, Math.max(1, Math.round((l.ageMonths || 0) + (l.monthsLeft || 0)))).toFixed(2)}% APR</div>}
-                        </td>
+                        </>}</td>
                         {loanMore && <>
                           <td><NumIn v={l.ageMonths} nullable on={(v) => upd(i, "ageMonths", v == null ? null : Math.round(v))} w={56} placeholder="—" label={`${l.name}: months since it started`} /></td>
                           <td><NumIn v={l.settleAt} nullable on={(v) => upd(i, "settleAt", v == null ? null : Math.round(v))} w={56} placeholder="—" label={`${l.name}: settle in month`} />{l.settleAt != null && l.settleAt > 0 && <div style={{ fontSize: 12, color: K.sub }}>{fCal(l.settleAt)}</div>}</td>
@@ -965,6 +995,20 @@
                         <td className="l" style={{ maxWidth: 300 }}>{a ? <><b style={{ color: verdictCol(a.verdict) }}>{RE_SETTLE_VERDICT[a.verdict]}</b><Hint text={a.why} label={`${l.name}: keep or settle?`} /><div style={{ fontSize: 12, color: K.sub, lineHeight: 1.4 }}>{firstSentence(a.why)}</div></> : <span style={{ color: K.sub }}>—</span>}</td>
                         <td className="no-print"><button aria-label={`Remove ${l.name}`} title="Remove" onClick={() => withUndo(`Removed ${l.name}`, () => setList(loans.filter((_, j) => j !== i)))} style={{ ...iconBtn, padding: 6 }}><Trash2 size={16} color={K.neg} /></button></td>
                       </tr>
+                      {cEdit === ck(i) && (() => { const c = reContractOf(l, inp.asOf), set1 = (k2, v) => updC(i, { [k2]: v }), mIn = (k2, lab) => <label className="flex items-center" style={{ gap: 6 }}>{lab}<input type="month" aria-label={`${l.name}: ${lab}`} value={c[k2] || ""} onChange={(e) => set1(k2, e.target.value || null)} /></label>;
+                        const ok = !!reLoanFromContract({ ...l, contract: c }, inp.asOf);
+                        return <tr className="no-print"><td colSpan={nCols} className="l" style={{ background: SOFT, padding: "10px 12px" }}>
+                          <div style={{ fontSize: 12.5, marginBottom: 8, lineHeight: 1.5 }}><b>From the contract</b> — enter what your contract says; the balance, months left and rate are worked out from it and roll forward by themselves every month. {l.contract ? "" : "Filled in from the loan as it is now; correct what you know."}</div>
+                          <div className="flex flex-wrap items-center" style={{ gap: 14, fontSize: 12.5 }}>
+                            <label className="flex items-center" style={{ gap: 6 }}>Amount financed<NumIn v={c.amount} nullable on={(v) => set1("amount", v)} w={108} label={`${l.name}: amount financed`} /></label>
+                            {mIn("first", "First instalment")}{mIn("last", "Last instalment")}
+                            <label className="flex items-center" style={{ gap: 6 }}>Hamish<NumIn v={c.flat} nullable dec on={(v) => set1("flat", v)} w={56} label={`${l.name}: hamish`} />%/yr</label>
+                            <span style={{ color: K.sub }}>Instalment: {fSAR(l.installment)}/mo (in the table)</span>
+                          </div>
+                          <div style={{ fontSize: 12.5, marginTop: 8, color: ok ? K.text : K.neg }}>{ok ? (() => { const x = reLoanFromContract({ ...l, contract: c }, inp.asOf); return <>Outstanding ≈ <b>{fSAR(x.balance)}</b> · {x.monthsLeft} months left · {x.rate.toFixed(2)}% APR{l.installment > 0 && c.flat > 0 && Math.abs(x.contract.impliedFlat - c.flat) > 0.1 ? <span style={{ color: "#7A4F12" }}> · your instalment implies {x.contract.impliedFlat.toFixed(2)}% hamish, not {c.flat}%</span> : null}</>; })() : "Enter the amount financed and the first and last instalment months to work the balance out."}</div>
+                          {l.contract && <div style={{ marginTop: 6 }}><button className="lnk" style={{ fontSize: 12 }} onClick={() => dropC(i)}>Stop using the contract (keep these numbers)</button></div>}
+                        </td></tr>; })()}
+                      </React.Fragment>
                     ); })}
                     <tr style={{ background: SOFT, fontWeight: 700 }}><td className="l">Total ({loans.length})</td><td></td><td>{fSAR(bal)}</td><td>{fSAR(inst)}</td><td></td><td></td>{loanMore && <><td></td><td></td><td></td><td></td></>}<td></td><td className="no-print"></td></tr>
                   </tbody>
@@ -2679,6 +2723,11 @@
           <div className="shell">
             <aside className="rail rail-l" aria-label="Your inputs">{InputsRail()}</aside>
             <main style={{ minWidth: 0 }}>
+              {rollNote && <div className="box no-print" role="status" style={{ marginBottom: 12, padding: "10px 14px", background: SOFT, fontSize: 13, lineHeight: 1.5 }}>
+                <b>Brought up to date to {(() => { const m = /^(\d{4})-(\d{2})$/.exec(ROLLED.now); return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }) : ROLLED.now; })()}</b>{ROLLED.names.length ? <> — {ROLLED.names.join(", ")}{ROLLED.cur ? " and your working copy" : ""}</> : " — your working copy"}: your loans' balances, months left and ages were recalculated for the months that passed, and the project and plan dates kept their calendar months. Your cash is as you entered it.
+                {ROLLED.notes.length > 0 && <ul style={{ margin: "4px 0 0 18px" }}>{ROLLED.notes.map((x, k) => <li key={k}>{x}</li>)}</ul>}
+                <div className="flex flex-wrap" style={{ gap: 8, marginTop: 6 }}><button className="btn small" onClick={() => setRollNote(false)}>OK</button><button className="btn small" onClick={() => { try { const b = ROLLED.backup; if (b.cur != null) localStorage.setItem(CUR_KEY, b.cur); if (b.store != null) localStorage.setItem(STORE_KEY, b.store); localStorage.setItem(ROLL_SKIP_KEY, ROLLED.now); } catch (e) {} location.reload(); }}>Undo — keep the old numbers this month</button></div>
+              </div>}
               <details className="box sum-compact no-print" style={{ marginBottom: 12, padding: "10px 14px" }}><summary style={{ cursor: "pointer", fontSize: 13 }}><b>Your inputs:</b> <span style={{ color: K.sub }}>{compactSummary}</span></summary>{InputsSummary()}</details>
               {!printAll && StepNav({ top: true })}
               {printAll ? PrintAnswer() : panels[cur]()}

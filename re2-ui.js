@@ -13,6 +13,85 @@ function reSetAsOf(asOf) {
 }
 // the as-of month of a saved scenario: its own, else the month it was saved, else this month
 const reAsOfOf = (inp, savedAt) => (inp && inp.asOf) || (savedAt ? reMonthKey(new Date(savedAt)) : reMonthKey(new Date()));
+/* ---------- your loans keep themselves up to date (presentation side: the engine reads balance, installment, monthsLeft, rate
+   and ageMonths as of month 0, as before) ---------- */
+// months from a to b ("YYYY-MM" keys; b − a), and a + n months
+const reYmDiff = (a, b) => { const A = reYm(a), B = reYm(b); return A && B ? (B.y - A.y) * 12 + (B.m - A.m) : null; };
+const reYmAdd = (a, n) => { const A = reYm(a); if (!A) return null; const k = A.y * 12 + (A.m - 1) + Math.round(n); return `${Math.floor(k / 12)}-${String(k % 12 + 1).padStart(2, "0")}`; };
+// the APR at which `inst` a month for n months repays `amount` (0 when the instalments only just cover it)
+function reAprOf(amount, inst, n) {
+  if (!(amount > 0 && inst > 0 && n > 0) || inst * n <= amount + 0.5) return 0;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2; if (rePmt(amount, mid * 100, n) > inst) hi = mid; else lo = mid; }
+  return lo * 100;
+}
+// a loan entered from its contract — l.contract = { amount, first, last, flat } ("first"/"last": the months of the first and last
+// instalment, YYYY-MM; flat: the hamish % a year) with l.installment — as the engine reads it at month 0 (asOf): the instalment
+// due in month 0 and before is paid, so monthsLeft = last − month 0 and ageMonths = the instalments paid. The APR comes from the
+// instalment (an annuity on the amount over n months), or from the hamish when no instalment is given; the balance is what is
+// left of the annuity (before an early-settlement fee). null when the contract is not complete.
+function reLoanFromContract(l, asOf) {
+  const c = l && l.contract;
+  if (!c || !(c.amount > 0) || !reYm(c.first) || !reYm(c.last)) return null;
+  const n = reYmDiff(c.first, c.last) + 1;
+  if (!(n >= 1)) return null;
+  const left = Math.max(0, Math.min(n, reYmDiff(asOf, c.last))), paid = n - left;
+  let inst = +l.installment || 0, apr;
+  if (inst > 0) apr = reAprOf(c.amount, inst, n);
+  else if (c.flat > 0) { apr = reFlatToApr(c.flat, n); inst = c.amount * (1 + c.flat / 100 * n / 12) / n; }
+  else { apr = 0; inst = c.amount / n; }
+  const impliedFlat = (inst * n / c.amount - 1) * 1200 / n;
+  const balance = left > 0 ? (apr > 0 ? rePrincipalFor(inst, apr, left) : inst * left) : 0;
+  return { ...l, balance, installment: inst, monthsLeft: left, rate: apr, rateType: "apr", ageMonths: paid, contract: { ...c, n, impliedFlat } };
+}
+// the contract fields a loan entered as "balance today" implies (to start editing it from its contract): its last instalment
+// from the months left, its first from its age (blank when the age is not known), the amount it started at (all its
+// instalments at its rate) and the hamish that gives
+function reContractOf(l, asOf) {
+  if (l && l.contract) return { ...l.contract };
+  const left = Math.max(0, Math.round(+l.monthsLeft || 0)), age = l.ageMonths == null ? null : Math.max(0, Math.round(+l.ageMonths));
+  const n = left + (age || 0), apr = l.rateType === "flat" ? reFlatToApr(+l.rate || 0, Math.max(1, n)) : +l.rate || 0, inst = +l.installment || 0;
+  const amount = age == null ? null : Math.round(apr > 0 ? rePrincipalFor(inst, apr, n) : inst * n);
+  return { amount, first: age == null ? null : reYmAdd(asOf, 1 - age), last: reYmAdd(asOf, left), flat: amount ? +((inst * n / amount - 1) * 1200 / n).toFixed(2) : null };
+}
+// one loan, `d` months on: from its contract when it has one, else paid down month by month as the engine pays it (profit at
+// its APR on the balance, the instalment, never more than what is owed); months left fall, its age rises, a settle month
+// moves with the calendar (cleared, with a note, once it has passed)
+function reRollLoan(l, d, ym, notes) {
+  const fromC = reLoanFromContract(l, ym);
+  if (fromC) return fromC;
+  const q = { ...l };
+  let apr = +q.rate || 0;
+  if (q.rateType === "flat") {
+    apr = reFlatToApr(apr, Math.max(1, Math.round((q.ageMonths || 0) + (q.monthsLeft || 0))));
+    if (q.ageMonths == null) { q.rate = apr; q.rateType = "apr"; }   // (the term behind the hamish is not known: keep its APR, which does not move)
+  }
+  let bal = +q.balance || 0;
+  for (let k = 0; k < d && bal > 0.5; k++) { const i = bal * apr / 1200; bal -= Math.min(bal + i, +q.installment || 0) - i; }
+  q.monthsLeft = Math.max(0, Math.round(+q.monthsLeft || 0) - d);
+  q.balance = q.monthsLeft > 0 ? Math.max(0, bal) : 0;
+  if (q.ageMonths != null) q.ageMonths = Math.round(q.ageMonths) + d;
+  if (q.settleAt != null && q.settleAt > 0) { if (q.settleAt - d >= 1) q.settleAt = Math.round(q.settleAt) - d; else { notes.push(`${q.name}: the month you planned to settle it has passed — check it`); q.settleAt = null; } }
+  return q;
+}
+// a scenario brought up to date (month 0 → ym): every loan (yours and your spouse's) rolled forward, the project and the plans
+// kept on their calendar months (a date that has passed moves to this month), cash and everything else as entered.
+// null when month 0 is ym or later (never rolled backwards)
+function reRollForward(inp, ym) {
+  const from = inp && inp.asOf, d = reYmDiff(from, ym);
+  if (!(d > 0)) return null;
+  const notes = [], back = (v, lo, what) => { if (v == null || v === "" || isNaN(+v)) return v; const x = Math.round(+v) - d; if (x < lo && +v >= lo) notes.push(`${what} had passed — moved to ${lo === 0 ? "this month" : "next month"}`); return Math.max(lo, x); };
+  const q = { ...inp, asOf: ym };
+  q.existingLoans = (inp.existingLoans || []).map((l) => reRollLoan(l, d, ym, notes));
+  if (inp.joint && Array.isArray(inp.joint.loans)) q.joint = { ...inp.joint, loans: inp.joint.loans.map((l) => reRollLoan(l, d, ym, notes)) };
+  if (inp.landMonth != null) q.landMonth = back(inp.landMonth, 0, inp.kind === "landVilla" || inp.kind === "landBuilding" || inp.kind === "land" ? "The land purchase" : "The purchase");
+  if (inp.buildStart != null) q.buildStart = Math.max(q.landMonth || 0, back(inp.buildStart, 0, "The construction start"));
+  const mo = (o) => o && o.when === "month" ? { ...o, month: back(o.month, 0, "A plan step's month") } : o;
+  if (Array.isArray(inp.plans)) q.plans = inp.plans.map((o) => !o ? o : { ...o, ...(o.plWhen === "month" ? { plMonth: back(o.plMonth, 0, "A personal-loan month") } : {}),
+    ...(Array.isArray(o.plMore) ? { plMore: o.plMore.map(mo) } : {}), ...(o.mortgages ? { mortgages: Object.fromEntries(Object.entries(o.mortgages).map(([k, v]) => [k, mo(v)])) } : {}) });
+  if (Array.isArray(inp.properties)) q.properties = inp.properties.map((P) => P && typeof P.sellAt === "number" ? { ...P, sellAt: back(P.sellAt, 1, `The sale of ${P.name}`) } : P);
+  return { inp: q, from, to: ym, months: d, notes };
+}
 const fCal = (t) => { const d = new Date(RE_T0.getFullYear(), RE_T0.getMonth() + Math.round(t || 0), 1); return d.toLocaleString("en-US", { month: "short", year: "numeric" }); };
 const fMon = (t) => t == null ? "—" : `M${t} · ${fCal(t)}`;
 const fYr = (m) => m == null ? "—" : m < 12 ? `${m} mo` : `${(m / 12).toFixed(1)} yrs`;
