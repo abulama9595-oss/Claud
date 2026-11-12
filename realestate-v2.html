@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=683fccc967"></script>
-  <script src="re2-engine.js?v=683fccc967"></script>
-  <script src="re2-ui.js?v=683fccc967"></script>
+  <script src="engine.js?v=337df209bf"></script>
+  <script src="re2-engine.js?v=337df209bf"></script>
+  <script src="re2-ui.js?v=337df209bf"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1129,9 +1129,9 @@
       const UnitsFields = () => { const L = prj.letting, pct = inp.unitRentBasis !== "unit"; return (
         <Box title="The units" help={EXPL.letting}>
           <Field label="Number of units" value={inp.unitCount || 0} min={1} max={40} step={1} unit="units" onChange={(v) => set("unitCount", Math.round(v))} />
-          <div style={{ marginBottom: 10 }}><Seg label="Rent entered as" value={pct ? "pct" : "unit"} onChange={(v) => setInp((s) => ({ ...s, unitRentBasis: v, ...(v === "pct" && !(+s.unitRentPct > 0) ? { unitRentPct: 6 } : {}), ...(v === "unit" && !(+s.unitRent > 0) ? { unitRent: Math.round(L.perUnit / 50) * 50 || 3500 } : {}) }))} options={[["pct", "% of the all-in cost a year"], ["unit", "Rent per unit a month"]]} /></div>
-          {pct ? <Field label="Rent, as % of the all-in cost" value={+inp.unitRentPct || 0} min={0} max={15} step={0.25} unit="%/yr" onChange={(v) => set("unitRentPct", v)} hint={`the whole building's rent a year = ${fSAR(prj.total * (+inp.unitRentPct || 0) / 100)} on the all-in cost of ${fM(prj.total)} · ${fSAR(L.perUnit)} per unit a month`} />
-            : <Field label="Rent per unit" value={inp.unitRent || 0} min={0} max={30000} step={250} unit="SAR/mo" onChange={(v) => set("unitRent", v)} hint={prj.total > 0 ? `= ${((L.perUnit * L.units * 12) / prj.total * 100).toFixed(2)}% of the all-in cost a year` : null} />}
+          <div style={{ marginBottom: 10 }}><Seg label="Rent entered as" value={pct ? "pct" : "unit"} onChange={(v) => setInp((s) => ({ ...s, unitRentBasis: v, ...(v === "pct" && !(+s.unitRentPct > 0) ? { unitRentPct: 6 } : {}), ...(v === "unit" && !(+s.unitRent > 0) ? { unitRent: (Math.round(L.perUnit * 12 / 1000) * 1000 || 42000) / 12 } : {}) }))} options={[["pct", "% of the all-in cost a year"], ["unit", "Rent per unit a year"]]} /></div>
+          {pct ? <Field label="Rent, as % of the all-in cost" value={+inp.unitRentPct || 0} min={0} max={15} step={0.25} unit="%/yr" onChange={(v) => set("unitRentPct", v)} hint={`the whole building's rent a year = ${fSAR(prj.total * (+inp.unitRentPct || 0) / 100)} on the all-in cost of ${fM(prj.total)} · ${fSAR(L.perUnit * 12)} per unit a year`} />
+            : <Field label="Rent per unit" value={Math.round((inp.unitRent || 0) * 12)} min={0} max={360000} step={1000} unit="SAR/yr" onChange={(v) => set("unitRent", v / 12)} hint={prj.total > 0 ? `= ${((L.perUnit * L.units * 12) / prj.total * 100).toFixed(2)}% of the all-in cost a year` : null} />}
           <div className="note" style={{ marginTop: 0, marginBottom: 10 }}><b>{L.letUnits} unit{L.letUnits === 1 ? "" : "s"} let</b>{letAll ? "" : " (you live in one)"} → <b className="mono">{fSAR(L.grossAnnual)}</b> a year, <b className="mono">{fSAR(L.netAnnual)}</b> after empty months and management · from {fCal(prj.occupy + 1)}{inp.rentFreezeUntil ? `, flat until ${inp.rentFreezeUntil} (rent freeze)` : ""}. The bank does not count this rent as income.</div>
           <Field label="Empty" value={inp.vacancyPct} min={0} max={30} step={1} unit="% of the year" onChange={(v) => set("vacancyPct", v)} />
           <Field label="Management" value={inp.mgmtPct} min={0} max={15} step={0.5} unit="% of rent" onChange={(v) => set("mgmtPct", v)} hint="+ VAT on the fee" />
