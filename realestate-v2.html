@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=8d42b7ac0c"></script>
-  <script src="re2-engine.js?v=8d42b7ac0c"></script>
-  <script src="re2-ui.js?v=8d42b7ac0c"></script>
+  <script src="engine.js?v=88d3ecb973"></script>
+  <script src="re2-engine.js?v=88d3ecb973"></script>
+  <script src="re2-ui.js?v=88d3ecb973"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -512,6 +512,15 @@
       const [lens, setLens] = useState({ by: "peakDebt", years: "horizon", at: "moveIn" });
       const narrow = useNarrow(640);                    // phones: tables with selects become stacked cards
       const toggleDis = (id, open) => setOpenDis((s) => s[id] === open ? s : { ...s, [id]: open });
+      // a box you open when you want it (closed by default; it stays as you left it while you are on the page)
+      const fold = ({ id, title, sub, help, style, children }) => (
+        <section className="box fold" style={style}>
+          <details open={!!openDis[id]} onToggle={(e) => toggleDis(id, e.currentTarget.open)}>
+            <summary style={{ cursor: "pointer", listStyle: "revert" }}><span className="h2" style={{ display: "inline", margin: 0 }}>{title}</span>{help && <Hint text={help} label={title} />}{sub && <span style={{ fontSize: 13, color: K.sub, fontWeight: 400 }}> · {sub}</span>}</summary>
+            {openDis[id] && <div style={{ marginTop: 10 }}>{children}</div>}
+          </details>
+        </section>
+      );
       const dirty = useMemo(() => JSON.stringify(inp) !== snap, [inp, snap]);
 
       const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
@@ -1806,7 +1815,7 @@
             <div className="box" style={{ marginTop: 14, padding: "0 18px" }}>
               <Dis id="startsTable" title="The best mix for every start date" sub="table" open={!!openDis.startsTable} onToggle={toggleDis}>
                 <div className="scroll-x"><table className="tbl">
-                  <thead><tr>{["Start", W.doneLabel, `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, `Cash at ${W.doneShort}`, "Best mix", "Lowest cash", "Instalments at their highest", `${build ? "Land" : "Purchase"} mortgage (taken / max)`, "Mortgage on your property", "Personal loans", "Cash-out", "New loans", "Profit + fees", "Rule 7", ""].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
+                  <thead><tr>{["Start", W.doneLabel, `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, `Cash at ${W.doneShort}`, "Best mix", "Lowest cash", "Instalments at their highest", `${build ? "Land" : "Purchase"} mortgage (taken / max)`, "Mortgage on your property", "Personal loans", "Cash-out", "New loans", "Profit + fees", "Simple net worth", ""].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
                   <tbody>{rowsS.map((st) => { const b = st.best; return (
                     <tr key={st.delay} style={{ background: st.delay === curStart ? SOFT : "transparent" }}>
                       <td className="l">{fCal(st.delay)}{st.delay === curStart ? " · planned" : ""}</td><td className="l">{fCal(st.occupy)}</td>
@@ -1826,7 +1835,7 @@
               </Dis>
               <Dis id="planTable" title={`${planName(focusIdx)} at every start date`} sub="table" open={!!openDis.planTable} onToggle={toggleDis}>
                 <div className="scroll-x"><table className="tbl">
-                  <thead><tr>{["Start", W.doneLabel, `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, `Cash at ${W.doneShort}`, "Cost", "Lowest cash", "Instalments at their highest", `${build ? "Land" : "Purchase"} mortgage`, "Mortgages on your properties", "Personal loans", "Cash-out", "Old loans paid off", "Profit + fees", "Rule 7"].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
+                  <thead><tr>{["Start", W.doneLabel, `vs ${baseLbl}`, "Works?", `Cash back (≤ ${inp.recoveryMonths} mo)`, `Cash at ${W.doneShort}`, "Cost", "Lowest cash", "Instalments at their highest", `${build ? "Land" : "Purchase"} mortgage`, "Mortgages on your properties", "Personal loans", "Cash-out", "Old loans paid off", "Profit + fees", "Simple net worth"].map((h, k) => <th key={k}>{h}</th>)}</tr></thead>
                   <tbody>{sw.rows.map((x) => <tr key={x.delay} style={{ background: x.delay === curStart ? SOFT : earliest && x.delay === earliest.delay ? "#F6EFE1" : "transparent" }}>
                     <td className="l">{fCal(x.delay)}{x.delay === curStart ? " · planned" : earliest && x.delay === earliest.delay ? " · earliest" : ""}</td><td className="l">{fCal(x.occupy)}</td>
                     <td style={{ color: signCol(x.econAdv), fontWeight: 700 }}>{fM(x.econAdv)}</td>
@@ -1854,10 +1863,10 @@
         [`Catches up with ${baseLbl} (everything grows)`, (r) => r.econBreakEven != null ? fCal(r.econBreakEven) : `not by ${endDate}`, null, EXPL.breakEven],
         [`Wealth in ${endDate}: cash + property − debt`, (r) => fM(r.econEnd), null, EXPL.econ],
         [`…if you ${W.baseIf}: cash − old debt`, (r) => fM(r.econBaseEnd), null, EXPL.econ],
-        [`Your rule-7 net worth in ${endDate}`, (r) => fM(r.netWorthEnd), null, EXPL.netWorth],
-        [`…if you ${W.baseIf} (rule 7)`, (r) => fM(r.renterEnd), null, EXPL.baseline],
-        [`…vs ${baseLbl} (rule 7)`, (r) => fM(r.advantage), (r) => signCol(r.advantage), EXPL.advantage],
-        [`Catches up with ${baseLbl} (rule 7)`, (r) => r.breakEvenMonth != null ? fCal(r.breakEvenMonth) : `not by ${endDate}`, null, EXPL.breakEven],
+        [`Your simple net worth in ${endDate}`, (r) => fM(r.netWorthEnd), null, EXPL.netWorth],
+        [`…if you ${W.baseIf} (simple net worth)`, (r) => fM(r.renterEnd), null, EXPL.baseline],
+        [`…vs ${baseLbl} (simple net worth)`, (r) => fM(r.advantage), (r) => signCol(r.advantage), EXPL.advantage],
+        [`Catches up with ${baseLbl} (simple net worth)`, (r) => r.breakEvenMonth != null ? fCal(r.breakEvenMonth) : `not by ${endDate}`, null, EXPL.breakEven],
         [isLand ? "Land finance (bank's maximum)" : build ? "Land mortgage (bank's maximum)" : "Purchase mortgage (bank's maximum)", (r) => facTxt(r.lm), null, EXPL.capacity],
         ["Mortgages on properties you own", (r) => (r.eqs && r.eqs.length ? r.eqs.map((f) => `${f.propName || f.label}: ${facTxt(f)}`).join(" · ") : facTxt(r.eq)), null, EXPL.capacity],
         [jointOn ? "Your personal loans, old loans bought out included" : "Personal loans, old loans bought out included", (r) => facTxt(r.pl), null, EXPL.refi],
@@ -1894,11 +1903,11 @@
         const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, payoff: e.kind === "settle" && !!e.fac && (r.prepaid || []).some((x) => x.key === e.fac && x.t === e.t), card: e.card || null, text: calText(e.text) }));
         // a plan that runs out says so once, in the month the cash runs out (the engine's row: how much more it needs, and the most
         // you would be short); the other plans show their lowest cash, or the most bridge money they need
-        if (r.minCash >= 0 || r.bridged) rows.push({ t: r.minCashT, o: 1e6, kind: r.minCash < 0 ? "bridge" : "low", text: r.minCash < 0 ? `The most bridge money you need: ${fS(-r.minCash)}.` : `Lowest cash (no growth): ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
+        if (r.minCash >= 0 || r.bridged) rows.push({ t: r.minCashT, o: 1e6, kind: r.minCash < 0 ? "bridge" : "low", text: r.minCash < 0 ? `The most bridge money you need: ${fS(-r.minCash)}.` : `Lowest cash: ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });
         if (r.debtFreeT != null) rows.push({ t: r.debtFreeT, o: 1e6 + 1, kind: "end", text: "Debt-free." });
         const mi = moveInMoney(r, occ);
         const inWord = isLand ? "The land is paid for" : sellAll ? "The building is finished" : letAll ? "The building is yours" : "You move in";
-        rows.push(r.onHandAtMoveIn >= 0 ? { t: occ, o: 1e6 + 2, kind: "occ", cash: true, text: `${inWord} with ${fM(r.onHandAtMoveIn)} in cash (no growth counted).` }
+        rows.push(r.onHandAtMoveIn >= 0 ? { t: occ, o: 1e6 + 2, kind: "occ", cash: true, text: `${inWord} with ${fM(r.onHandAtMoveIn)} in cash.` }
           : { t: occ, o: 1e6 + 2, kind: "shortIn", cash: true, text: mi.n ? `${mi.what.charAt(0).toUpperCase() + mi.what.slice(1)} bring${mi.n > 1 || /loans/.test(mi.what) ? "" : "s"} ${fS(mi.net)}${mi.cleared.length ? ` after clearing ${mi.cleared.join(" + ")}` : ""}; ${needOf(r) != null ? `the project still needs ${fS(needOf(r))} more cash in total` : `you would still be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}`}.` : needOf(r) != null ? `The project needs ${fS(needOf(r))} more cash in total.` : `You would be ${fS(-r.onHandAtMoveIn)} short at ${W.doneShort}.` });
         // a plan that runs out: the finished home and the moving in only happen if the money it needs is found
         if (!works(r)) rows.forEach((x) => { if (x.kind === "milestone" && x.t === occ && /Construction complete/.test(x.text)) x.text = `Construction complete — only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}.`; });
@@ -2048,7 +2057,7 @@
           <div className="recstrip">{lensVerdict()}<span style={{ display: "block", fontSize: 12, opacity: .85 }}>{L.recommended.why}</span></div>
           {!print && <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 13, margin: "0 0 4px" }}>Showing <b style={{ color: colT(focusIdx) }}>{planRef(focusIdx)}</b> below{focusIdx === recIdx ? " · the recommended plan" : ""}. <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>see <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select> instead · or click a row of the table</span></div>}
           {!print && LensTable({ print })}
-          {!print && LensSettings()}
+          {!print && <details className="dis no-print" open={!!openDis.lensSet} onToggle={(e) => toggleDis("lensSet", e.currentTarget.open)} style={{ marginTop: 8 }}><summary>Compare by</summary>{openDis.lensSet && <div className="body">{LensSettings()}</div>}</details>}
           <div className="lens-grid">
             {keys.map((k, n) => { const g = { idx: L[k].idx, lenses: [k] }, r = m.results[g.idx], on = g.idx === focusIdx, same = keys.slice(0, n).find((j) => L[j].idx === g.idx); return (
               <div key={k} className={"plan lens" + (on ? " on" : "")} style={{ borderLeftColor: colF(g.idx) }}>
@@ -2101,7 +2110,7 @@
           : f.wait === 0 ? <>You can {verb} as planned in <b>{fCal(f.delay)}</b> from your cash, with no new loan.</>
           : <>Wait <b>{f.wait} month{f.wait === 1 ? "" : "s"}</b> and {verb} in <b>{fCal(f.delay)}</b> from your cash and savings, with no new loan.</>;
         return (
-          <Box title="Save and buy — no new loan" style={{ marginTop: 14 }}>
+          fold({ id: "saveBuy", title: "Save and buy — no new loan", sub: !f ? `not within ${sb.maxWait} months` : f.wait === 0 ? "works now from your cash" : `wait ${f.wait} month${f.wait === 1 ? "" : "s"}`, style: { marginTop: 14 }, children: <>
             <p style={{ fontSize: 14, margin: "0 0 8px", lineHeight: 1.5 }}>{head}</p>
             {f ? <>
               <Row k={`Cash at ${W.doneShort}`} v={fCash(f.onHand)} sub={`${W.doneShort} in ${fCal(f.occupy)} · no growth counted`} />
@@ -2117,7 +2126,7 @@
               {f && (() => { const k = inp.plans.findIndex((x) => x && x.enabled && x.name === sb.plan.name); return k >= 0 ? <span style={{ color: K.sub }}>Already in your plans as Plan {k + 1}</span> : null; })()}
               {f && !inp.plans.some((x) => x && x.enabled && x.name === sb.plan.name) && <button className="btn small" disabled={inp.plans.length >= MAX_PLANS} onClick={addPlan}>Add it as a plan{f.delay !== curStart ? ` (moves the start to ${fCal(f.delay)})` : ""}</button>}
             </div>
-          </Box>
+</> })
         );
       };
       // the answer in one line, on the recommended plan
@@ -2151,8 +2160,9 @@
       const LiabilityCard = ({ r, i, print, part }) => {
         const Lb = reLiability(r, p2, prj), span = rePeakSpan(r), adv = household.settleAdvice || [];
         const rateTxt2 = (x) => x.kind === "old" ? (x.flat ? `${x.quoted}% hamish / ${x.apr.toFixed(2)}% APR` : `${(+x.apr).toFixed(2)}% APR`) : (inp.rateQuote === "flat" ? `${x.quoted}% hamish / ${x.apr.toFixed(2)}% APR` : `${x.apr.toFixed(2)}% APR`);
-        const rows = [...Lb.rows.map((x) => ({ ...x, cls: "" })), ...Lb.old.filter((x) => x.state.kind === "kept").map((x) => ({ ...x, cls: "kept" })), ...Lb.old.filter((x) => x.state.kind !== "kept").map((x) => ({ ...x, cls: "gone" }))];
-        const nameOf = (x) => x.kind === "old" ? `${x.label} (${x.state.kind === "kept" ? "kept" : x.state.kind === "boughtOut" ? (x.state.topup ? "topped up by its bank" : "bought out") : x.state.kind === "sold" ? "repaid from a sale" : "cleared"})` : x.split ? `Two personal loans${x.borrower === "your spouse" ? ", your spouse's" : ""}` : x.topups ? `Top-ups of ${x.refi.join(" + ")} (each with its own bank)` : x.label + (x.refi && x.refi.length ? ` (buys out ${x.refi.join(" + ")})` : "");
+        // (the old loans this plan pays off or buys out are not listed: only what you owe with it)
+        const rows = [...Lb.rows.map((x) => ({ ...x, cls: "" })), ...Lb.old.filter((x) => x.state.kind === "kept").map((x) => ({ ...x, cls: "kept" }))];
+        const nameOf = (x) => x.kind === "old" ? `${x.label} (${x.state.kind === "kept" ? "kept" : x.state.kind === "boughtOut" ? (x.state.topup ? "topped up by its bank" : "bought out") : x.state.kind === "sold" ? "repaid from a sale" : "cleared"})` : x.split ? `Two personal loans${x.borrower === "your spouse" ? ", your spouse's" : ""}` : x.topups ? `Top-ups of ${x.refi.join(" + ")}` : x.label + (x.refi && x.refi.length ? ` (buys out ${x.refi.join(" + ")})` : "");
         const whenOf = (x) => x.kind === "new" ? `${fCal(x.from)} – ${fCal(x.to)}${x.ended ? ` · ${x.ended.how} ${fCal(x.ended.t)}` : ""}` : x.state.kind === "kept" ? (x.state.t != null ? `until ${fCal(x.to)}` : `beyond ${endDate}`) : `${x.state.how} ${fCal(x.state.t)}`;
         const instOf = (x) => x.kind === "old" && x.state.kind !== "kept" ? "—" : `${fSAR(x.inst)}/mo`;
         const planDoes = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o) return ""; const s = o.state; return s.kind === "kept" ? ` This plan keeps it${s.t != null ? ` to its end in ${fCal(s.t)}` : ""}.${a.verdict === "keep" && a.canSettle && a.saveSettle >= a.eps && !a.cashOk ? (() => { const w = reSettleWhen(r, a.settleCost, inp.cashBuffer, s.t); return w != null ? ` Under this plan your cash would cover settling it from ${fCal(w)} — settle it then.` : " Under this plan your cash never covers settling it before it ends."; })() : ""}` : s.kind === "boughtOut" ? ` This plan has the bank buy it out in ${fCal(s.t)}.` : s.kind === "sold" ? ` This plan repays it from a sale in ${fCal(s.t)}.` : ` This plan pays it off in ${fCal(s.t)}${(() => { const x = (r.payoffs || []).find((y) => y.t === s.t && y.name === a.name); return x && x.why === "room" ? ` to make room for the ${(x.forLabel || "mortgage").toLowerCase()}${x.dearer ? " — it is dearer than that mortgage" : ""}` : ""; })()}.`; };
@@ -2160,14 +2170,15 @@
         const peakTxt = `Most you owe at once ${fS(Lb.peakDebt)} in ${fCal(Lb.peakDebtT)}; instalments at their highest ${fSAR(Lb.peakInst)}/mo (${(Lb.peakInstPct || 0).toFixed(0)}% of income) from ${fCal(span.from)} to ${fCal(span.to)}; ${Lb.debtFreeT != null ? `debt-free ${fCal(Lb.debtFreeT)}` : `still in debt in ${endDate}`}.`;
         const cards = narrow && !print;
         const settleEl = adv.length > 0 ? <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Your old loans — keep or settle?<Hint text={EXPL.settleAdvice} label="Keep or settle?" /></div>
+              {part !== "settle" && <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Your old loans — keep or settle?<Hint text={EXPL.settleAdvice} label="Keep or settle?" /></div>}
               {cards ? <div className="grid" style={{ gap: 8 }}>{adv.map((a) => <div key={`${a.owner}${a.id}`} className="plan lrow" style={{ borderLeftColor: verdictCol(a.verdict) }}><div style={{ fontSize: 13 }}><b dir="auto">{a.name}</b> · <b style={{ color: verdictCol(a.verdict) }}>{RE_SETTLE_VERDICT[a.verdict]}</b></div><div style={{ fontSize: 12, color: K.sub, lineHeight: 1.45 }}>{a.apr.toFixed(2)}% APR{a.flatRate != null ? ` (${a.flatRate}% hamish)` : ""} vs {a.newApr.toFixed(2)}% {a.type === "mortgage" ? "mortgage" : "personal loan"} · fee {fSAR(a.fee)} · {a.why}{planDoes(a)}</div></div>)}</div>
               : <div className="scroll-x"><table className="tbl settle">
                   <thead><tr><th>Loan</th><th>Its rate</th><th>New money's rate</th><th>Early-settlement fee</th><th>Verdict</th><th>Why</th></tr></thead>
                   <tbody>{adv.map((a) => <tr key={`${a.owner}${a.id}`}><td className="l" dir="auto">{a.name}{a.owner === "B" ? <span style={{ color: K.sub }}> (your spouse's)</span> : ""}</td><td>{a.apr.toFixed(2)}% APR{a.flatRate != null ? <div style={{ fontSize: 11.5, color: K.sub }}>{a.flatRate}% hamish</div> : null}</td><td>{a.newApr.toFixed(2)}% {a.type === "mortgage" ? "mortgage" : "personal"}</td><td>{fSAR(a.fee)}</td><td className="l" style={{ color: verdictCol(a.verdict), fontWeight: 700 }}>{RE_SETTLE_VERDICT[a.verdict]}</td><td className="l" style={{ minWidth: 260, fontSize: 12, lineHeight: 1.45 }}>{a.why}{planDoes(a)}</td></tr>)}</tbody>
                 </table></div>}
             </div> : null;
-        if (part === "settle") return settleEl ? <Box style={{ marginTop: 14 }}>{settleEl}</Box> : null;
+        if (part === "settle") { if (!settleEl) return null; const n = (v) => adv.filter((a) => a.verdict === v).length, parts = [["keep", "keep"], ["settleCash", "settle"], ["buyout", "buy out"], ["room", "keep unless a mortgage needs the room"]].filter(([v]) => n(v)).map(([v, w]) => `${n(v)} ${w}`);
+          return fold({ id: "settle", title: "Your old loans — keep or settle?", help: EXPL.settleAdvice, sub: `${adv.length} loan${adv.length === 1 ? "" : "s"}: ${parts.join(", ")}`, style: { marginTop: 14 }, children: settleEl }); }
         return (
           <Box title={`What you take on with ${planRef(i)}`} style={{ marginTop: 14 }} help={EXPL.newDebt}>
             {cards ? <div className="grid" style={{ gap: 8 }}>{rows.map((x) => <div key={x.key} className={"plan lrow " + x.cls} style={{ borderLeftColor: x.kind === "old" ? "#8C877D" : x.key === "lm" ? "#2F6DB5" : /^eq/.test(x.key) ? "#1F9A80" : x.key === "co" ? "#6FA3E0" : "#A24FB8" }}>
@@ -2219,22 +2230,28 @@
           </Box>
         );
       };
+      // a building let out entirely, as an investment: the return on your money, the rent against what it cost, what the rent
+      // leaves after the loans, how long the rent takes to pay the cost back, and the value the building is worth over its cost
       const InvestmentView = ({ r, i }) => {
-        const irr = econIrr[i], L = prj.letting, dc = reDebtCover(r), low = dc.lowest;
+        const irr = econIrr[i], L = prj.letting, cost = prj.total, occ = r.occupy;
+        const yr = r.months.filter((m) => m.t > occ && m.t <= occ + 12), newInst = (m) => m.lmPay + m.eqPay + m.plPay + m.coPay - (m.extraPay || 0);
+        const leftMo = yr.length ? yr.reduce((a, m) => a + (m.rentIn || 0) - newInst(m), 0) / yr.length : null;
+        const payback = L.netAnnual > 0 ? cost / L.netAnnual : null, made = prj.value0 - cost;
         return (
           <Box title="Investment view" style={{ marginTop: 14 }} help={EXPL.econIrr}>
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))", gap: 10 }}>
-              <Tile label="Return on the money the project takes" value={irr == null ? "n/a" : `${(irr * 100).toFixed(1)}%`} sub={irr == null ? "the money the project takes and gives back never changes sign" : `a year, vs ${(+netRet.toFixed(2))}% your cash earns`} tone={irr != null && irr * 100 < netRet ? K.neg : K.text} />
-              <Tile label="Rent as % of what it cost" value={pct1(prj.total > 0 ? L.grossAnnual / prj.total * 100 : null)} sub={`${fSAR(L.grossAnnual)} a year from ${L.letUnits} unit${L.letUnits === 1 ? "" : "s"}`} />
-              <Tile label="Rent after costs as % of what it cost" value={pct1(prj.total > 0 ? L.netAnnual / prj.total * 100 : null)} sub={`${fSAR(L.netAnnual)} a year after empty months and management`} />
-              <Tile label="Lowest debt cover" value={low ? `${low.cover.toFixed(2)}×` : "—"} sub={low ? `rent ÷ instalments in the year to ${fCal(low.t)}${low.cover < inp.dscrMin ? ` · below the ${inp.dscrMin}× banks want` : ""}` : "no new-loan instalments after completion"} tone={low && low.cover < 1 ? K.neg : K.text} />
+              <Tile label="Yearly return on your money" value={irr == null ? "n/a" : `${(irr * 100).toFixed(1)}%`} sub={irr == null ? "the money in and out never changes sign" : `vs ${(+netRet.toFixed(2))}% your cash earns`} tone={irr != null && irr * 100 < netRet ? K.neg : K.text} />
+              <Tile label="Gross rent yield" value={pct1(cost > 0 ? L.grossAnnual / cost * 100 : null)} sub={`${fM(L.grossAnnual)} a year from ${L.letUnits} unit${L.letUnits === 1 ? "" : "s"}`} />
+              <Tile label="Net rent yield" value={pct1(cost > 0 ? L.netAnnual / cost * 100 : null)} sub={`${fM(L.netAnnual)} a year after empty months and management`} />
+              <Tile label="Rent left after instalments" value={leftMo == null ? "—" : `${fM(leftMo)}/mo`} sub={yr.length ? `first year let, ${fCal(yr[0].t)} – ${fCal(yr[yr.length - 1].t)}` : "not let within the comparison"} tone={leftMo != null && leftMo < 0 ? K.neg : K.text} />
+              <Tile label="Pays for itself in" value={payback == null ? "—" : `${payback.toFixed(1)} years`} sub="from the rent alone, before loans" />
+              <Tile label="Value created" value={fM(made)} sub={`worth ${fM(prj.value0)} when finished, cost ${fM(cost)}`} tone={made < 0 ? K.neg : K.text} />
             </div>
-            <div className="note">{dc.coversFrom != null ? `Rent covers the instalments from the year to ${fCal(dc.coversFrom)}.` : dc.lowest ? `Rent never covers the instalments on its own within the comparison — your salary makes up the rest.` : "This plan has no instalments to cover once the building is let."} The bank does not count the rent as income.</div>
           </Box>
         );
       };
       // your plans side by side, year by year (one measure at a time)
-      const CMP = [["avail", "Cash you can spend (no growth)"], ["debt", "Debt owed"], ["inst", "Monthly instalments"], ["econ", `vs ${baseLbl} (everything grows)`], ["nw", `Rule 7 vs ${baseLbl}`]];
+      const CMP = [["avail", "Cash you can spend (no growth)"], ["debt", "Debt owed"], ["inst", "Monthly instalments"], ["econ", `vs ${baseLbl} (everything grows)`], ["nw", `Simple net worth vs ${baseLbl}`]];
       const CompareChart = ({ bare }) => {
         const n = Math.max(0, ...liveIdx.map((i) => m.results[i].years.length));
         const data = Array.from({ length: n }, (_, y) => {
@@ -2266,7 +2283,7 @@
                 {liveIdx.map((i) => <Line key={i} dataKey={`p${i}`} stroke={colF(i)} strokeWidth={i === focusIdx ? 3 : 2} strokeDasharray={isTool(i) ? "6 3" : undefined} dot={false} isAnimationActive={false} />)}
               </LineChart>
             </ResponsiveContainer></div>
-            <div className="note">{cmpKey === "avail" ? "The cash you can spend at each year end: your own cash, the loans and your salary in, every cost out — no return on cash counted. Below zero you would be short; inside a year the low point can be lower (see the lowest cash in the table)." : cmpKey === "debt" ? "All debt still owed at each year end: old loans and new." : cmpKey === "inst" ? "All instalments, old and new loans, as a monthly average over each year, against the bank's limit." : cmpKey === "econ" ? `Above zero: ${W.act} has left you richer by then — cash + property − debt, everything growing from today on both sides.` : `Your rule-7 measure, year by year: above zero, ${W.act} is ahead.`}</div>
+            <div className="note">{cmpKey === "avail" ? "The cash you can spend at each year end: your own cash, the loans and your salary in, every cost out — no return on cash counted. Below zero you would be short; inside a year the low point can be lower (see the lowest cash in the table)." : cmpKey === "debt" ? "All debt still owed at each year end: old loans and new." : cmpKey === "inst" ? "All instalments, old and new loans, as a monthly average over each year, against the bank's limit." : cmpKey === "econ" ? `Above zero: ${W.act} has left you richer by then — cash + property − debt, everything growing from today on both sides.` : `Your simple-net-worth measure, year by year: above zero, ${W.act} is ahead.`}</div>
           </Wrap>
         );
       };
@@ -2296,7 +2313,7 @@
               <div className="note">Return on the money {W.act} takes: {irr == null ? "not defined here (the extra money building takes and gives back never changes sign)" : `${(irr * 100).toFixed(1)}% a year, against ${nr}% on cash`}.</div>
             </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Your rule 7 — your own cash and the loans, no salary</div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Simple net worth — your own cash and the loans, no salary</div>
               <table className="bridge"><tbody>
                 <BLine label={fbC.total >= 0 ? `Your cash and the loans, less the project, at ${W.doneShort} (${fCal(occ)})` : `The project cost more than your cash and the loans by (${fCal(occ)})`} v={fbC.total} note="no salary and no growth — your salary covers the rest (see 'How it adds up' above)" />
                 <BLine label={`Growth at ${nr}% a year, today → ${W.doneShort}`} v={fbC.ret} note="both sides grow from today, while the balance is positive" />
@@ -2328,7 +2345,7 @@
         ["Project spend", "spend", "neg"], ["Rent paid", "rentPaid", "neg"], ["Old-loan instalments", "existInst", "neg"], [build ? "Land-mortgage instalments" : "Mortgage instalments", "lmPay", "neg"], ["Instalments on your properties' mortgages", "eqPay", "neg"], ["Personal-loan instalments", "plPay", "neg"], ["Cash-out instalments", "coPay", "neg"], ["  of which profit (all loans)", "interest", "sub"], ["Upkeep", "ownerCost", "neg"],
         ["Cash you can spend (year end, no growth)", "avail", "head"], ["Debt owed (year end)", "debt", "plain"], [build ? "  land mortgage" : "  mortgage", "debtLm", "sub"], ["  mortgages on your properties", "debtEq", "sub"], ["  personal loans", "debtPl", "sub"], ["  cash-out", "debtCo", "sub"], ["  old loans", "debtExisting", "sub"],
         [`${W.thing.charAt(0).toUpperCase() + W.thing.slice(1)}'s value`, "value", "plain"], ["Everything grows: cash + property − debt", "econNW", "plain"], [`  …${baseLbl}: cash − old debt`, "econBase", "sub"], [`vs ${baseLbl} (everything grows)`, "econAdv", "head"],
-        ["Rule-7 net worth", "netWorth", "plain"], [`  …if you ${W.baseIf}`, "renterNW", "sub"], [`Rule 7 vs ${baseLbl}`, "advantage", "head"],
+        ["Simple net worth", "netWorth", "plain"], [`  …if you ${W.baseIf}`, "renterNW", "sub"], [`Simple net worth vs ${baseLbl}`, "advantage", "head"],
       ];
       const YearTable = (r) => {
         const rows = YEAR_ROWS.filter(([, k, kind]) => kind !== "neg" && kind !== "sub" || r.years.some((y) => Math.abs(y[k] || 0) >= 0.5));
@@ -2408,16 +2425,16 @@
               {(rc.salary < 0 || r.moveInOk === false || rc.total < 0) && <div className="note">{rc.salary < 0 ? `Up to ${W.doneShort} your salary did not cover living costs and every instalment — the gap came out of your cash. ` : ""}{rc.total < 0 ? <span style={{ color: K.neg, fontWeight: 600 }}>Money out is more than money in: no loan in this plan covers the {fS(-rc.total)}. </span> : r.moveInOk === false ? <span style={{ color: K.neg }}>This is below your line of {fM(moveLine)}, so this plan ranks after plans that meet it.</span> : null}</div>}
             </Dis>
             <Dis id="bars" title={`Wealth in ${endDate}: ${W.act} vs not`} sub="both measures" open={!!openDis.bars} onToggle={toggleDis}>
-              <div className="flex justify-between items-center flex-wrap no-print" style={{ gap: 8, marginBottom: 8 }}><span style={{ fontSize: 12.5, color: K.sub }}>{planName(i)}</span><Seg label="Measure" value={measure} onChange={setMeasure} options={[["econ", "Everything grows"], ["rule7", "Your rule 7"]]} /></div>
+              <div className="flex justify-between items-center flex-wrap no-print" style={{ gap: 8, marginBottom: 8 }}><span style={{ fontSize: 12.5, color: K.sub }}>{planName(i)}</span><Seg label="Measure" value={measure} onChange={setMeasure} options={[["econ", "Everything grows"], ["rule7", "Simple net worth"]]} /></div>
               <WealthBars bars={measure === "econ" ? econBars(r) : ruleSevenBars(r)} />
-              <div className="note">{measure === "econ" ? `Everything grows: your household cash (salary in; living costs, rent, every instalment, the project and payoffs out; ${(+netRet.toFixed(2))}% growth while positive) + ${W.thing} − all debt, against the same household ${baseLbl}. This is how plans are ranked.` : "Your rule 7: your own cash and the loans after every cost, grown; instalments on the new loans as a plain cost; old instalments and rent you no longer pay; the property; less the new debt. Salary and living costs are left out."}<Hint text={measure === "econ" ? EXPL.econ : EXPL.netWorth} label="Wealth" /></div>
+              <div className="note">{measure === "econ" ? `Everything grows: your household cash (salary in; living costs, rent, every instalment, the project and payoffs out; ${(+netRet.toFixed(2))}% growth while positive) + ${W.thing} − all debt, against the same household ${baseLbl}. This is how plans are ranked.` : "Simple net worth: your own cash and the loans after every cost, grown; instalments on the new loans as a plain cost; old instalments and rent you no longer pay; the property; less the new debt. Salary and living costs are left out."}<Hint text={measure === "econ" ? EXPL.econ : EXPL.netWorth} label="Wealth" /></div>
             </Dis>
             {refiSteps(r).length > 0 && <Dis id="refi" title="Which old loans the bank buys out" sub={planName(i)} open={!!openDis.refi} onToggle={toggleDis}>{RefiBox({ r, i, bare: true })}</Dis>}
             {liveIdx.length > 1 && <Dis id="compare" title="Compare your plans over time" sub="every plan, one line" open={!!openDis.compare} onToggle={toggleDis}>{CompareChart({ bare: true })}</Dis>}
             <Dis id="breakeven" title={`What would have to be true for ${W.act} to win?`} sub="break-evens" open={!!openDis.breakeven} onToggle={toggleDis}>
               {!be ? <div className="note">Working it out…</div> : <>
                 <div className="scroll-x"><table className="tbl">
-                  <thead><tr><th>Assumption</th><th>Yours</th><th>Draws level — everything grows</th><th>— your rule 7</th></tr></thead>
+                  <thead><tr><th>Assumption</th><th>Yours</th><th>Draws level — everything grows</th><th>— simple net worth</th></tr></thead>
                   <tbody>{be.data.map((d) => <tr key={d.key}><td className="l">{d.label}</td><td>{d.key === "rent" ? `${fM(d.current)} a year` : `${d.current}%`}</td><td style={{ fontWeight: 700 }}>{beCell(d, "econ")}</td><td>{beCell(d, "rule7")}</td></tr>)}</tbody>
                 </table></div>
                 {be.partial && <div className="note">Working on the rest…</div>}
@@ -2428,7 +2445,7 @@
               {!st ? <div className="note">Working it out…</div> : <>
                 <div style={{ fontSize: 13, marginBottom: 6 }}>{st[0].passes ? <>{planName(i)} survives <b>{st.filter((x) => x.key !== "base" && x.passes).length} of {st.length - 1}</b> shocks without running out of cash{st.some((x) => x.bridged && !x.feasible) ? <> ({st.filter((x) => x.key !== "base" && x.bridged && !x.feasible).length} more only with bridge money)</> : null}.</> : st[0].bridged ? <>{planName(i)} already needs bridge money as you entered it — the shocks show how much worse it gets.</> : <>{planName(i)} already runs out of cash as you entered it — the shocks show how much worse it gets.</>}</div>
                 <div className="scroll-x"><table className="tbl">
-                  <thead><tr><th>If…</th><th>Works?</th><th>Lowest cash</th><th>vs {baseLbl} (everything grows)</th><th>Rule 7</th></tr></thead>
+                  <thead><tr><th>If…</th><th>Works?</th><th>Lowest cash</th><th>vs {baseLbl} (everything grows)</th><th>Simple net worth</th></tr></thead>
                   <tbody>{st.map((x) => <tr key={x.key} style={{ background: x.key === "base" ? SOFT : "transparent" }}><td className="l">{x.label}</td><td style={{ color: worksCol(x), fontWeight: 700 }}>{works(x) ? worksTxt(x) : "runs out"}</td><td style={{ color: x.minCash < 0 ? K.neg : K.text }}>{fCash(x.minCash)} · {fCal(x.minCashT)}</td><td style={{ color: signCol(x.econAdv) }}>{fM(x.econAdv)}</td><td>{fM(x.advantage)}</td></tr>)}</tbody>
                 </table></div>
                 <div className="note">"Loan rates +2 points" raises the yearly rate of every new loan; your old loans keep their rates. Costs +20% add cost but no value.</div>
@@ -2456,7 +2473,7 @@
             </Dis>
             {inp.kind === "landVilla" && <Dis id="ready" title="Or buy a ready villa instead?" sub="price that matches building" open={!!openDis.ready} onToggle={toggleDis}>
               {!rb ? <div className="note">Working it out…</div> : <div style={{ fontSize: 13.5, lineHeight: 1.6 }}>
-                A ready villa worth what your finished home would be ({fM(rb.value)} in {fCal(rb.buyAt)}), bought in {fCal(rb.buyAt)} and paid for the same way, does as well as building with {planRef(i)} up to a price of <b>{rb.price != null ? fM(rb.price) : "— (none: building is ahead even at a very low price)"}</b> when everything grows{rb.price7 != null ? <> ({fM(rb.price7)} on your rule 7)</> : null}. You would move in {fCal(rb.moveIn)} instead of {fCal(rb.buildMoveIn)}.
+                A ready villa worth what your finished home would be ({fM(rb.value)} in {fCal(rb.buyAt)}), bought in {fCal(rb.buyAt)} and paid for the same way, does as well as building with {planRef(i)} up to a price of <b>{rb.price != null ? fM(rb.price) : "— (none: building is ahead even at a very low price)"}</b> when everything grows{rb.price7 != null ? <> ({fM(rb.price7)} on simple net worth)</> : null}. You would move in {fCal(rb.moveIn)} instead of {fCal(rb.buildMoveIn)}.
                 {rb.atPrice && <div className="note">At that price: {rb.atPrice.feasible ? `cash never runs out (lowest ${fM(rb.atPrice.minCash)})` : rb.atPrice.bridged ? `it needs ${fM(rb.atPrice.bridgePeak)} of bridge money until a loan lands` : `cash runs out (it needs ${fS(-rb.atPrice.minCash)} more)`}. Transfer tax and the broker's fee are paid on the price; its land grows like yours and its building loses {dep}% a year from the day you buy it.</div>}
               </div>}
             </Dis>}
@@ -2495,7 +2512,7 @@
       const LoanCardRow = ({ c, onDetails }) => {
         const pct = (v) => `${Math.round(v)}%`, inst = (a, b, pa, pb, who) => `${fSAR(a)} → ${fSAR(b)}/mo (${pct(pa)} → ${pct(pb)} of ${who || "income"})`;
         const rows = [
-          [c.cashTo === "seller" ? "Paid to the seller" : "Cash to you", fSAR(c.cash)],
+          [c.cashTo === "seller" ? "Mortgage amount" : "Cash to you", fSAR(c.cashTo === "seller" ? c.amount : c.cash)],
           ...(c.inst > 0 ? [["This loan's instalment", `${fSAR(c.inst)}/mo`]] : []),
           ["All your instalments", inst(c.instBefore, c.instAfter, c.pctBefore, c.pctAfter, c.instBeforeB != null ? "your income" : null)],
           ...(c.instBeforeB != null ? [["Your spouse's instalments", inst(c.instBeforeB, c.instAfterB, c.pctBeforeB, c.pctAfterB, "their income")]] : []),
@@ -2514,7 +2531,7 @@
       const StepByStep = ({ r, i }) => (
         <Box title={`What happens, in order · ${planName(i)}`} style={{ marginTop: 14 }}>
               <div className="ev" style={{ fontWeight: 600 }}><span className="d">{fCal(0)}</span><span className="k"><EvTag kind="today" /></span><span>Today: {fM(inp.cashAvailable)} cash; {hj ? <>your old loans take {fSAR(hj.existingInstA)}/mo ({household.existingDbr.toFixed(0)}% of your income) and your spouse's {fSAR(hj.existingInstB)}/mo ({hj.existingDbrB.toFixed(0)}% of theirs) · <AR /></> : <>your old loans take {fSAR(household.existingInst)}/mo ({household.existingDbr.toFixed(0)}% of income)</>}.</span></div>
-              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span>{x.card ? LoanCardRow({ c: x.card, onDetails: () => setLoanDlg({ i, key: x.fac }) }) : <span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}{x.fac ? <> <button className="lnk no-print" onClick={() => setLoanDlg(x.payoff ? { i, key: x.fac, view: "payoff" } : { i, key: x.fac })} aria-label={x.payoff ? "Where the cash for this payoff comes from" : "Details of this loan"}>Details ›</button></> : x.cash ? <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, view: "end" })} aria-label={`How the cash at ${W.doneShort} adds up`}>Details ›</button></> : null}</span>}</div>)}
+              {timelineOf(r).map((x, k, arr) => <div key={k} className={"ev" + (x.kind === "short" || x.kind === "shortIn" ? " warn" : x.kind === "bridge" ? " amber" : x.kind === "low" || x.kind === "occ" ? " hi" : "")}><span className="d">{k > 0 && arr[k - 1].t === x.t ? "" : fCal(x.t)}</span><span className="k"><EvTag kind={x.kind} build={build} /></span>{x.card ? <span style={{ display: "block" }}>{(() => { const rem = r.months.slice(Math.max(0, x.t)).reduce((a, m) => a + (m.spend || 0), 0), before = x.t >= 1 ? r.months[x.t - 1].avail : inp.cashAvailable; return <span style={{ display: "block", fontSize: 12.5, color: K.sub, marginBottom: 4 }}>{rem > 0.5 ? <>Still to pay for the project: <b className="mono" style={{ color: K.text }}>{fSAR(rem)}</b></> : "The project is paid for"} · your cash before this: <b className="mono" style={{ color: K.text }}>{fSAR(before)}</b></span>; })()}{LoanCardRow({ c: x.card, onDetails: () => setLoanDlg({ i, key: x.fac }) })}</span> : <span style={{ color: x.kind === "short" || x.kind === "shortIn" ? K.neg : x.kind === "milestone" ? K.sub : K.text }}>{boldNums(x.text)}{x.fac ? <> <button className="lnk no-print" onClick={() => setLoanDlg(x.payoff ? { i, key: x.fac, view: "payoff" } : { i, key: x.fac })} aria-label={x.payoff ? "Where the cash for this payoff comes from" : "Details of this loan"}>Details ›</button></> : x.cash ? <> <button className="lnk no-print" onClick={() => setLoanDlg({ i, view: "end" })} aria-label={`How the cash at ${W.doneShort} adds up`}>Details ›</button></> : null}</span>}</div>)}
               <div className="ev" style={{ borderBottom: "none", fontWeight: 600 }}><span className="d">{endDate}</span><span className="k"><EvTag kind="horizon" /></span><span>{works(r) ? "" : `Only if you find ${needOf(r) != null ? `the ${fS(needOf(r))} more this plan needs` : "the money you are short"}: `}{works(r) ? "Wealth" : "wealth"} {fM(r.econEnd)} vs {fM(r.econBaseEnd)} if you {W.baseIf}: <span style={{ color: signCol(r.econAdv) }}>{fM(r.econAdv)}</span>.</span></div>
         </Box>
       );
@@ -2695,9 +2712,9 @@
             <div style={{ marginTop: 14 }}>{LensCards({ print: false })}</div>
             {SaveAndBuy()}
             {StepByStep({ r, i })}
+            {letAll && InvestmentView({ r, i })}
             {LiabilityCard({ r, i, print: false, part: "loans" })}
             {LiabilityCard({ r, i, print: false, part: "settle" })}
-            {letAll && InvestmentView({ r, i })}
             {WatchOut({ items: watchOut(r) })}
             {DetailsBox({ r, i })}
             {loanDlg && (loanDlg.view === "end" ? CashEndDetails() : loanDlg.view === "payoff" ? PayoffDetails() : LoanDetails())}
