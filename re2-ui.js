@@ -81,7 +81,7 @@ function reRollForward(inp, ym) {
   const from = inp && inp.asOf, d = reYmDiff(from, ym);
   if (!(d > 0)) return null;
   const notes = [], back = (v, lo, what) => { if (v == null || v === "" || isNaN(+v)) return v; const x = Math.round(+v) - d; if (x < lo && +v >= lo) notes.push(`${what} had passed — moved to ${lo === 0 ? "this month" : "next month"}`); return Math.max(lo, x); };
-  const q = { ...inp, asOf: ym };
+  const q = { ...inp, asOf: ym, rolledFrom: from };   // (rolledFrom: the month it was brought up to date from — the loans page says so)
   q.existingLoans = (inp.existingLoans || []).map((l) => reRollLoan(l, d, ym, notes));
   if (inp.joint && Array.isArray(inp.joint.loans)) q.joint = { ...inp.joint, loans: inp.joint.loans.map((l) => reRollLoan(l, d, ym, notes)) };
   if (inp.landMonth != null) q.landMonth = back(inp.landMonth, 0, inp.kind === "landVilla" || inp.kind === "landBuilding" || inp.kind === "land" ? "The land purchase" : "The purchase");
