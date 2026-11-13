@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=79c2c8a6c6"></script>
-  <script src="re2-engine.js?v=79c2c8a6c6"></script>
-  <script src="re2-ui.js?v=79c2c8a6c6"></script>
+  <script src="engine.js?v=8d42b7ac0c"></script>
+  <script src="re2-engine.js?v=8d42b7ac0c"></script>
+  <script src="re2-ui.js?v=8d42b7ac0c"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1030,7 +1030,6 @@
                   </tbody>
                 </table>
               </div>
-              {loans.length > 0 && <div style={{ fontSize: 12, color: K.sub, marginTop: 6, lineHeight: 1.45 }}>Type: a <b>personal</b> loan counts as one of the two personal loans the bank allows at once and may be bought out by a new personal loan or paid off to make room for a mortgage; a <b>mortgage</b> never does — it counts in the {inp.mortgageCap}% mortgage limit instead. "Keep or settle?" weighs each loan's yearly rate (APR) against the new money that would replace it and against what your cash earns.</div>}
               <div className="flex flex-wrap no-print" style={{ gap: 8, marginTop: 10 }}>
                 <button className="btn small" onClick={() => setList([...loans, { id: spouse ? `s${Date.now()}` : Date.now(), name: `${word} ${loans.length + 1}`, balance: 100000, installment: 2500, monthsLeft: 48, rate: 6 }])}>+ Add a loan</button>
                 {loans.length > 0 && <button className="btn small" onClick={() => withUndo(spouse ? "Removed all your spouse's loans" : "Removed all loans", () => setList([], true))}>Remove all</button>}
@@ -1047,10 +1046,12 @@
             <Head id="loans" title="What do you already owe?" sub={jointOn ? "The bank counts these instalments first, each against its owner's income; what is left of each of your limits decides how much it can lend (a joint mortgage may use both). Paying one off, or the bank buying one of yours out, frees room." : `The bank counts these instalments first; what is left of your ${inp.dbrCap}% limit decides how much it can lend. Paying one off, or the bank buying it out with a new personal loan, frees room.`} />
             <Box title={`Your loans · ${fSAR(inst)}/mo · ${inp.income > 0 ? (inst / inp.income * 100).toFixed(0) : 0}% of ${jointOn ? "your " : ""}income`} right={<button className="lnk no-print" onClick={() => setLoanMore(!loanMore)}>{loanMore ? "Fewer columns" : "More: age, settle date, permissions"}</button>}>
               {loanTable(loans, setLoans, false)}
-              {rollInfo && rollInfo.from && (() => { const mon = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k || ""); return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }) : k; }; return (
-                <div className="no-print" style={{ fontSize: 12, color: K.sub, marginTop: 6, lineHeight: 1.45 }}>Brought up to date to {mon(rollInfo.to)}: balances, months left and ages recalculated for the months since {mon(rollInfo.from)}.{rollInfo.notes && rollInfo.notes.length ? ` ${rollInfo.notes.join("; ")}.` : ""}{ROLLED.backup && <> <button className="lnk" style={{ fontSize: 12 }} onClick={() => { try { const b = ROLLED.backup; if (b.cur != null) localStorage.setItem(CUR_KEY, b.cur); if (b.store != null) localStorage.setItem(STORE_KEY, b.store); localStorage.setItem(ROLL_SKIP_KEY, ROLLED.now); } catch (e) {} location.reload(); }}>Undo — keep the old numbers this month</button></>}</div>); })()}
+              {(() => { const mon = (k) => { const m = /^(\d{4})-(\d{2})$/.exec(k || ""); return m ? new Date(+m[1], +m[2] - 1, 1).toLocaleString("en-US", { month: "short", year: "numeric" }) : k; }, from = (rollInfo && rollInfo.from) || inp.rolledFrom; return (
+                <div className="flex items-start no-print" style={{ gap: 8, fontSize: 12.5, marginTop: 8, lineHeight: 1.45 }}>
+                  <span aria-hidden="true" style={{ flex: "none", width: 18, height: 18, borderRadius: "50%", background: K.pos, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, marginTop: 1 }}>✓</span>
+                  <span>Balances as of <b>{mon(inp.asOf)}</b> — they update by themselves every month{from ? ` (last brought up to date from ${mon(from)})` : ""}.{rollInfo && rollInfo.notes && rollInfo.notes.length ? ` ${rollInfo.notes.join("; ")}.` : ""}{rollInfo && ROLLED.backup && <> <button className="lnk" style={{ fontSize: 12 }} onClick={() => { try { const b = ROLLED.backup; if (b.cur != null) localStorage.setItem(CUR_KEY, b.cur); if (b.store != null) localStorage.setItem(STORE_KEY, b.store); localStorage.setItem(ROLL_SKIP_KEY, ROLLED.now); } catch (e) {} location.reload(); }}>Undo — keep the old numbers this month</button></>}</span>
+                </div>); })()}
               {household.warnings.filter((w) => !/^Plan \d+ mortgages/.test(w)).length > 0 && <div style={{ background: SOFT_AMB, borderRadius: 8, padding: "8px 12px", marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>{household.warnings.filter((w) => !/^Plan \d+ mortgages/.test(w)).map((w, k) => <div key={k} className="flex items-start" style={{ gap: 6 }}><AlertTriangle size={14} color={K.brassTx} style={{ flex: "none", marginTop: 3 }} /><span>{w}</span></div>)}</div>}
-              <div className="note">"May be paid off from cash" unticked: no plan pays it off early (keep cheap debt). "May the bank buy it out" unticked: no new personal loan clears it. "Settle in month": you clear it from your cash then — whether you {W.act.replace(/^(buy|build)ing/, "$1")} or not. The bank can buy a personal loan out once it is {inp.refiMinMonths} months old. A flat (hamish) rate is converted to the yearly rate (APR) it amortises at, over its whole term (months since it started + months left).</div>
               <More title="Import or paste loans (Qist export, or one per line: name, balance, instalment, months, rate)">
                 <textarea rows={4} value={loanTxt} onChange={(e) => setLoanTxt(e.target.value)} placeholder={'[{"name":"Personal loan","balance":350000,"installment":7900,"monthsLeft":54,"rate":6.5}]\nor\nCar finance; 95000; 2950; 36; 5'} aria-label="Loans to import" />
                 {parsed.length > 0 ? <div style={{ marginTop: 8 }}>
@@ -1066,7 +1067,6 @@
             </Box>
             {jointOn && <Box title={`Your spouse's loans · ${fSAR(instS)}/mo · ${hj && hj.income > 0 ? (instS / hj.income * 100).toFixed(0) : 0}% of their income`} style={{ marginTop: 14 }} help={EXPL.joint}>
               {loanTable(spouseLoans, (l) => setJoint("loans", l), true)}
-              <div className="note"><AR />: these count against your spouse's income only (their limit is {hj ? hj.capPctB : "—"}%). The household pays them whether you {W.act.replace(/^(buy|build)ing/, "$1")} or not; a plan may pay one off from your cash only to make room for a joint mortgage, if you allow it ("More" columns). Their own personal loans may buy them out when a plan says your spouse takes personal loans.</div>
             </Box>}
             <Box title="When borrowing room opens up" style={{ marginTop: 14 }} help={EXPL.capacity}>
               <div className="scroll-x"><table className="tbl">

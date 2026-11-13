@@ -44,7 +44,7 @@ test('rolling a scenario forward: loans paid down exactly as the engine pays the
       { id: 3, name: 'Short', balance: 5000, installment: 2600, monthsLeft: 2, rate: 5 }],
     plans: [{ ...E.RE_PLAN_DEFAULTS, enabled: true, name: 'x', plWhen: 'month', plMonth: 6, plMore: [{ when: 'month', month: 1 }] }] };
   const R = E.reRollForward(inp, '2026-12');
-  assert.equal(R.months, 2); assert.equal(R.inp.asOf, '2026-12');
+  assert.equal(R.months, 2); assert.equal(R.inp.asOf, '2026-12'); assert.equal(R.inp.rolledFrom, '2026-10');
   assert.equal(R.inp.cashAvailable, inp.cashAvailable);
   assert.equal(R.inp.landMonth, 3); assert.equal(R.inp.buildStart, 6);
   assert.equal(R.inp.plans[0].plMonth, 4); assert.equal(R.inp.plans[0].plMore[0].month, 0);
