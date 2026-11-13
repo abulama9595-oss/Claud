@@ -2053,11 +2053,8 @@
           {LensTable({ print })}
         </>);
         const keys = LENS_KEYS.filter((k) => L[k]);
-        return (<>
-          <div className="recstrip">{lensVerdict()}<span style={{ display: "block", fontSize: 12, opacity: .85 }}>{L.recommended.why}</span></div>
-          {!print && <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 13, margin: "0 0 4px" }}>Showing <b style={{ color: colT(focusIdx) }}>{planRef(focusIdx)}</b> below{focusIdx === recIdx ? " · the recommended plan" : ""}. <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>see <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select> instead · or click a row of the table</span></div>}
-          {!print && LensTable({ print })}
-          {!print && <details className="dis no-print" open={!!openDis.lensSet} onToggle={(e) => toggleDis("lensSet", e.currentTarget.open)} style={{ marginTop: 8 }}><summary>Compare by</summary>{openDis.lensSet && <div className="body">{LensSettings()}</div>}</details>}
+        // the three strategy cards (inside "Compare by" on screen; printed as they are)
+        const cardsEl = (
           <div className="lens-grid">
             {keys.map((k, n) => { const g = { idx: L[k].idx, lenses: [k] }, r = m.results[g.idx], on = g.idx === focusIdx, same = keys.slice(0, n).find((j) => L[j].idx === g.idx); return (
               <div key={k} className={"plan lens" + (on ? " on" : "")} style={{ borderLeftColor: colF(g.idx) }}>
@@ -2071,6 +2068,12 @@
                 <div className="flex justify-between items-center flex-wrap" style={{ gap: 6 }}><Status r={r} />{!print && (on ? <span style={{ fontSize: 12.5, fontWeight: 600 }}>Shown below</span> : <button className="btn small" onClick={() => setFocus(g.idx)}>Show this plan</button>)}</div>
               </div>); })}
           </div>
+        );
+        return (<>
+          <div className="recstrip">{lensVerdict()}<span style={{ display: "block", fontSize: 12, opacity: .85 }}>{L.recommended.why}</span></div>
+          {!print && <div className="flex items-center flex-wrap" style={{ gap: 8, fontSize: 13, margin: "0 0 4px" }}>Showing <b style={{ color: colT(focusIdx) }}>{planRef(focusIdx)}</b> below{focusIdx === recIdx ? " · the recommended plan" : ""}. <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>see <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select> instead · or click a row of the table</span></div>}
+          {!print && LensTable({ print })}
+          {print ? cardsEl : <details className="dis no-print" open={!!openDis.lensSet} onToggle={(e) => toggleDis("lensSet", e.currentTarget.open)} style={{ marginTop: 8 }}><summary>Compare by</summary>{openDis.lensSet && <div className="body">{LensSettings()}{cardsEl}</div>}</details>}
         </>);
       };
       // every plan on the same three measures; ★ marks each lens's pick (only plans that work can be picked)
