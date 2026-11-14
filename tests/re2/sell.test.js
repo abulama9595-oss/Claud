@@ -68,3 +68,15 @@ test('build and sell: the tool\'s pick never uses a land mortgage or a cash-out;
   const let1 = E.optimizeRE({ ...base, occupancy: 'let', plans: [] }, { plannedOnly: true }).planned;
   assert.ok(let1.tried > st.tried, `${let1.tried} vs ${st.tried}`);
 });
+
+test('the apartments box shows your cost per sellable m² and per apartment, marked on both price sliders', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'realestate-v2.html'), 'utf8');
+  assert.match(src, /costM2 = sellArea > 0 \? prj\.total \/ sellArea/);
+  assert.match(src, /costUnit = n > 0 \? prj\.total \/ n/);
+  assert.match(src, /set\("salePriceSqm", v\)\} mark=\{costM2/);
+  assert.match(src, /set\("salePriceUnit", v\)\} mark=\{costUnit/);
+  const { prj } = run();   // the figures: the all-in cost over the sellable area and over the apartments
+  const sellArea = prj.sale.areaPerUnit * prj.sale.units;
+  assert.ok(near(sellArea, prj.builtArea * E.mergeRE(base).netLettablePct / 100));
+  assert.ok(prj.total / sellArea > 0 && prj.total / prj.sale.units > 0);
+});
