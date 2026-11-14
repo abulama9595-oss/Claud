@@ -61,3 +61,10 @@ test('the cash-out is refused when you sell; per m² equals per apartment at the
   assert.equal(letA.results[0].unitSales.length, 0);
   assert.equal(E.computeRE(base, { noNeed: true }).verdict.endsWith('BUILDING TO SELL WINS'), true);
 });
+
+test('build and sell: the tool\'s pick never uses a land mortgage or a cash-out; a let building still tries the land mortgage', () => {
+  const st = E.optimizeRE({ ...base, plans: [] }, { plannedOnly: true }).planned;
+  [st.best, ...(st.alts || [])].forEach((x) => { assert.ok(!x.plan.lmUse && !x.plan.coUse, x.name); });
+  const let1 = E.optimizeRE({ ...base, occupancy: 'let', plans: [] }, { plannedOnly: true }).planned;
+  assert.ok(let1.tried > st.tried, `${let1.tried} vs ${st.tried}`);
+});

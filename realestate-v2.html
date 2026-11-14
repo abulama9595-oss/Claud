@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=88d3ecb973"></script>
-  <script src="re2-engine.js?v=88d3ecb973"></script>
-  <script src="re2-ui.js?v=88d3ecb973"></script>
+  <script src="engine.js?v=1545c1b01d"></script>
+  <script src="re2-engine.js?v=1545c1b01d"></script>
+  <script src="re2-ui.js?v=1545c1b01d"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -1900,7 +1900,8 @@
       ];
       const PlanPicker = ({ label }) => <span className="flex items-center no-print" style={{ gap: 6, fontSize: 12.5, color: K.sub }}>{label || "for"} <select value={focusIdx} onChange={(e) => setFocus(+e.target.value)} aria-label="Plan shown">{liveIdx.map((i) => <option key={i} value={i}>{planName(i)}{m.results[i] === lead ? " ★" : ""}</option>)}</select></span>;
       const timelineOf = (r) => {
-        const occ = occOf(r), rows = r.events.map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, payoff: e.kind === "settle" && !!e.fac && (r.prepaid || []).some((x) => x.key === e.fac && x.t === e.t), card: e.card || null, text: calText(e.text) }));
+        // (the note on which old loans the bank buys out — "rf" — is in that loan's Details, not a row of its own)
+        const occ = occOf(r), rows = r.events.filter((e) => e.kind !== "rf").map((e, k) => ({ t: e.t, o: k, kind: e.kind, fac: e.fac || null, payoff: e.kind === "settle" && !!e.fac && (r.prepaid || []).some((x) => x.key === e.fac && x.t === e.t), card: e.card || null, text: calText(e.text) }));
         // a plan that runs out says so once, in the month the cash runs out (the engine's row: how much more it needs, and the most
         // you would be short); the other plans show their lowest cash, or the most bridge money they need
         if (r.minCash >= 0 || r.bridged) rows.push({ t: r.minCashT, o: 1e6, kind: r.minCash < 0 ? "bridge" : "low", text: r.minCash < 0 ? `The most bridge money you need: ${fS(-r.minCash)}.` : `Lowest cash: ${fM(r.minCash)}${r.minCash < inp.cashBuffer ? ` (below your ${fM(inp.cashBuffer)} cushion)` : ""}.` });

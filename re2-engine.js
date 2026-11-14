@@ -1527,7 +1527,23 @@ const RE_PL_STEP = { pl: "pl", spl: "pl", pl2: "pl2", spl2: "pl2" };
 function reCarryOut(p, prj, plan) {
   const r = reCarryOutAuto(p, prj, plan);
   if (r.feasible || p.coverAny === false || !prj.construct) return r;
-  return reLate(p, prj, plan, r) || r;
+  // two ways, the better kept: from the plan as the automatic-loan step left it (the loans it found when the cash first ran short
+  // stay, and only what they don't cover waits), and from the plan alone (payments wait and the loans come later — a top-up of an
+  // old loan brings more cash once the old loan is smaller). Better = works on time over late, then the shorter delay, then the
+  // richer; when waiting wins over the early loans, its "runs late" row says why
+  const auto = r.plan && r.plan._plAuto && r.plan._plAuto.length ? r.plan._plAuto : null;
+  const a = auto ? reLate(p, prj, { ...plan, _plAuto: auto }, r) : null, b = reLate(p, prj, plan, r);
+  const better = (x, y) => !y ? x : !x ? y : (reStanding(x) - reStanding(y)) || (y.late.months - x.late.months) || (x.econAdv - y.econAdv);
+  if (!a && !b) return r;
+  const pick = !a ? b : !b ? a : better(a, b) >= 0 ? a : b;
+  if (auto && pick === b) {
+    // the early loans the automatic step found: what they would bring, and what is left short with them
+    const early = (r.facilities || []).filter((f) => f.amount > 0 && auto.includes(f.startedAt) && /^s?pl/.test(f.key)), net = early.reduce((s0, f) => s0 + (f.refi ? f.refi.net : f.amount), 0);
+    const later = (b.facilities || []).filter((f) => f.amount > 0 && /^s?pl/.test(f.key) && f.startedAt >= b.late.from), netL = later.reduce((s0, f) => s0 + (f.refi ? f.refi.net : f.amount), 0);
+    const ev = b.events.find((e) => e.kind === "late");
+    if (ev && early.length) ev.text += ` Personal loans as soon as the cash runs short (month${early.length > 1 ? "s" : ""} ${early.map((f) => f.startedAt).join(" and ")}) would bring only ${fS(net)} to your cash${a ? "" : ` and still leave you ${fS(Math.max(0, -r.minCash))} short`}: the old loans they refinance are larger then.${later.length ? ` Taken later, they bring ${fS(netL)}.` : ""}`;
+  }
+  return pick;
 }
 // late construction (not for imported scenarios — coverAny false — which keep the old tool's bridge money): when the plan still
 // runs out of cash during the construction, a construction payment your cash can't cover waits until your savings or one of the
@@ -1774,12 +1790,13 @@ function reRunPlanOne(p, prj, plan) {
   r2.plan = plan; r2.refiFallback = true;
   r2.refiFallbackWhy = { feasible: r.feasible, bridged: !!r.bridged, bridgePeak: r.bridgePeak || 0, recoveryOk: r.recoveryOk, moveInOk: r.moveInOk, onHandAtMoveIn: r.onHandAtMoveIn, minCash: r.minCash, minCashT: r.minCashT, recoveryMonths: r.recoveryMonths, econAdv: r.econAdv, econPV: r.econPV };
   // the note goes in the month the personal loans are taken (that is when the old loans are bought out), just before that step
-  const pls = [r2.pl, r2.pl2, r2.spl, r2.spl2];
+  // (every personal-loan step: the fixed ones first, then the extra and automatic ones — pl3+, spl3+)
+  const pls = [r2.pl, r2.pl2, r2.spl, r2.spl2, ...r2.facilities.filter((x) => /^s?pl([3-9]|\d{2,})$/.test(x.key))];
   const fRef = pls.find((x) => x && x.startedAt != null && x.amount > 0 && x.refiOptions && x.refiOptions.length > 1) || pls.find((x) => x && x.startedAt != null && x.amount > 0);
   const tRef = fRef ? fRef.startedAt : 0;
   let iRef = r2.events.findIndex((e) => e.t === tRef && (e.kind === "pl" || e.kind === "spl"));
   if (iRef < 0) iRef = r2.events.findIndex((e) => e.t >= tRef);
-  r2.events.splice(iRef < 0 ? r2.events.length : iRef, 0, { t: tRef, kind: "rf", text: `Which old loans the bank buys out: buying out the ones that give the best value would ${!r.feasible ? (r.bridged ? `need ${fS(r.bridgePeak)} of bridge money` : "run your cash out") : !r.recoveryOk ? "miss your cash-recovery window" : `leave your cash at project end at ${fS(r.onHandAtMoveIn)}, below your line of ${fS(p.minCashMoveIn == null ? 0 : p.minCashMoveIn)}`}, so this strategy buys out the ones that put the most cash in your hands.` });
+  r2.events.splice(iRef < 0 ? r2.events.length : iRef, 0, { t: tRef, kind: "rf", ...(fRef ? { fac: fRef.key } : {}), text: `Which old loans the bank buys out: buying out the ones that give the best value would ${!r.feasible ? (r.bridged ? `need ${fS(r.bridgePeak)} of bridge money` : "run your cash out") : !r.recoveryOk ? "miss your cash-recovery window" : `leave your cash at project end at ${fS(r.onHandAtMoveIn)}, below your line of ${fS(p.minCashMoveIn == null ? 0 : p.minCashMoveIn)}`}, so this strategy buys out the ones that put the most cash in your hands.` });
   return r2;
 }
 
@@ -2389,7 +2406,8 @@ function optimizeRE(inp, opts) {
   const eqOpts = [null].concat(...searchProps.map((P) => ["build", "start", "land"].map((when) => ({ P, when }))));
   // تضامن with a spouse who earns: the personal loans may be yours, your spouse's or both of yours (no restriction)
   const J0 = !!(p0.joint && p0.joint.on), byOpts = J0 && (+p0.joint.income || 0) > 0 ? ["me", "spouse", "both"] : ["me"];
-  const isLand = p0.kind === "land", coOpts = isLand ? [false] : [false, true];   // no cash-out on land (nothing finished to mortgage)
+  // no cash-out on land (nothing finished to mortgage); selling the apartments: no land mortgage and no cash-out in the search
+  const isLand = p0.kind === "land", sells = p0.occupancy === "sell" && p0.kind === "landBuilding", coOpts = isLand || sells ? [false] : [false, true], lmOpts = sells ? [false] : [true, false];
   // "only dearer loans" joins the settle policies when one of your old loans is dearer than the mortgages the search grants
   const dearerLoans = reDearerLoans(p0, prj0, searchProps.length > 0);
   const policies = Array.isArray(opts.policies) && opts.policies.length ? opts.policies : dearerLoans.length ? ["asNeeded", "forMax", "dearer", "none"] : ["asNeeded", "forMax", "none"];
@@ -2397,7 +2415,7 @@ function optimizeRE(inp, opts) {
   const combos = [];
   // every loan at the bank's maximum; the choices are which loans, when, and how far to pay off old personal loans for a mortgage
   // (the property and the settle policy innermost, so the mixes that are one run sit together in the page's slices)
-  for (const lmUse of [true, false]) for (const plWhen of ["build", "none"]) for (const coUse of coOpts) for (const pl2Use of [false, true]) for (const plBy of plWhen !== "none" || pl2Use ? byOpts : ["me"]) for (const eq of eqOpts) for (const settlePolicy of policies) {
+  for (const lmUse of lmOpts) for (const plWhen of ["build", "none"]) for (const coUse of coOpts) for (const pl2Use of [false, true]) for (const plBy of plWhen !== "none" || pl2Use ? byOpts : ["me"]) for (const eq of eqOpts) for (const settlePolicy of policies) {
     const o = { ...base, enabled: true, lmUse, lmMode: "max", plWhen, plMode: "max", plSplit: true, mortgages: eq ? { [eq.P.id]: { when: eq.when, month: 0 } } : {}, eqMode: "max", coUse, coMode: "max", pl2Use, rfWhen: "none", settlePolicy, plBy };
     o.name = reAutoName(o, prj0, eq ? eq.P.name : null); combos.push(o);
   }
