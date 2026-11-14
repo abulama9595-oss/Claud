@@ -1,7 +1,7 @@
 // "Sell the apartments" (occupancy "sell", a building you build): sold evenly over saleMonths from completion at today's price
 // grown with the market, selling costs off, the land mortgage repaid in proportion; the cash-out refused. Synthetic only.
 const test = require('node:test'), assert = require('node:assert/strict');
-const { loadEngine } = require('./helpers.js');
+const { loadEngine, ROOT } = require('./helpers.js');
 const E = loadEngine();
 const near = (a, b, tol) => Math.abs(a - b) <= (tol == null ? 1e-6 : tol) * Math.max(1, Math.abs(b));
 const base = { asOf: '2026-10', kind: 'landBuilding', occupancy: 'sell', unitCount: 8, salePriceBasis: 'unit', salePriceUnit: 1200000, saleMonths: 6, saleCostPct: 2.5,
@@ -70,7 +70,7 @@ test('build and sell: the tool\'s pick never uses a land mortgage or a cash-out;
 });
 
 test('the apartments box shows your cost per sellable m² and per apartment, marked on both price sliders', () => {
-  const src = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'realestate-v2.html'), 'utf8');
+  const src = require('fs').readFileSync(require('path').join(ROOT, 'realestate-v2.html'), 'utf8');
   assert.match(src, /costM2 = sellArea > 0 \? prj\.total \/ sellArea/);
   assert.match(src, /costUnit = n > 0 \? prj\.total \/ n/);
   assert.match(src, /set\("salePriceSqm", v\)\} mark=\{costM2/);
