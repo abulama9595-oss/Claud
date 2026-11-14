@@ -264,7 +264,7 @@
       return <span className="hint no-print" ref={ref}><button type="button" aria-expanded={open} aria-label={label ? `How is "${label}" worked out?` : "How is this worked out?"} onClick={() => setOpen(!open)}><span>i</span></button>{open && <span className="pop" role="note">{text}</span>}</span>;
     }
     // slider with a number box (type a value) and a 24-px touch height
-    function Field({ label, value, min, max, step, unit, onChange, hint, help, show }) {
+    function Field({ label, value, min, max, step, unit, onChange, hint, help, show, mark }) {
       const [txt, setTxt] = useState(null);
       const v = value == null ? 0 : value;
       const commit = () => { if (txt == null) return; const n = parseFloat(String(txt).replace(/[^0-9.\-]/g, "")); if (!isNaN(n)) onChange(n); setTxt(null); };
@@ -277,7 +277,15 @@
               {unit && <span style={{ fontSize: 12, color: K.sub, minWidth: 0 }}>{unit}</span>}
             </span>
           </div>
-          <input type="range" aria-label={label} min={min} max={max} step={step} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(parseFloat(e.target.value))} />
+          {mark && isFinite(mark.at) && max > min ? (() => { const p = Math.min(100, Math.max(0, (mark.at - min) / (max - min) * 100)), x = `calc(9px + (100% - 18px) * ${p / 100})`; return (
+            <div style={{ position: "relative" }}>
+              <input type="range" aria-label={label} min={min} max={max} step={step} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(parseFloat(e.target.value))} />
+              <div className="slider-mark" aria-hidden="true" style={{ position: "relative", height: 16, marginTop: -2 }}>
+                <span style={{ position: "absolute", left: x, top: 0, width: 2, height: 7, marginLeft: -1, background: K.brass }} />
+                <span style={{ position: "absolute", left: x, top: 5, fontSize: 10.5, color: K.brassTx, whiteSpace: "nowrap", transform: p > 70 ? "translateX(calc(-100% + 5px))" : p < 30 ? "translateX(-5px)" : "translateX(-50%)" }}>{p > 70 ? `${mark.text} ▲` : `▲ ${mark.text}`}</span>
+              </div>
+            </div>); })()
+            : <input type="range" aria-label={label} min={min} max={max} step={step} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(parseFloat(e.target.value))} />}
           {hint && <div style={{ fontSize: 12, color: K.sub, marginTop: 1, lineHeight: 1.45 }}>{hint}</div>}
         </div>
       );
@@ -1202,17 +1210,19 @@
       // "Sell the apartments": how many, the sellable area, the price (per apartment or per m², today's), how fast, selling costs
       const SaleFields = () => { const S = prj.sale, per = inp.salePriceBasis === "sqm", area = S ? S.areaPerUnit : 0, n = Math.max(0, Math.round(+inp.unitCount || 0));
         const sMo = Math.max(1, Math.round(+inp.saleMonths || 12)), grown = (t) => Math.pow(1 + inp.appreciation / 100, t / 12);
+        const sellArea = area * n, costM2 = sellArea > 0 ? prj.total / sellArea : null, costUnit = n > 0 ? prj.total / n : null;
+        const over = (price, cost) => { if (!(cost > 0)) return null; const d = price / cost - 1; return <b style={{ color: d < 0 ? K.neg : K.pos }}>{d >= 0 ? "+" : "−"}{Math.abs(Math.round(d * 100))}%</b>; };
         const atGrowth = S ? Array.from({ length: n }, (_, j) => S.price0 * grown(prj.occupy + Math.floor(j * sMo / Math.max(1, n)))).reduce((a, x) => a + x, 0) : 0;
         return (
         <Box title="The apartments" help={EXPL.sale}>
           <Field label="Number of apartments" value={n} min={1} max={60} step={1} unit="apartments" onChange={(v) => set("unitCount", Math.round(v))} />
-          <Field label="Sellable share of the built area" value={inp.netLettablePct} min={50} max={100} step={1} unit="%" onChange={(v) => set("netLettablePct", v)} hint={`≈ ${Math.round(area)} m² per apartment, of ${fSAR(prj.builtArea)} m² built`} />
+          <Field label="Sellable share of the built area" value={inp.netLettablePct} min={50} max={100} step={1} unit="%" onChange={(v) => set("netLettablePct", v)} hint={<>≈ {Math.round(area)} m² per apartment, of {fSAR(prj.builtArea)} m² built{costM2 != null ? <> · your cost <b className="mono">{fSAR(costM2)}</b> per sellable m², <b className="mono">{fM(costUnit)}</b> per apartment</> : null}</>} />
           <div style={{ marginBottom: 10 }}><Seg label="Price entered as" value={per ? "sqm" : "unit"} onChange={(v) => setInp((s0) => ({ ...s0, salePriceBasis: v, ...(v === "sqm" && !(+s0.salePriceSqm > 0) && S && area > 0 ? { salePriceSqm: Math.round(S.price0 / area / 100) * 100 } : {}), ...(v === "unit" && !(+s0.salePriceUnit > 0) && S ? { salePriceUnit: Math.round(S.price0 / 10000) * 10000 } : {}) }))} options={[["unit", "Price per apartment"], ["sqm", "Price per m²"]]} /></div>
-          {per ? <Field label="Price per m², today" value={+inp.salePriceSqm || 0} min={0} max={40000} step={100} unit="SAR/m²" onChange={(v) => set("salePriceSqm", v)} hint={`= ${fSAR(S ? S.price0 : 0)} per apartment today`} />
-            : <Field label="Price per apartment, today" value={+inp.salePriceUnit || 0} min={0} max={10000000} step={10000} unit="SAR" onChange={(v) => set("salePriceUnit", v)} hint={area > 0 ? `= ${fSAR((+inp.salePriceUnit || 0) / area)} per m² of sellable area` : null} />}
+          {per ? <Field label="Price per m², today" value={+inp.salePriceSqm || 0} min={0} max={40000} step={100} unit="SAR/m²" onChange={(v) => set("salePriceSqm", v)} mark={costM2 != null ? { at: costM2, text: `your cost ${fSAR(costM2)}/m²` } : null} hint={<>= {fSAR(S ? S.price0 : 0)} per apartment today{costM2 != null ? <> · your cost {fSAR(costM2)}/m² → {over(+inp.salePriceSqm || 0, costM2)} over cost</> : null}</>} />
+            : <Field label="Price per apartment, today" value={+inp.salePriceUnit || 0} min={0} max={10000000} step={10000} unit="SAR" onChange={(v) => set("salePriceUnit", v)} mark={costUnit != null ? { at: costUnit, text: `your cost ${fM(costUnit)}` } : null} hint={area > 0 ? <>= {fSAR((+inp.salePriceUnit || 0) / area)} per m² of sellable area{costUnit != null ? <> · your cost {fM(costUnit)} per apartment → {over(+inp.salePriceUnit || 0, costUnit)} over cost</> : null}</> : null} />}
           <Field label="Sell them all within" value={sMo} min={1} max={36} step={1} unit="months from completion" onChange={(v) => set("saleMonths", Math.round(v))} />
           <Field label="Selling costs" value={inp.saleCostPct == null ? 2.5 : +inp.saleCostPct} min={0} max={10} step={0.5} unit="% of the price" onChange={(v) => set("saleCostPct", v)} hint="broker and marketing" />
-          <div className="note" style={{ marginTop: 0 }}><b>{n} apartment{n === 1 ? "" : "s"}</b> → <b className="mono">{fSAR(S ? S.price0 * n : 0)}</b> at today's prices, about <b className="mono">{fSAR(atGrowth)}</b> with the market growth ({inp.appreciation}%/yr) to the sales · on sale {fCal(prj.occupy)}{sMo > 1 ? ` to ${fCal(prj.occupy + sMo - 1)}` : ""}; all-in cost {fM(prj.total)}. RETT on a sale is the buyer's, and residential sales carry no VAT.</div>
+          <div className="note" style={{ marginTop: 0 }}><b>{n} apartment{n === 1 ? "" : "s"}</b> → <b className="mono">{fSAR(S ? S.price0 * n : 0)}</b> at today's prices, about <b className="mono">{fSAR(atGrowth)}</b> with the market growth ({inp.appreciation}%/yr) to the sales · on sale {fCal(prj.occupy)}{sMo > 1 ? ` to ${fCal(prj.occupy + sMo - 1)}` : ""}; all-in cost {fM(prj.total)}{costUnit != null && costM2 != null ? ` = ${fM(costUnit)} per apartment, ${fSAR(costM2)} per sellable m²` : ""}. RETT on a sale is the buyer's, and residential sales carry no VAT.</div>
         </Box>); };
       const UnitsFields = () => { const L = prj.letting, pct = inp.unitRentBasis !== "unit"; return (
         <Box title="The units" help={EXPL.letting}>
