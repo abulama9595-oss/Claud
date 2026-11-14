@@ -4,7 +4,8 @@
 // borrower). Synthetic figures only.
 const test = require('node:test'), assert = require('node:assert/strict');
 const { loadEngine, scenarios, scenarios2, jointScenarios, randomScenario, FAMILY } = require('./helpers.js');
-const E = loadEngine(), OLD = loadEngine(true);
+const { expectOld } = require('./oldtool.js');
+const E = loadEngine(), OLD = loadEngine(true);   // (OLD: null — the previous version is deleted; its answers are frozen in fixtures/old-tool.json)
 const near = (a, b, tol = 1) => Math.abs(a - b) <= tol;
 // JSON with sorted keys, so two objects that mean the same compare equal whatever the order their keys were written in
 const stable = (v) => JSON.stringify(v, (k, x) => x && typeof x === 'object' && !Array.isArray(x) ? Object.keys(x).sort().reduce((o, kk) => { o[kk] = x[kk]; return o; }, {}) : x);
@@ -91,7 +92,7 @@ test('mergeRE brings an old-shape scenario across by itself (no kind, an old key
   assert.equal(E.re2IsOld({ kind: 'landVilla', mode: 'home' }), false);
 });
 
-test('re2Import parity: the home you live in (keep / let / sell) × every eqWhen × the slot presets, old engine vs new', { skip: !OLD && 'old engine deleted' }, () => {
+test('re2Import parity: the home you live in (keep / let / sell) × every eqWhen × the slot presets, old engine vs new', () => {
   let n = 0;
   for (let k = 0; k < 96; k++) {
     const base = randomScenario(E, k + 3001);
@@ -103,8 +104,9 @@ test('re2Import parity: the home you live in (keep / let / sell) × every eqWhen
     if (k % 9 === 0) { delete inp.eqRate; delete inp.eqTenure; inp.plans = inp.plans && inp.plans.map((o, j) => j === 1 ? { ...o, eqRate: 6.25, eqTenure: 11 } : o); }   // per-plan terms
     if (k % 17 === 0 && inp.plans) inp.plans[0] = { mortgageWhen: 'start', rate: 5, tenure: 20 };   // a legacy v1 plan
     if (k % 19 === 0 && inp.plans) inp.plans[2] = null;        // an empty slot takes the slot preset
-    const a = OLD.computeRE(inp, { noNeed: true }), b = E.computeRE(E.re2Import(inp), { noNeed: true });
-    assert.equal(key(b), key(a), `random#${k + 3001} (${inp.ownHomePlan}, ownedValue ${inp.ownedValue})`);
+    const b = E.computeRE(E.re2Import(inp), { noNeed: true });
+    const [got, want] = expectOld(`model:${k + 3001}`, key(b), OLD && (() => key(OLD.computeRE(inp, { noNeed: true }))));
+    assert.equal(got, want, `random#${k + 3001} (${inp.ownHomePlan}, ownedValue ${inp.ownedValue})`);
     n++;
   }
   assert.ok(n >= 96);

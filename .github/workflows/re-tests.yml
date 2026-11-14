@@ -13,7 +13,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Engine identities, bank limits, golden values, page compile
-        run: node --test "tests/re/*.test.js"
-      - name: The same for the new version (re2)
+      - name: Engine identities, bank limits, golden values, the previous version's frozen answers, page compile
         run: node --test "tests/re2/*.test.js"
