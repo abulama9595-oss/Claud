@@ -70,3 +70,32 @@ test('tidy-ups: "is this loan worth it?" covers the extra steps; a short compari
   assert.equal(typeof E.reSimulate, 'undefined');
   assert.ok(!('rf' in E.computeRE({ asOf: '2026-10' }, { noNeed: true }).results[0]), 'no empty buy-out facility');
 });
+
+test('the note on which old loans the bank buys out sits on its own loan (month and fac), including an automatic step', () => {
+  const H = require('./helpers.js'); let n = 0;
+  for (const s of H.scenarios2(E, 80).concat(H.kindScenarios(E, 48), H.jointScenarios(E, 30))) {
+    const m = E.computeRE(s.inp, { noNeed: true });
+    m.results.forEach((r) => { if (!r) return; r.events.filter((e) => e.kind === 'rf').forEach((e) => {
+      n++;
+      const f = r.facilities.find((x) => x.key === e.fac);
+      assert.ok(f && f.startedAt === e.t && f.amount > 0, `${s.label}: rf at ${e.t} → ${e.fac}`);
+    }); });
+  }
+  assert.ok(n >= 1, 'some plans fall back to the most-cash choice');
+});
+
+test('late construction keeps the better of: the automatic loans found first, or waiting for later loans', () => {
+  const H = require('./helpers.js'); let n = 0;
+  for (const s of H.kindScenarios(E, 48)) {
+    const p = E.mergeRE(s.inp), prj = E.reProject(p);
+    if (!prj.construct) continue;
+    for (const o of p.plans.filter((x) => x && x.enabled)) {
+      const plan = { ...o, plAuto: true }, r = E.reCarryOut(p, prj, plan);
+      if (!r.late) continue;
+      n++;
+      const plain = E.reLate(p, prj, plan, r);
+      assert.ok(!plain || E.reStanding(r) > E.reStanding(plain) || (E.reStanding(r) === E.reStanding(plain) && r.late.months <= plain.late.months), `${s.label}`);
+    }
+  }
+  assert.ok(n >= 0);
+});
