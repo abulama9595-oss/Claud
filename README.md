@@ -10,7 +10,7 @@ landing page.
 | `redesign.html` | Redesigned, investor-document layout (executive study + live KPIs + print/PDF) |
 | `original.html` | Original single-scroll workspace, preserved for comparison |
 | `pods.html` | Concept model: mall dental-hygiene-pod network |
-| `realestate.html` + `re-engine.js` | Real-estate scenario tool: sequence cash, personal loans, old-loan settlements and a mortgage to fund a home (checked against the bank's debt-burden & LTV tests, vs renting), or evaluate a buy-to-let |
+| `realestate-v2.html` + `re2-engine.js` | The real-estate tool: build or buy a villa, a building or land, every property you own, your loans, the plans and the tool's pick, checked against the bank's debt-burden limits. (`realestate.html` now sends you there; the previous version was retired.) |
 | `serve.ps1` | Static file server for Windows (PowerShell) |
 
 Both layouts run the **identical** model: a live financial engine (revenue

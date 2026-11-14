@@ -1,9 +1,11 @@
 // Fork parity: the new engine (re2) gives the old, frozen engine's numbers for any scenario the old tool could express,
 // once the scenario is brought into the new model by re2Import (identity until the new model exists). The new engine may
-// add results, but on these scenarios it may not change one. Skipped once the old files are deleted. Synthetic only.
+// add results, but on these scenarios it may not change one. The old engine is deleted: its answers are frozen in
+// fixtures/old-tool.json (oldtool.js). Synthetic only.
 const test = require('node:test'), assert = require('node:assert/strict');
 const { loadEngine, scenarios, jointScenarios } = require('./helpers.js');
-const NEW = loadEngine(), OLD = loadEngine(true);
+const { expectOld, frozenOld } = require('./oldtool.js');
+const NEW = loadEngine(), OLD = loadEngine(true);   // (OLD: null — the previous version is deleted; its answers are frozen)
 
 const toNew = (inp) => (NEW.re2Import ? NEW.re2Import(inp) : inp);
 // a mortgage on a property you own is eq:<id> in the new engine (one property: the old engine's eq) — the same loan, compared by the old name
@@ -15,11 +17,12 @@ const key = (m) => JSON.stringify({ v: m.verdict, t: Math.round(m.prj.total), r:
       rv: [r.pl, r.pl2].map((f) => (f && f.refiOptions ? f.refiOptions.map((o) => [o.ids.join(','), o.amount, o.net, o.value]) : null)) }
   : { irr: r.irr, npv: r.npv, pay: r.monthlyPayment })), h: m.household.capTimeline.map((c) => [c.t, c.room, c.maxMortgage, c.maxTwoPl]) });
 
-test('fork parity: every synthetic scenario gives the old engine\'s numbers (imported into the new model)', { skip: !OLD && 'old engine deleted' }, () => {
+test('fork parity: every synthetic scenario gives the old engine\'s numbers (imported into the new model)', () => {
   let n = 0;
   for (const { label, inp } of scenarios(NEW, 80).concat(jointScenarios(NEW, 20))) {
-    const a = OLD.computeRE(inp, { noNeed: true }), b = NEW.computeRE(toNew(inp), { noNeed: true });
-    assert.equal(key(b), key(a), label);
+    const b = NEW.computeRE(toNew(inp), { noNeed: true });
+    const [got, want] = expectOld(`parity:${label}`, key(b), OLD && (() => key(OLD.computeRE(inp, { noNeed: true }))));
+    assert.equal(got, want, label);
     n++;
   }
   assert.ok(n > 90);
@@ -29,13 +32,17 @@ test('fork parity: every synthetic scenario gives the old engine\'s numbers (imp
 // (the next-best list is compared only where the old scenario builds: for a ready home the new engine knows that "at build
 // start" and "when the land is bought" are one and the same mix and lists another in its place)
 const mixKey = (o, alts) => { const b = o.planned.best; return JSON.stringify([b.econAdv, o.planned.nOk, b.feasible, !!b.bridged, b.recoveryOk, b.moveInOk, b.lm, b.eq, b.pl, b.co, b.pl2, b.settled, b.roomSettled, b.plan.settlePolicy, alts ? o.planned.alts.map((x) => [x.econAdv, x.lm, x.eq, x.pl, x.co, x.pl2, x.settled]) : null]); };
-test('fork parity: the tool\'s pick (optimizer) agrees too — on the old tool\'s three settle policies; the new search adds "only dearer loans" when an old loan is dearer than the mortgage, and then ranks no lower', { skip: !OLD && 'old engine deleted' }, () => {
+test('fork parity: the tool\'s pick (optimizer) agrees too — on the old tool\'s three settle policies; the new search adds "only dearer loans" when an old loan is dearer than the mortgage, and then ranks no lower', () => {
   let withDearer = 0;
   for (const { label, inp } of scenarios(NEW, 12)) {
-    const a = OLD.optimizeRE(inp, { plannedOnly: true }), q = toNew(inp), b = NEW.optimizeRE(q, { plannedOnly: true, policies: ['asNeeded', 'forMax', 'none'], prepay: false, auto: false });
-    assert.equal(b.combos, a.combos, `${label}: combos`);
     const alts = (inp.acquire || 'build') !== 'buy';
-    assert.equal(mixKey(b, alts), mixKey(a, alts), label);
+    const rk0 = (x) => [NEW.reStanding(x), NEW.reStanding(x) > 0 ? (x.recoveryOk ? 1 : 0) + (x.moveInOk ? 1 : 0) : 0, x.econAdv];
+    // the previous version's answer: its number of mixes, its best mix (and next best), its ranking of the best, how many met your rules
+    const A = frozenOld(`optimizer:${label}`, OLD && (() => { const o = OLD.optimizeRE(inp, { plannedOnly: true }); return { combos: o.combos, mix: mixKey(o, alts), rk: rk0(o.planned.best), nOk: o.planned.nOk }; }));
+    const a = { combos: A.combos, planned: { nOk: A.nOk } };
+    const q = toNew(inp), b = NEW.optimizeRE(q, { plannedOnly: true, policies: ['asNeeded', 'forMax', 'none'], prepay: false, auto: false });
+    assert.equal(b.combos, a.combos, `${label}: combos`);
+    assert.equal(mixKey(b, alts), A.mix, label);
     // the default search: the same mixes, plus the "dearer" policy when one of the old loans is dearer than the mortgages (a
     // superset of the old search), so its best never ranks below the old best — standing, then your rules, then everything grows
     const rk = (x) => [NEW.reStanding(x), NEW.reStanding(x) > 0 ? (x.recoveryOk ? 1 : 0) + (x.moveInOk ? 1 : 0) : 0, x.econAdv];
@@ -44,9 +51,9 @@ test('fork parity: the tool\'s pick (optimizer) agrees too — on the old tool\'
     const c = NEW.optimizeRE(q, { plannedOnly: true, prepay: false, auto: false }), d = NEW.optimizeRE(q, { plannedOnly: true });
     assert.ok(noLower(rk(d.planned.best), rk(c.planned.best)), `${label}: early payoff ranks no lower`);
     assert.equal(c.combos, c.dearer.length ? a.combos * 4 / 3 : a.combos, `${label}: default combos`);
-    if (!c.dearer.length) { assert.equal(mixKey(c, alts), mixKey(a, alts), `${label}: no dearer loan, the same search`); continue; }
+    if (!c.dearer.length) { assert.equal(mixKey(c, alts), A.mix, `${label}: no dearer loan, the same search`); continue; }
     withDearer++;
-    const ra = rk(a.planned.best), rc = rk(c.planned.best);
+    const ra = A.rk, rc = rk(c.planned.best);
     assert.ok(noLower(rc, ra), `${label}: the default search ranks no lower (${rc} vs ${ra})`);
     assert.ok(c.planned.nOk >= a.planned.nOk, `${label}: at least as many mixes meet your rules`);
   }

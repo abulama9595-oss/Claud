@@ -11,7 +11,7 @@ for (const page of pages) {
   const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
   const scripts = [...html.matchAll(/<script type="text\/babel"([^>]*)>([\s\S]*?)<\/script>/g)];
   // a page without an app (the old preview address) may only send you on to the tool
-  if (!scripts.length) { test(`${page}: sends you to realestate.html`, () => assert.match(html, /location\.replace\("realestate\.html"/)); continue; }
+  if (!scripts.length) continue;
   test(`${page}: Babel scripts compile`, () => {
     for (const s of scripts) {
       const src = /src="([^"]+)"/.exec(s[1]);
@@ -20,3 +20,10 @@ for (const page of pages) {
     }
   });
 }
+
+// the retired addresses (the previous version and its preview) send you to the tool
+for (const old of ['realestate.html', 'realestate-preview.html']) test(`${old}: sends you to realestate-v2.html`, () => {
+  const html = fs.readFileSync(path.join(ROOT, old), 'utf8');
+  assert.match(html, /location\.replace\("realestate-v2\.html"/);
+  assert.ok(!/text\/babel/.test(html));
+});
