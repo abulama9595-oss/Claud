@@ -138,3 +138,42 @@ test('reLiability: the new loans\' rows add up to newDebtTotal, the old loans ca
   assert.equal(E.RE_LENS_MEASURES.map((x) => x[0]).join(','), 'peakDebt,borrowed,peakInst,profit');
   assert.equal(Object.keys(E.RE_SETTLE_VERDICT).join(','), 'keep,buyout,settleCash,room');
 });
+
+// keep or settle WITH a plan (reSettleInPlan): what the plan does with each old loan, and a re-run when "settle from cash" on its own
+// disagrees with the plan. Synthetic only.
+test('with a plan: a loan the plan refinances says so; "settle from cash" on its own is re-checked by running the plan with it settled', () => {
+  const loans = [{ id: 1, name: 'Cheap', type: 'personal', balance: 1200000, installment: 30000, monthsLeft: 45, rate: 2.5 },
+    { id: 2, name: 'Dear', type: 'personal', balance: 800000, installment: 28000, monthsLeft: 32, rate: 9.5, canRefi: false }];
+  const base = { asOf: '2026-10', kind: 'landBuilding', occupancy: 'sell', unitCount: 10, salePriceBasis: 'unit', salePriceUnit: 1100000, saleMonths: 6, landArea: 1100, landPrice: 3800, builtPct: 65, floors: 3, buildCost: 1600,
+    landMonth: 3, buildStart: 6, buildMonths: 24, income: 95000, livingExpenses: 30000, rentNow: 0, existingLoans: loans, properties: [], joint: { on: false },
+    plans: [{ enabled: true, name: 'auto', lmUse: false, plAuto: true, plWhen: 'none', refiMode: 'auto' }] };
+  const at = (cash) => { const m = E.computeRE({ ...base, cashAvailable: cash }, { noNeed: true }), r = m.results[0]; return { m, r, x: (name) => E.reSettleInPlan(m.household.settleAdvice.find((a) => a.name === name), r, m.p, m.prj) }; };
+  // tight cash: the plan tops the cheap loan up (its own bank) — named with its month; the dear one, settle-worthy on its own, is kept
+  const T = at(6500000), cheap = T.x('Cheap'), dear = T.x('Dear');
+  assert.equal(T.m.household.settleAdvice.find((a) => a.name === 'Dear').verdict, 'settleCash');
+  assert.equal(cheap.verdict, 'refi'); assert.match(cheap.text, /refinanced by its own bank \(a top-up\) in \w{3} \d{4}/);
+  assert.equal(dear.verdict, 'keep'); assert.equal(dear.agrees, false); assert.ok(dear.what && dear.what.q);
+  assert.ok(dear.what.dNW < T.m.household.settleAdvice.find((a) => a.name === 'Dear').eps);
+  // ample cash: settling the dear loan at the start still works and leaves you richer → settle it
+  const R = at(20000000), d2 = R.x('Dear');
+  assert.equal(d2.verdict, 'settleCash'); assert.ok(d2.what.dNW > 0); assert.match(d2.text, /settle it at the start/);
+  assert.equal(E.reStanding(d2.what.q), E.reStanding(R.r));
+  // the re-run is the plan with that loan settled in month 1 — the original result is untouched
+  assert.ok(d2.what.q.events.some((e) => e.t === 1 && e.kind === 'settle' && /Dear/.test(e.text)));
+  assert.ok(!R.r.events.some((e) => e.t === 1 && e.kind === 'settle'));
+});
+
+test('with a plan: a plan that runs short once the loan is settled says keep it, naming the month', () => {
+  const S = { asOf: '2026-10', kind: 'readyVilla', propertyPrice: 1200000, cashAvailable: 1500000, income: 60000, livingExpenses: 20000, rentNow: 0, properties: [], joint: { on: false },
+    existingLoans: [{ id: 7, name: 'Pricey', type: 'personal', balance: 600000, installment: 21000, monthsLeft: 32, rate: 9.5, canRefi: false }],
+    plans: [{ enabled: true, name: 'cash', lmUse: false, plWhen: 'none' }] };
+  const m = E.computeRE(S, { noNeed: true }), r = m.results[0], a = m.household.settleAdvice[0];
+  assert.equal(a.verdict, 'settleCash'); assert.equal(E.reStanding(r), 2);
+  const x = E.reSettleInPlan(a, r, m.p, m.prj);
+  assert.equal(x.verdict, 'keep'); assert.ok(E.reStanding(x.what.q) < 2);
+  assert.match(x.text, /This plan keeps it to its end in \w{3} \d{4}\. Don't settle it now: it takes .+ from the project, and this plan would run short of cash in \w{3} \d{4}\./);
+  // a plan that pays the loan off itself: "paid off in this plan", nothing re-run
+  const P = E.computeRE({ ...S, propertyPrice: 2500000, cashAvailable: 1200000, plans: [{ enabled: true, name: 'mortgage', lmUse: true, plWhen: 'none' }] }, { noNeed: true });
+  const y = E.reSettleInPlan(P.household.settleAdvice[0], P.results[0], P.p, P.prj);
+  assert.equal(y.verdict, 'paid'); assert.ok(!y.what); assert.match(y.text, /pays it off from your cash in \w{3} \d{4}/);
+});
