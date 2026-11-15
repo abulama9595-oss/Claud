@@ -80,3 +80,38 @@ test('the apartments box shows your cost per sellable m² and per apartment, mar
   assert.ok(near(sellArea, prj.builtArea * E.mergeRE(base).netLettablePct / 100));
   assert.ok(prj.total / sellArea > 0 && prj.total / prj.sale.units > 0);
 });
+
+test('selling: no rent is received (the "let the new home out" setting does not apply), however it is set', () => {
+  for (const extra of [{ rentOutPct: 6 }, { rentOutFixed: 400000 }, { rentOutPct: 6, unitRentBasis: 'pct', unitRentPct: 8 }]) {
+    const { r } = run(extra);
+    assert.equal(r.rentInTotal, 0); assert.equal(r.annualRentOut, 0);
+    assert.ok(r.months.every((m) => m.rentIn === 0));
+  }
+});
+
+test('selling: once finished the apartments are worth what they sell for; the unsold share counts until the last sale', () => {
+  const { p, prj, r } = run();
+  const g = (t) => Math.pow(1 + p.appreciation / 100, t / 12), done = prj.occupy - 1;
+  assert.ok(near(prj.value0, prj.sale.units * prj.sale.price0 * g(done)));
+  assert.ok(near(prj.valueAt(done + 5), prj.sale.units * prj.sale.price0 * g(done + 5)));
+  // before completion: the land and the construction so far, as for any build (the let building gives the same)
+  const L = E.reProject(E.mergeRE({ ...base, occupancy: 'let' }));
+  for (const t of [prj.landMonth, prj.start + 3, done - 1]) assert.ok(near(prj.valueAt(t), L.valueAt(t)));
+  // in the plan: the unsold share at the selling price, 0 once all are sold
+  const first = r.unitSales[0];
+  assert.ok(near(r.months[first.t].value, prj.valueAt(first.t) * (1 - first.units / prj.sale.units)));
+  assert.equal(r.months[r.months.length - 1].value, 0);
+});
+
+test('selling: "where the difference comes from" has the apartments you sold and adds up to the answer exactly', () => {
+  for (const plan of [{}, { lmUse: false, plWhen: 'none' }, { lmUse: true, plWhen: 'none', plAuto: true }]) {
+    const { r } = run({}, plan), w = E.reWealthParts(r);
+    const sold = w.parts.find((x) => x.key === 'aptSold');
+    assert.ok(sold && near(sold.v, r.salesTotal - r.salesCosts));
+    assert.ok(Math.abs(w.total - r.econAdv) < 1e-3 * Math.max(1, Math.abs(r.econAdv)));
+  }
+  // reSalePlan (the page's figures before any plan runs) follows the engine's schedule exactly
+  const { p, prj, r } = run({ unitCount: 7, saleMonths: 5 }, { lmUse: false, plWhen: 'none' });
+  const sp = E.reSalePlan(prj, p);
+  assert.ok(near(sp.gross, r.salesTotal)); assert.ok(near(sp.costs, r.salesCosts)); assert.equal(sp.last, r.soldOutT);
+});
