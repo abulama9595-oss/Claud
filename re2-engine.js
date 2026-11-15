@@ -590,6 +590,9 @@ function reProject(p) {
     if (t < landMonth) return 0;
     const yrs = (t - landMonth) / 12;
     if (isLand) return land * Math.pow(1 + g, yrs);
+    // "sell": once finished, the apartments are worth what they sell for — today's price grown with the market to month t (the
+    // same price rePlanSimulate sells them at); before that, the land and the construction so far, as for any build
+    if (build && sale && t >= done) return sale.units * sale.price0 * Math.pow(1 + p.appreciation / 100, t / 12);
     if (build) return land * Math.pow(1 + g, yrs) + buildValue * Math.min(1, Math.max(0, (t - start) / bm)) * Math.max(0, 1 - dep * Math.max(0, t - done) / 12);
     if (ready) return ready.land * Math.pow(1 + g, yrs) + ready.building * Math.max(0, 1 - dep * yrs);
     // a building bought `age` years old: straight-line on its original value, so each year takes dep / (1 − dep × age) of what you paid
@@ -617,7 +620,7 @@ function reProject(p) {
   const holdingAt = (t) => !holding || t <= landMonth ? 0 : landValueAt(t) * ((holding.whiteFrom != null && t >= holding.whiteFrom ? holding.whitePct : 0) + holding.zakatPct) / 100 / 12;
   return { kind, build, construct, isLand, isBuilding, moveIn, units: letting.units, letting, saleAt, holding, holdingAt,
     land, landToday, price, hard, soft, cont, finish, overrun, vat: vatConstr + vatFinish + vatOverrun, broker, landBroker, rett, rettExempt: exempt, total, value0: valueAt(occupy - 1), buildValue, landValueAt, bm, occupy, start, landMonth, inflate, schedule, valueAt,
-    builtArea, dep, sale, costPerSqm: construct && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
+    builtArea, dep, sale, saleGrowth: sale ? p.appreciation : 0, costPerSqm: construct && builtArea > 0 ? (total - land - rett - landBroker) / builtArea : 0 };
 }
 
 /* ---------- rate quoting ---------- */
@@ -790,7 +793,8 @@ function rePlanSimulate(p, prj, plan) {
   // a building's units (reLetting: net of vacancy and the management fee): let out entirely ("let") they are the whole-home
   // rent and you do not move in; with you living in one of them ("liveLet") they are let like an annex of your home
   const letB = prj.isBuilding && p.occupancy === "let", unitsNet = prj.letting ? prj.letting.netAnnual : 0;
-  const annualRentOut = letB && unitsNet > 0 ? unitsNet : (p.rentOutFixed || 0) > 0 ? p.rentOutFixed : (p.rentOutPct || 0) > 0 ? prj.total * p.rentOutPct / 100 : 0;
+  // (a building you sell is never let: the "let the new home out instead" setting does not apply to it)
+  const annualRentOut = prj.sale ? 0 : letB && unitsNet > 0 ? unitsNet : (p.rentOutFixed || 0) > 0 ? p.rentOutFixed : (p.rentOutPct || 0) > 0 ? prj.total * p.rentOutPct / 100 : 0;
   const lettingOut = annualRentOut > 0 || letB;
   // you move into the new home: a villa or a building you live in — not a home let out whole, never land (you keep paying the
   // rent you pay today, and the home you live in now stays as it is)
@@ -1585,7 +1589,8 @@ function reStretch(prj, paid) {
   const done = last, occupy = done + 1, schedule = new Array(occupy).fill(0);
   for (let t = 0; t < occupy; t++) schedule[t] = paid[t] || 0;
   const span = Math.max(1, done - prj.start);
-  const valueAt = (t) => t < prj.landMonth ? 0 : prj.landValueAt(t) + prj.buildValue * Math.min(1, Math.max(0, (t - prj.start) / span)) * Math.max(0, 1 - prj.dep * Math.max(0, t - done) / 12);
+  const sale = prj.sale, grow = prj.saleGrowth || 0;
+  const valueAt = (t) => t < prj.landMonth ? 0 : sale && t >= done ? sale.units * sale.price0 * Math.pow(1 + grow / 100, t / 12) : prj.landValueAt(t) + prj.buildValue * Math.min(1, Math.max(0, (t - prj.start) / span)) * Math.max(0, 1 - prj.dep * Math.max(0, t - done) / 12);
   return { ...prj, schedule, occupy, bm: span, valueAt, value0: valueAt(occupy - 1), plannedOccupy: prj.plannedOccupy || prj.occupy, plannedBm: prj.plannedBm || prj.bm };
 }
 function reCarryOutAuto(p, prj, plan) {

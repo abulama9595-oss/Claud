@@ -531,10 +531,12 @@ function reWealthParts(r) {
   // (its payoff is an old-loan cost); what only this side sold counts against what it would be worth (ownGone); a property sold
   // on both sides drops out
   const sales = reSalesOf(r), oldSold = sales.reduce((a, s) => a + (s.oldPayoff || 0), 0);
-  const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + sales.reduce((a, s) => a + (s.fee || 0), 0) + (r.landSale ? r.landSale.fee : 0);
+  const newFees = r.facilities.reduce((a, f) => a + f.fees, 0) + (r.payoffs || []).filter((x) => x.old === false).reduce((a, x) => a + x.fee, 0) + refi.filter((x) => !x.old).reduce((a, x) => a + x.fee, 0) + (r.prepayFees || 0) + (r.unitSales || []).reduce((a, u) => a + (u.fee || 0), 0) + sales.reduce((a, s) => a + (s.fee || 0), 0) + (r.landSale ? r.landSale.fee : 0);
+  const sell = (r.unitSales || []).length > 0;   // "sell": the apartments, sold over the months after completion
   const land = r.kind === "land";   // v2: land only — the land sold (its price after costs; its value is 0 after) and what holding it cost
   const parts = [
-    { key: "value", label: land ? "The land's value at the end" : "The home's value at the end", v: end.value },
+    { key: "value", label: land ? "The land's value at the end" : sell ? `The apartments' value at the end${end.value > 0.5 ? " (still unsold)" : " (all sold)"}` : "The home's value at the end", v: end.value },
+    ...(sell ? [{ key: "aptSold", label: "The apartments you sold (price after selling costs)", v: (r.salesTotal || 0) - (r.salesCosts || 0) }] : []),
     ...(land ? [{ key: "landSold", label: "The land you sold (price after selling costs)", v: r.landSale ? r.landSale.value - r.landSale.costs : 0 }, { key: "holding", label: "Holding the land (white-land fee, zakat)", v: -sum("holding") }] : []),
     { key: "cost", label: "What the project cost (land, taxes, fees, construction)", v: -sum("spend") },
     { key: "newLoans", label: "Profit and fees on the new loans", v: -(sum("newInt") + newFees) },
@@ -548,6 +550,22 @@ function reWealthParts(r) {
     { key: "growth", label: "Growth on your cash, compared with not building", v: sum("ret") - sum("rRet") },
   ];
   return { parts, total: parts.reduce((a, x) => a + x.v, 0) };
+}
+
+/* ---------- the apartments' sales as planned (reSalePlan): the schedule rePlanSimulate follows — from completion (prj.occupy),
+   evenly over prj.sale.months, each at today's price grown with the market to its month, less the selling costs — for the page's
+   figures before any plan runs (a late construction moves the plan's sales; its own r.unitSales are then the truth). ---------- */
+function reSalePlan(prj, p) {
+  const S = prj && prj.sale; if (!S) return null;
+  const rows = []; let sold = 0, gross = 0;
+  for (let t = prj.occupy; sold < S.units && t < prj.occupy + S.months + 1; t++) {
+    const k = Math.min(S.units, Math.round(S.units * (t - prj.occupy + 1) / S.months)) - sold;
+    if (k <= 0) continue;
+    const price = S.price0 * Math.pow(1 + (+p.appreciation || 0) / 100, t / 12);
+    rows.push({ t, units: k, price }); sold += k; gross += k * price;
+  }
+  const costs = gross * S.costPct / 100;
+  return { rows, gross, costs, net: gross - costs, first: rows.length ? rows[0].t : prj.occupy, last: rows.length ? rows[rows.length - 1].t : prj.occupy, atCompletion: S.units * S.price0 * Math.pow(1 + (+p.appreciation || 0) / 100, (prj.occupy - 1) / 12) };
 }
 
 /* ---------- the liability a plan carries (reLiability): every loan in one table, the peaks, debt by year, what is still owed ----------

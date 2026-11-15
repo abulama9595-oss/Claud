@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=439000dab5"></script>
-  <script src="re2-engine.js?v=439000dab5"></script>
-  <script src="re2-ui.js?v=439000dab5"></script>
+  <script src="engine.js?v=49f90b7b1c"></script>
+  <script src="re2-engine.js?v=49f90b7b1c"></script>
+  <script src="re2-ui.js?v=49f90b7b1c"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -750,6 +750,7 @@
           case "upkeep": return up ? `Upkeep starts ${mo} later (${fM(v)} less).` : `Upkeep starts ${mo} sooner (${fM(v)} more).`;
           case "bridge": return `Bridge money while your cash is short costs ${fM(v)} ${up ? "less" : "more"} in profit${up ? "" : " — no loan can cover the gap in time"}.`;
           case "sold": return `The property you sell goes ${later ? "later" : "sooner"}: ${fM(v)} ${up ? "better" : "worse"}.`;
+          case "aptSold": return `The apartments sell for ${fM(v)} ${up ? "more" : "less"} after costs: they sell ${later ? "later" : "sooner"}, at prices grown ${later ? "longer" : "less"} with the market (${inp.appreciation}% a year).`;
           case "growth": return `Your cash earns ${fM(v)} ${up ? "more" : "less"} growth${up && later ? ": it stays invested longer before the project takes it" : !up && !later ? ": the project takes it sooner" : ""}.`;
           default: return `${x.label}: ${fM(x.v)}.`;
         }
@@ -830,7 +831,7 @@
             {isBuilding && (prj.sale ? <Row k={`${prj.sale.units} apartment${prj.sale.units === 1 ? "" : "s"} to sell`} v={`${fM(prj.sale.price0)} each`} sub={`today's price · sold over ${prj.sale.months} month${prj.sale.months === 1 ? "" : "s"} from ${fCal(prj.occupy)}`} />
               : <Row k={`${prj.letting.letUnits} unit${prj.letting.letUnits === 1 ? "" : "s"} let`} v={`${fSAR(prj.letting.netAnnual)}/yr`} sub="after empty months and management" />)}
             <Row k="All-in cost" v={fM(prj.total)} />
-            {!isLand && <Row k={`Value at ${W.doneShort}`} v={fM(prj.value0)} />}
+            {!isLand && <Row k={`${prj.sale ? "Selling value" : "Value"} at ${W.doneShort}`} v={fM(prj.value0)} sub={prj.sale ? `${prj.sale.units} × today's price, grown to ${fCal(prj.occupy - 1)}` : undefined} />}
             <Row k={W.doneLabel} v={fCal(prj.occupy)} />
             {prj.saleAt != null && <Row k="Land sold" v={fCal(prj.saleAt)} />}
           </RailGroup>
@@ -1212,10 +1213,10 @@
         </Box>); };
       // "Sell the apartments": how many, the sellable area, the price (per apartment or per m², today's), how fast, selling costs
       const SaleFields = () => { const S = prj.sale, per = inp.salePriceBasis === "sqm", area = S ? S.areaPerUnit : 0, n = Math.max(0, Math.round(+inp.unitCount || 0));
-        const sMo = Math.max(1, Math.round(+inp.saleMonths || 12)), grown = (t) => Math.pow(1 + inp.appreciation / 100, t / 12);
+        const sMo = Math.max(1, Math.round(+inp.saleMonths || 12));
         const sellArea = area * n, costM2 = sellArea > 0 ? prj.total / sellArea : null, costUnit = n > 0 ? prj.total / n : null;
         const over = (price, cost) => { if (!(cost > 0)) return null; const d = price / cost - 1; return <b style={{ color: d < 0 ? K.neg : K.pos }}>{d >= 0 ? "+" : "−"}{Math.abs(Math.round(d * 100))}%</b>; };
-        const atGrowth = S ? Array.from({ length: n }, (_, j) => S.price0 * grown(prj.occupy + Math.floor(j * sMo / Math.max(1, n)))).reduce((a, x) => a + x, 0) : 0;
+        const sp = S ? reSalePlan(prj, inp) : null, atGrowth = sp ? sp.gross : 0;
         return (
         <Box title="The apartments" help={EXPL.sale}>
           <Field label="Number of apartments" value={n} min={1} max={60} step={1} unit="apartments" onChange={(v) => set("unitCount", Math.round(v))} />
@@ -1293,7 +1294,12 @@
             <tr className="tot"><td>All-in cost</td><td className="v">{fSAR(prj.total)}</td></tr>
             {prj.construct && prj.builtArea > 0 && <tr><td>Cost per m² built (without the land)</td><td className="v">{fSAR(prj.costPerSqm)}</td></tr>}
             <tr><td colSpan={2} style={{ paddingTop: 12, fontWeight: 700 }}>What it is worth<Hint text={EXPL.value} label="What it is worth" /></td></tr>
-            {prj.construct ? <>
+            {prj.construct && sellAll && prj.sale ? (() => { const sp = reSalePlan(prj, inp), S = prj.sale, mg = prj.total > 0 ? sp.net / prj.total - 1 : 0; return <>
+              <tr><td>Selling the {S.units} apartment{S.units === 1 ? "" : "s"}: {fSAR(S.price0)} each today, grown {inp.appreciation}% a year to the sales ({fCal(sp.first)}{sp.last > sp.first ? ` – ${fCal(sp.last)}` : ""})<div className="n">the value of the apartments once finished is what they sell for</div></td><td className="v">{fSAR(sp.gross)}</td></tr>
+              <tr><td>Selling costs ({S.costPct}%)<div className="n">broker and marketing</div></td><td className="v">{fSAR(-sp.costs)}</td></tr>
+              <tr className="tot"><td>What the sales bring<div className="n">{mg >= 0 ? `${(mg * 100).toFixed(0)}% over` : `${(-mg * 100).toFixed(0)}% under`} the all-in cost of {fM(prj.total)}</div></td><td className="v" style={{ color: sp.net >= prj.total ? K.pos : K.neg }}>{fSAR(sp.net)}</td></tr>
+              <tr><td>Value in {endDate}<div className="n">nothing left to value: all sold by {fCal(sp.last)}; the money is in your cash</div></td><td className="v">{fSAR(0)}</td></tr>
+            </>; })() : prj.construct ? <>
               <tr><td>Land, grown {inp.appreciation}% a year to {fCal(prj.occupy)}</td><td className="v">{fSAR(vw.landMove)}</td></tr>
               <tr><td>Building: (construction + design + extras) × (1 + {inp.devMarginPct}% uplift)<div className="n">contingency, overrun, VAT, tax and fees add no value</div></td><td className="v">{fSAR(prj.buildValue)}</td></tr>
               <tr className="tot"><td>Value {sellAll ? "when it is finished" : letAll ? "when it is let" : "when you move in"} ({fCal(prj.occupy)})</td><td className="v" style={{ color: prj.value0 >= prj.total ? K.pos : K.neg }}>{fSAR(prj.value0)}</td></tr>
@@ -2321,7 +2327,8 @@
               <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Everything grows — how plans are ranked</div>
               <table className="bridge"><tbody>
                 <BLine label={`Your household cash in ${endDate}`} v={end.cash} note={`salary in; living costs, rent, every instalment, the project, payoffs and fees out; ${nr}% a year while positive`} />
-                <BLine label={`${W.thing.charAt(0).toUpperCase() + W.thing.slice(1)}'s value in ${endDate}`} v={end.value} note="no selling costs" />
+                {r.unitSales && r.unitSales.length ? (end.value > 0.5 ? <BLine label={`The apartments' value in ${endDate}`} v={end.value} note="the unsold ones, at their selling price" /> : <tr><td>{`The apartments' value in ${endDate}`}<div className="n">{`all sold — the sales (${fM((r.salesTotal || 0) - (r.salesCosts || 0))} after selling costs) are in your cash above`}</div></td><td className="v">0</td></tr>)
+                  : <BLine label={`${W.thing.charAt(0).toUpperCase() + W.thing.slice(1)}'s value in ${endDate}`} v={end.value} note="no selling costs" />}
                 <BLine label="All debt still owed (old and new loans)" v={-end.debt} />
                 <BLine label="The property you sold (the other side still owns it)" v={-end.ownGone} />
                 <BLine label="Cash + property − debt" v={end.econNW} tot />
@@ -2347,7 +2354,8 @@
                 <BLine label="Rent received" v={end.rentInCum} note="at face value" />
                 <BLine label="Rent you no longer pay after moving in" v={end.rentSavedCum} />
                 <BLine label={`Upkeep after ${W.doneShort}`} v={-end.upkeepCum} />
-                <BLine label={`${W.thing.charAt(0).toUpperCase() + W.thing.slice(1)}'s value in ${endDate}`} v={end.value} note="no selling costs" />
+                {r.unitSales && r.unitSales.length ? (end.value > 0.5 ? <BLine label={`The apartments' value in ${endDate}`} v={end.value} note="the unsold ones, at their selling price" /> : <tr><td>{`The apartments' value in ${endDate}`}<div className="n">{`all sold — the sales (${fM((r.salesTotal || 0) - (r.salesCosts || 0))} after selling costs) are in your cash above`}</div></td><td className="v">0</td></tr>)
+                  : <BLine label={`${W.thing.charAt(0).toUpperCase() + W.thing.slice(1)}'s value in ${endDate}`} v={end.value} note="no selling costs" />}
                 <BLine label="New-loan debt still owed" v={-end.debtNew} />
                 <BLine label="Old-loan balance you no longer owe (the other side still does)" v={end.oldDebtGap} />
                 <BLine label="The property you sold" v={-end.ownGone} />
