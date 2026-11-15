@@ -10,9 +10,9 @@
   <script src="vendor/prop-types.js"></script>
   <script src="vendor/recharts.js"></script>
   <!-- shared palette / formatters / IRR from the flagship engine, the real-estate engine, then the page helpers -->
-  <script src="engine.js?v=1545c1b01d"></script>
-  <script src="re2-engine.js?v=1545c1b01d"></script>
-  <script src="re2-ui.js?v=1545c1b01d"></script>
+  <script src="engine.js?v=439000dab5"></script>
+  <script src="re2-engine.js?v=439000dab5"></script>
+  <script src="re2-ui.js?v=439000dab5"></script>
   <style>
     /* AA text colours for this page only (the shared palette also styles the clinic pages) */
     :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --line: #DBD4C5; --lineIn: #9C9381; --soft: #F3EFE6; }
@@ -263,6 +263,9 @@
       if (!text) return null;
       return <span className="hint no-print" ref={ref}><button type="button" aria-expanded={open} aria-label={label ? `How is "${label}" worked out?` : "How is this worked out?"} onClick={() => setOpen(!open)}><span>i</span></button>{open && <span className="pop" role="note">{text}</span>}</span>;
     }
+    // keep or settle, with one plan (reSettleInPlan): cached per result object, so the extra plan run happens once per loan
+    const SETTLE_IN_PLAN = new WeakMap();
+    const settleInPlan = (a, r, p, prj, Lb) => { let c = SETTLE_IN_PLAN.get(r); if (!c) SETTLE_IN_PLAN.set(r, (c = {})); const k = `${a.owner}${a.id}`; if (!(k in c)) c[k] = reSettleInPlan(a, r, p, prj, Lb); return c[k]; };
     // slider with a number box (type a value) and a 24-px touch height
     function Field({ label, value, min, max, step, unit, onChange, hint, help, show, mark }) {
       const [txt, setTxt] = useState(null);
@@ -1006,7 +1009,7 @@
         return <>
               <div className="scroll-x">
                 <table className="tbl">
-                  <thead><tr><th>Loan</th><th>Type</th><th>Balance</th><th>Monthly</th><th>Months left</th><th>Rate</th>{loanMore && <><th>Months since it started</th><th>Settle in month</th><th>May be paid off from cash?</th><th>May the bank buy it out?</th></>}<th style={{ minWidth: 190 }}>Keep or settle?<Hint text={EXPL.settleAdvice} label="Keep or settle?" /></th><th className="no-print" style={{ width: 36 }}></th></tr></thead>
+                  <thead><tr><th>Loan</th><th>Type</th><th>Balance</th><th>Monthly</th><th>Months left</th><th>Rate</th>{loanMore && <><th>Months since it started</th><th>Settle in month</th><th>May be paid off from cash?</th><th>May the bank buy it out?</th></>}<th style={{ minWidth: 190 }}>Keep or settle? <span style={{ fontWeight: 400 }}>(on its own)</span><Hint text={EXPL.settleAdvice} label="Keep or settle?" /></th><th className="no-print" style={{ width: 36 }}></th></tr></thead>
                   <tbody>
                     {loans.map((l, i) => { const P = securedOnProp(l), a = l.balance > 0 && l.installment > 0 ? adviceFor(l, spouse) : null; return (
                       <React.Fragment key={l.id || i}><tr>
@@ -2179,20 +2182,25 @@
         const nameOf = (x) => x.kind === "old" ? `${x.label} (${x.state.kind === "kept" ? "kept" : x.state.kind === "boughtOut" ? (x.state.topup ? "topped up by its bank" : "bought out") : x.state.kind === "sold" ? "repaid from a sale" : "cleared"})` : x.split ? `Two personal loans${x.borrower === "your spouse" ? ", your spouse's" : ""}` : x.topups ? `Top-ups of ${x.refi.join(" + ")}` : x.label + (x.refi && x.refi.length ? ` (buys out ${x.refi.join(" + ")})` : "");
         const whenOf = (x) => x.kind === "new" ? `${fCal(x.from)} – ${fCal(x.to)}${x.ended ? ` · ${x.ended.how} ${fCal(x.ended.t)}` : ""}` : x.state.kind === "kept" ? (x.state.t != null ? `until ${fCal(x.to)}` : `beyond ${endDate}`) : `${x.state.how} ${fCal(x.state.t)}`;
         const instOf = (x) => x.kind === "old" && x.state.kind !== "kept" ? "—" : `${fSAR(x.inst)}/mo`;
-        const planDoes = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o) return ""; const s = o.state; return s.kind === "kept" ? ` This plan keeps it${s.t != null ? ` to its end in ${fCal(s.t)}` : ""}.${a.verdict === "keep" && a.canSettle && a.saveSettle >= a.eps && !a.cashOk ? (() => { const w = reSettleWhen(r, a.settleCost, inp.cashBuffer, s.t); return w != null ? ` Under this plan your cash would cover settling it from ${fCal(w)} — settle it then.` : " Under this plan your cash never covers settling it before it ends."; })() : ""}` : s.kind === "boughtOut" ? ` This plan has the bank buy it out in ${fCal(s.t)}.` : s.kind === "sold" ? ` This plan repays it from a sale in ${fCal(s.t)}.` : ` This plan pays it off in ${fCal(s.t)}${(() => { const x = (r.payoffs || []).find((y) => y.t === s.t && y.name === a.name); return x && x.why === "room" ? ` to make room for the ${(x.forLabel || "mortgage").toLowerCase()}${x.dearer ? " — it is dearer than that mortgage" : ""}` : ""; })()}.`; };
+        // a loan worth settling but your cash today does not cover it: when this plan's cash would (kept loans only)
+        const laterTxt = (a) => { const o = Lb.old.find((x) => x.key === `old:${a.id}`); if (!o || o.state.kind !== "kept" || !(a.verdict === "keep" && a.canSettle && a.saveSettle >= a.eps && !a.cashOk)) return ""; const w = reSettleWhen(r, a.settleCost, inp.cashBuffer, o.state.t); return w != null ? ` Under this plan your cash would cover settling it from ${fCal(w)} — settle it then.` : " Under this plan your cash never covers settling it before it ends."; };
         const years = Lb.debtByYear.filter((y) => y.year >= 1), present = DEBT_SERIES.filter(([k]) => years.some((y) => (y[k] || 0) > 0.5));
         const peakTxt = `Most you owe at once ${fS(Lb.peakDebt)} in ${fCal(Lb.peakDebtT)}; instalments at their highest ${fSAR(Lb.peakInst)}/mo (${(Lb.peakInstPct || 0).toFixed(0)}% of income) from ${fCal(span.from)} to ${fCal(span.to)}; ${Lb.debtFreeT != null ? `debt-free ${fCal(Lb.debtFreeT)}` : `still in debt in ${endDate}`}.`;
         const cards = narrow && !print;
+        // each old loan: the answer with this plan (bold) and the answer on its own, today, with no project
+        const inPlan = (a) => { const x = settleInPlan(a, r, p2, prj, Lb) || { verdict: a.verdict, agrees: true, text: "" }, l = laterTxt(a); return l ? { ...x, text: x.text + l } : x; };
+        const pv = (a) => inPlan(a).verdict, pvCol = (v) => v === "keep" ? K.pos : v === "room" ? K.brassTx : v === "settleCash" ? K.neg : K.text;
+        const ownLine = (a) => <><b>On its own</b> (today, no project): <b>{RE_SETTLE_VERDICT[a.verdict]}</b> — {a.why}</>;
         const settleEl = adv.length > 0 ? <div style={{ marginTop: 12 }}>
               {part !== "settle" && <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Your old loans — keep or settle?<Hint text={EXPL.settleAdvice} label="Keep or settle?" /></div>}
-              {cards ? <div className="grid" style={{ gap: 8 }}>{adv.map((a) => <div key={`${a.owner}${a.id}`} className="plan lrow" style={{ borderLeftColor: verdictCol(a.verdict) }}><div style={{ fontSize: 13 }}><b dir="auto">{a.name}</b> · <b style={{ color: verdictCol(a.verdict) }}>{RE_SETTLE_VERDICT[a.verdict]}</b></div><div style={{ fontSize: 12, color: K.sub, lineHeight: 1.45 }}>{a.apr.toFixed(2)}% APR{a.flatRate != null ? ` (${a.flatRate}% hamish)` : ""} vs {a.newApr.toFixed(2)}% {a.type === "mortgage" ? "mortgage" : "personal loan"} · fee {fSAR(a.fee)} · {a.why}{planDoes(a)}</div></div>)}</div>
+              {cards ? <div className="grid" style={{ gap: 8 }}>{adv.map((a) => { const x = inPlan(a); return <div key={`${a.owner}${a.id}`} className="plan lrow settle-row" style={{ borderLeftColor: pvCol(x.verdict) }}><div style={{ fontSize: 13 }}><b dir="auto">{a.name}</b>{a.owner === "B" ? " (your spouse's)" : ""} · with this plan: <b style={{ color: pvCol(x.verdict) }}>{RE_PLAN_SETTLE_VERDICT[x.verdict]}</b></div><div style={{ fontSize: 12, color: K.text, lineHeight: 1.45, marginTop: 2 }}>{x.text}</div><div style={{ fontSize: 12, color: K.sub, lineHeight: 1.45, marginTop: 4 }}>{a.apr.toFixed(2)}% APR{a.flatRate != null ? ` (${a.flatRate}% hamish)` : ""} vs {a.newApr.toFixed(2)}% {a.type === "mortgage" ? "mortgage" : "personal loan"} · fee {fSAR(a.fee)}</div><div style={{ fontSize: 12, color: K.sub, lineHeight: 1.45, marginTop: 2 }}>{ownLine(a)}</div></div>; })}</div>
               : <div className="scroll-x"><table className="tbl settle">
-                  <thead><tr><th>Loan</th><th>Its rate</th><th>New money's rate</th><th>Early-settlement fee</th><th>Verdict</th><th>Why</th></tr></thead>
-                  <tbody>{adv.map((a) => <tr key={`${a.owner}${a.id}`}><td className="l" dir="auto">{a.name}{a.owner === "B" ? <span style={{ color: K.sub }}> (your spouse's)</span> : ""}</td><td>{a.apr.toFixed(2)}% APR{a.flatRate != null ? <div style={{ fontSize: 11.5, color: K.sub }}>{a.flatRate}% hamish</div> : null}</td><td>{a.newApr.toFixed(2)}% {a.type === "mortgage" ? "mortgage" : "personal"}</td><td>{fSAR(a.fee)}</td><td className="l" style={{ color: verdictCol(a.verdict), fontWeight: 700 }}>{RE_SETTLE_VERDICT[a.verdict]}</td><td className="l" style={{ minWidth: 260, fontSize: 12, lineHeight: 1.45 }}>{a.why}{planDoes(a)}</td></tr>)}</tbody>
+                  <thead><tr><th>Loan</th><th>Its rate</th><th>New money's rate</th><th>Early-settlement fee</th><th>With this plan</th><th>Why</th></tr></thead>
+                  <tbody>{adv.map((a) => { const x = inPlan(a); return <tr key={`${a.owner}${a.id}`} className="settle-row"><td className="l" dir="auto">{a.name}{a.owner === "B" ? <span style={{ color: K.sub }}> (your spouse's)</span> : ""}</td><td>{a.apr.toFixed(2)}% APR{a.flatRate != null ? <div style={{ fontSize: 11.5, color: K.sub }}>{a.flatRate}% hamish</div> : null}</td><td>{a.newApr.toFixed(2)}% {a.type === "mortgage" ? "mortgage" : "personal"}</td><td>{fSAR(a.fee)}</td><td className="l" style={{ color: pvCol(x.verdict), fontWeight: 700 }}>{RE_PLAN_SETTLE_VERDICT[x.verdict]}{!x.agrees && <div style={{ fontSize: 11.5, color: K.sub, fontWeight: 400 }}>on its own: {RE_SETTLE_VERDICT[a.verdict].toLowerCase()}</div>}</td><td className="l" style={{ minWidth: 300, fontSize: 12, lineHeight: 1.45 }}><div><b>With this plan:</b> {x.text}</div><div style={{ color: K.sub, marginTop: 4 }}>{ownLine(a)}</div></td></tr>; })}</tbody>
                 </table></div>}
             </div> : null;
-        if (part === "settle") { if (!settleEl) return null; const n = (v) => adv.filter((a) => a.verdict === v).length, parts = [["keep", "keep"], ["settleCash", "settle"], ["buyout", "buy out"], ["room", "keep unless a mortgage needs the room"]].filter(([v]) => n(v)).map(([v, w]) => `${n(v)} ${w}`);
-          return fold({ id: "settle", title: "Your old loans — keep or settle?", help: EXPL.settleAdvice, sub: `${adv.length} loan${adv.length === 1 ? "" : "s"}: ${parts.join(", ")}`, style: { marginTop: 14 }, children: settleEl }); }
+        if (part === "settle") { if (!settleEl) return null; const n = (v) => adv.filter((a) => pv(a) === v).length, parts = [["keep", "keep"], ["settleCash", "settle from cash"], ["buyout", "buy out"], ["room", "keep unless a mortgage needs the room"], ["refi", "refinanced in this plan"], ["paid", "paid off in this plan"]].filter(([v]) => n(v)).map(([v, w]) => `${n(v)} ${w}`);
+          return fold({ id: "settle", title: "Your old loans — keep or settle?", help: EXPL.settleAdvice, sub: `${adv.length} loan${adv.length === 1 ? "" : "s"} with this plan: ${parts.join(", ")}`, style: { marginTop: 14 }, children: settleEl }); }
         return (
           <Box title={`What you take on with ${planRef(i)}`} style={{ marginTop: 14 }} help={EXPL.newDebt}>
             {cards ? <div className="grid" style={{ gap: 8 }}>{rows.map((x) => <div key={x.key} className={"plan lrow " + x.cls} style={{ borderLeftColor: x.kind === "old" ? "#8C877D" : x.key === "lm" ? "#2F6DB5" : /^eq/.test(x.key) ? "#1F9A80" : x.key === "co" ? "#6FA3E0" : "#A24FB8" }}>
