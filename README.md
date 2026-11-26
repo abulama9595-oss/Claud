@@ -11,6 +11,7 @@ landing page.
 | `original.html` | Original single-scroll workspace, preserved for comparison |
 | `pods.html` | Concept model: mall dental-hygiene-pod network |
 | `realestate-v2.html` + `re2-engine.js` | The real-estate tool: build or buy a villa, a building or land, every property you own, your loans, the plans and the tool's pick, checked against the bank's debt-burden limits. (`realestate.html` now sends you there; the previous version was retired.) |
+| `opportunity.html` + `opp-engine.js` | Land opportunity: is a plot worth developing? Typical Riyadh rules (editable) → what you may build and sell, the costs, profit, IRR, break-evens and the most to pay for the land; a ranked list of plots; opens a promising plot in the real-estate tool. |
 | `serve.ps1` | Static file server for Windows (PowerShell) |
 
 Both layouts run the **identical** model: a live financial engine (revenue
