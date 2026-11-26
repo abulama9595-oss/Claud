@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Land Opportunity · Is this plot worth developing?</title>
+  <script src="vendor/react.js"></script>
+  <script src="vendor/react-dom.js"></script>
+  <script src="vendor/babel.js"></script>
+  <script src="vendor/prop-types.js"></script>
+  <script src="vendor/recharts.js"></script>
+  <!-- the opportunity engine (pure; tests/opp/), then the real-estate engine for the handoff's defaults -->
+  <script src="opp-engine.js?v=176d907152"></script>
+  <style>
+    :root { --bg: #F1EDE4; --paper: #FBFAF6; --ink: #0E1A2B; --text: #1B2733; --sub: #56616C; --brass: #B0823A; --brassTx: #8A6427; --pos: #276B55; --neg: #A33D29; --warn: #8A6427; --line: #DBD4C5; --lineIn: #9C9381; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; overflow-x: hidden; }
+    button { font-family: inherit; }
+    .mono { font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace; }
+    input[type=text], input[type=number], select { font-family: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--lineIn); border-radius: 6px; background: #fff; color: var(--text); min-height: 32px; }
+    input[type=checkbox] { width: 18px; height: 18px; accent-color: #0E1A2B; flex: none; }
+    :focus-visible { outline: 2px solid #2F6DB5; outline-offset: 2px; }
+    input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; width: 100%; height: 24px; cursor: pointer; }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: #CFC6B4; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; margin-top: -6px; background: #8A6427; border: 2px solid #fff; box-shadow: 0 0 0 1px #8A6427; }
+    input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: #CFC6B4; }
+    input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #8A6427; border: 2px solid #fff; }
+    .hdr { background: #0E1A2B; color: #ECE4D3; }
+    .hdr-in { max-width: 1400px; margin: 0 auto; padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .hdr a { color: #D9B36A; }
+    .hbtn { background: transparent; color: #ECE4D3; border: 1px solid #3A4B62; border-radius: 7px; padding: 6px 11px; font-size: 12.5px; font-weight: 600; cursor: pointer; min-height: 32px; }
+    .hbtn.gold { background: #B0823A; border-color: #B0823A; color: #0E1A2B; }
+    .tabs { position: sticky; top: 0; z-index: 30; background: rgba(241,237,228,.97); border-bottom: 1px solid var(--line); }
+    .tabs-in { max-width: 1400px; margin: 0 auto; padding: 8px 20px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .tab { flex: none; display: inline-flex; align-items: center; gap: 8px; border: none; background: transparent; border-radius: 999px; padding: 6px 13px 6px 6px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; min-height: 36px; }
+    .tab .n { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: #DBD4C5; }
+    .tab.on { background: #0E1A2B; color: #ECE4D3; }
+    .tab.on .n { background: #B0823A; color: #0E1A2B; }
+    .shell { max-width: 1400px; margin: 0 auto; padding: 18px 20px 60px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+    .rail { position: sticky; top: 62px; display: grid; gap: 14px; }
+    @media (max-width: 960px) { .shell { grid-template-columns: minmax(0, 1fr); padding: 12px 14px 48px; } .rail { position: static; order: -1; } }
+    @media (max-width: 820px) { input[type=text], input[type=number], select { font-size: 16px !important; } }
+    .box { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+    .box + .box { margin-top: 14px; }
+    .h1 { font-size: 21px; font-weight: 700; margin: 2px 0 6px; }
+    .h2 { font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+    .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--brassTx); }
+    .lead { font-size: 13.5px; color: var(--sub); line-height: 1.55; max-width: 780px; }
+    .note { font-size: 12px; color: var(--sub); line-height: 1.5; margin-top: 8px; }
+    .lbl { font-size: 13px; font-weight: 500; }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px 22px; }
+    .seg { display: inline-flex; border: 1px solid var(--lineIn); border-radius: 8px; overflow: hidden; background: #fff; flex-wrap: wrap; }
+    .seg button { border: none; background: transparent; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--sub); cursor: pointer; min-height: 32px; }
+    .seg button.on { background: #0E1A2B; color: #fff; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid var(--lineIn); background: #fff; color: var(--text); padding: 7px 13px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 36px; }
+    .btn.gold { background: #B0823A; border-color: #B0823A; color: #0E1A2B; }
+    .btn.ink { background: #0E1A2B; border-color: #0E1A2B; color: #fff; }
+    .btn.small { padding: 4px 10px; font-size: 12.5px; min-height: 30px; }
+    .lnk { background: none; border: none; color: var(--brassTx); font-weight: 600; font-size: 12px; cursor: pointer; padding: 2px; text-decoration: underline; text-underline-offset: 2px; }
+    table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.t td, table.t th { padding: 6px 8px; border-bottom: 1px dotted var(--line); text-align: left; vertical-align: top; }
+    table.t th { font-size: 12px; color: var(--sub); font-weight: 700; }
+    table.t td.v, table.t th.v { text-align: right; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12.5px; white-space: nowrap; }
+    table.t tr.tot td { font-weight: 700; border-top: 1px solid var(--ink); border-bottom: none; }
+    table.t .n { font-size: 11.5px; color: var(--sub); margin-top: 1px; }
+    .scroll-x { overflow-x: auto; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; }
+    .kpi { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+    .kpi .k { font-size: 12px; color: var(--sub); }
+    .kpi .v { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 17px; font-weight: 700; margin-top: 2px; }
+    .kpi .s { font-size: 11.5px; color: var(--sub); margin-top: 2px; }
+    .verdict { border-left: 6px solid; }
+    .pill { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .05em; padding: 4px 10px; border-radius: 999px; color: #fff; }
+    .warn { font-size: 12.5px; line-height: 1.5; padding: 6px 0 6px 22px; position: relative; }
+    .warn::before { content: "!"; position: absolute; left: 4px; top: 6px; width: 14px; height: 14px; border-radius: 50%; background: #B0823A; color: #fff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+    .heat td { text-align: center; font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: 12px; padding: 6px 4px; border: 2px solid var(--paper); }
+    .heat th { font-size: 11.5px; color: var(--sub); padding: 4px; text-align: center; }
+    .code { background: #F4EEDF; border: 1px solid #E3D6B8; border-radius: 9px; padding: 10px 12px; font-size: 12.5px; line-height: 1.5; margin-bottom: 12px; }
+    .rule-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; flex-wrap: wrap; }
+    .print-only { display: none; }
+    @media print {
+      body { background: #fff; } .hdr, .tabs, .rail, .no-print { display: none !important; }
+      .shell { display: block; padding: 0; } .box { border: none; padding: 6px 0; break-inside: avoid; }
+      .print-only { display: block; } @page { margin: 12mm; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo, useEffect } = React;
+    const { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid } = Recharts;
+    const K = { text: "#1B2733", sub: "#56616C", brass: "#B0823A", brassTx: "#8A6427", pos: "#276B55", neg: "#A33D29", line: "#DBD4C5", ink: "#0E1A2B" };
+    const MONO = "'SF Mono', ui-monospace, Menlo, monospace";
+    // formatters
+    const fSAR = (n) => n == null || !isFinite(n) ? "—" : (Math.round(n) < 0 ? "−" : "") + Math.abs(Math.round(n)).toLocaleString("en-US");
+    const fM = (n) => { if (n == null || !isFinite(n)) return "—"; const a = Math.abs(n), s = n < 0 ? "−" : ""; return a >= 1e6 ? `${s}${(a / 1e6).toFixed(2)}M` : a >= 1e4 ? `${s}${Math.round(a / 1e3)}K` : `${s}${Math.round(a).toLocaleString("en-US")}`; };
+    const fPct = (x, d = 1) => x == null || !isFinite(x) ? "—" : `${(x * 100).toFixed(d)}%`;
+    const fM2 = (n) => n == null || !isFinite(n) ? "—" : `${Math.round(n).toLocaleString("en-US")} m²`;
+    const VERDICT = { GO: { col: K.pos, word: "Go", line: "meets your target margin" }, BORDERLINE: { col: K.brass, word: "Borderline", line: "makes money, but below your target margin" }, "NO-GO": { col: K.neg, word: "No-go", line: "does not make enough to be worth the risk" } };
+    const SIDES = [["front", "Front"], ["left", "Left side"], ["right", "Right side"], ["rear", "Rear"]];
+    const LS = { cur: "opp_current", list: "opp_scenarios", name: "opp_current_name" };
+    const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+    const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+    // ---------- small controls ----------
+    function Field({ label, value, min, max, step, unit, onChange, hint, code, onReset }) {
+      const [txt, setTxt] = useState(null);
+      const v = value == null ? 0 : value;
+      const commit = () => { if (txt == null) return; const n = parseFloat(String(txt).replace(/[^0-9.\-]/g, "")); if (!isNaN(n)) onChange(n); setTxt(null); };
+      const changed = code != null && Math.abs(v - code) > 1e-9;
+      return (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <label className="lbl">{label}</label>
+            <span style={{ display: "flex", alignItems: "center", gap: 4, flex: "none" }}>
+              <input type="text" inputMode="decimal" aria-label={label} value={txt != null ? txt : (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-US") : String(+(+v).toFixed(2)))} onChange={(e) => setTxt(e.target.value)} onFocus={(e) => { setTxt(String(v)); setTimeout(() => e.target.select(), 0); }} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} style={{ width: Math.abs(v) >= 100000 ? 104 : 76, textAlign: "right", fontFamily: MONO, fontSize: 12.5, padding: "4px 6px", minHeight: 30 }} />
+              {unit && <span style={{ fontSize: 12, color: K.sub }}>{unit}</span>}
+            </span>
+          </div>
+          <input type="range" aria-label={label} min={min} max={max} step={step} value={Math.min(max, Math.max(min, v))} onChange={(e) => onChange(parseFloat(e.target.value))} />
+          {(hint || code != null) && <div style={{ fontSize: 12, color: K.sub, lineHeight: 1.45 }}>{hint}{code != null && <>{hint ? " · " : ""}{changed ? <>Riyadh code: {code} <button className="lnk no-print" onClick={onReset}>use it</button></> : "typical Riyadh rule"}</>}</div>}
+        </div>
+      );
+    }
+    function NumIn({ v, on, label, placeholder, w }) {
+      const [t, setT] = useState(null);
+      const show = v == null || v === "" ? "" : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-US") : String(+(+v).toFixed(2));
+      const commit = () => { if (t == null) return; const s = t.trim(); if (s === "") on(null); else { const n = parseFloat(s.replace(/[^0-9.\-]/g, "")); if (!isNaN(n)) on(n); } setT(null); };
+      return <input type="text" inputMode="decimal" aria-label={label} placeholder={placeholder} value={t != null ? t : show} onChange={(e) => setT(e.target.value)} onFocus={() => setT(v == null ? "" : String(v))} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }} style={{ width: w || 100, textAlign: "right", fontFamily: MONO, fontSize: 12.5 }} />;
+    }
+    const Seg = ({ value, options, onChange, label }) => <div className="seg" role="group" aria-label={label}>{options.map(([k, l]) => <button key={k} className={value === k ? "on" : ""} aria-pressed={value === k} onClick={() => onChange(k)}>{l}</button>)}</div>;
+    const Check = ({ on, set, label }) => <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, margin: "6px 0 10px", cursor: "pointer" }}><input type="checkbox" checked={!!on} onChange={(e) => set(e.target.checked)} />{label}</label>;
+    const Kpi = ({ k, v, s, tone }) => <div className="kpi"><div className="k">{k}</div><div className="v" style={{ color: tone || K.text }}>{v}</div>{s && <div className="s">{s}</div>}</div>;
+
+    // ---------- the plot, drawn to scale ----------
+    function Sketch({ r }) {
+      const L = r.land, sb = r.setbacks, g = r.geometry, W = 320, H = 240, pad = 26;
+      if (!L.hasDims) { const side = Math.sqrt(L.area || 1); return <div className="note">Only the area is known ({fM2(L.area)}) — enter the frontage or the depth to draw the plot and check the setbacks.</div>; }
+      const sc = Math.min((W - 2 * pad) / L.frontage, (H - 2 * pad) / L.depth), pw = L.frontage * sc, ph = L.depth * sc, x0 = (W - pw) / 2, y0 = (H - ph) / 2;
+      const streets = r.inp.streets;
+      const edge = { front: [x0, y0 + ph + 4, pw, 0], rear: [x0, y0 - 4, pw, 0], left: [x0 - 4, y0, 0, ph], right: [x0 + pw + 4, y0, 0, ph] };
+      const plots = r.villas ? Array.from({ length: g.n }, (_, i) => i) : [0];
+      const plotW = r.villas ? pw / g.n : pw;
+      return (
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`The plot ${L.frontage.toFixed(1)} by ${L.depth.toFixed(1)} metres with the setbacks and the buildable footprint`} style={{ width: "100%", maxWidth: 420, display: "block", margin: "0 auto" }}>
+          <rect x={x0} y={y0} width={pw} height={ph} fill="#EFE7D6" stroke="#8C877D" strokeWidth="1.2" />
+          {plots.map((i) => {
+            const px = x0 + i * plotW, left = r.villas ? (r.inp.attached ? (i === 0 ? sb.left : 0) : sb.left) : sb.left, right = r.villas ? (r.inp.attached ? (i === g.n - 1 ? sb.right : 0) : sb.right) : sb.right;
+            const ix = px + left * sc, iy = y0 + sb.rear * sc, iw = Math.max(0, plotW - (left + right) * sc), ih = Math.max(0, ph - (sb.front + sb.rear) * sc);
+            const k = iw * ih > 0 ? Math.min(1, Math.sqrt(g.ground / ((iw / sc) * (ih / sc)))) : 0, fw = iw * k, fh = ih * k;
+            return <g key={i}>
+              {r.villas && i > 0 && <line x1={px} y1={y0} x2={px} y2={y0 + ph} stroke="#8C877D" strokeDasharray="3 3" />}
+              <rect x={ix} y={iy} width={iw} height={ih} fill="none" stroke="#B0823A" strokeDasharray="4 3" />
+              <rect x={ix + (iw - fw) / 2} y={iy + (ih - fh) / 2} width={fw} height={fh} fill="#0E1A2B" opacity=".78" />
+            </g>;
+          })}
+          {streets.map((s, i) => { const e = edge[s.side]; if (!e) return null; const horiz = e[3] === 0; return <g key={i}>
+            <line x1={e[0]} y1={e[1]} x2={e[0] + e[2]} y2={e[1] + e[3]} stroke="#2F6DB5" strokeWidth="5" />
+            <text x={horiz ? e[0] + e[2] / 2 : e[0] + (s.side === "left" ? -8 : 8)} y={horiz ? e[1] + (s.side === "front" ? 16 : -8) : e[1] + e[3] / 2} fontSize="10.5" fill="#2F6DB5" textAnchor="middle" transform={horiz ? undefined : `rotate(-90 ${e[0] + (s.side === "left" ? -8 : 8)} ${e[1] + e[3] / 2})`}>street {s.width} m</text>
+          </g>; })}
+          <text x={x0 + pw / 2} y={y0 + ph / 2} fontSize="10" fill="#fff" textAnchor="middle" dominantBaseline="middle">{r.villas ? `${g.n} × ${Math.round(g.ground)} m²` : `${Math.round(g.ground)} m²`}</text>
+        </svg>
+      );
+    }
+
+    // ---------- the app ----------
+    function App() {
+      const [inp, setInp] = useState(() => load(LS.cur, { ...OPP_BASE }));
+      const [name, setName] = useState(() => load(LS.name, "") || "");
+      const [list, setList] = useState(() => load(LS.list, {}));
+      const [tab, setTab] = useState("land");
+      const [flash, setFlash] = useState("");
+      const [sortBy, setSortBy] = useState("margin");
+      const [undo, setUndo] = useState(null);
+      useEffect(() => { store(LS.cur, inp); }, [inp]);
+      useEffect(() => { store(LS.name, name); }, [name]);
+      const r = useMemo(() => computeOpp(inp), [inp]);
+      const x = r.inp, C = r.code, villas = r.villas;
+      const set = (k, v) => setInp((s) => ({ ...s, [k]: v }));
+      const ruleField = (k, label, min, max, step, unit, hint) => <Field label={label} value={x[k]} min={min} max={max} step={step} unit={unit} hint={hint} code={C[k]} onReset={() => set(k, null)} onChange={(v) => set(k, v)} />;
+      const say = (t) => { setFlash(t); setTimeout(() => setFlash(""), 2600); };
+      const saveAs = (nm) => { const n = (nm || name || "").trim() || `Plot ${Object.keys(list).length + 1}`; const next = { ...list, [n]: { inp, savedAt: new Date().toISOString() } }; setList(next); store(LS.list, next); setName(n); say(`Saved “${n}”`); };
+      const open = (n) => { const s = list[n]; if (!s) return; setInp({ ...OPP_BASE, ...s.inp }); setName(n); setTab("answer"); };
+      const remove = (n) => { const next = { ...list }; const old = next[n]; delete next[n]; setList(next); store(LS.list, next); setUndo({ n, old }); };
+      const restore = () => { if (!undo) return; const next = { ...list, [undo.n]: undo.old }; setList(next); store(LS.list, next); setUndo(null); };
+      // the handoff: a build-and-sell scenario in the real-estate tool, with your money and loans from its current scenario
+      const toRealEstate = () => {
+        const proj = oppToRE2(inp, r); delete proj.oppName;
+        const cur = load("re2_current", {}) || {}, nm = `Opportunity: ${(name || "this plot").trim()}`;
+        const sc = { ...cur, ...proj, asOf: cur.asOf };
+        if (!sc.asOf) delete sc.asOf;
+        const all = load("re2_scenarios", {}) || {};
+        all[nm] = { inp: sc, savedAt: new Date().toISOString() };
+        store("re2_scenarios", all); store("re2_current", sc); try { localStorage.setItem("re2_current_name", nm); } catch (e) {}   // (that page keeps the name as plain text)
+        location.href = "realestate-v2.html";
+      };
+      const tabs = [["land", "The land"], ["build", "What you build"], ["sell", "What you sell"], ["cost", "Costs & time"], ["answer", "Your answer"], ["list", "Opportunities"]];
+      const K2 = r.kpis, V = VERDICT[r.verdict], B = r.breakEven, RL = r.residualLand;
+      const unitWord = villas ? "villa" : "apartment";
+
+      // ---------- step 1: the land ----------
+      const StepLand = () => (
+        <div>
+          <div className="box">
+            <div className="eyebrow">Step 1</div><div className="h1">The land</div>
+            <p className="lead">Enter what you know: the frontage and the depth, or one of them and the area, or only the area. The tool works out the rest and asks only for what it is missing.</p>
+            <div className="grid2" style={{ marginTop: 12 }}>
+              <div>
+                <div className="rule-row"><label className="lbl">Name</label><input type="text" aria-label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Plot 1234, Al-Narjis" style={{ width: 220 }} /></div>
+                <div className="rule-row"><label className="lbl">Frontage (along the street)</label><span><NumIn label="Frontage" v={inp.frontage} on={(v) => set("frontage", v)} placeholder="m" /> m</span></div>
+                <div className="rule-row"><label className="lbl">Depth</label><span><NumIn label="Depth" v={inp.depth} on={(v) => set("depth", v)} placeholder="m" /> m</span></div>
+                <div className="rule-row"><label className="lbl">Area</label><span><NumIn label="Area" v={r.land.derived === "area" ? null : inp.area} on={(v) => set("area", v)} placeholder={r.land.area ? fSAR(r.land.area) : "m²"} /> m²</span></div>
+                <div className="note">{r.land.area > 0 ? <>The plot: <b>{fM2(r.land.area)}</b>{r.land.hasDims ? <> — {r.land.frontage.toFixed(1)} m × {r.land.depth.toFixed(1)} m{r.land.derived && r.land.derived !== "area" ? ` (the ${r.land.derived} worked out from the area)` : ""}</> : " — area only: the setbacks cannot be checked until you give the frontage or the depth"}.</> : "Enter two of the three, or the area."}</div>
+              </div>
+              <div>
+                <div className="lbl" style={{ marginBottom: 6 }}>Streets around the plot</div>
+                {inp.streets.map((s, i) => <div key={i} className="rule-row">
+                  <select aria-label={`Street ${i + 1} side`} value={s.side} onChange={(e) => set("streets", inp.streets.map((q, j) => j === i ? { ...q, side: e.target.value } : q))}>{SIDES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                  <span>width <NumIn label={`Street ${i + 1} width`} v={s.width} on={(v) => set("streets", inp.streets.map((q, j) => j === i ? { ...q, width: v || 0 } : q))} w={70} /> m {inp.streets.length > 1 && <button className="lnk" onClick={() => set("streets", inp.streets.filter((_, j) => j !== i))}>remove</button>}</span>
+                </div>)}
+                {inp.streets.length < 3 && <button className="btn small" onClick={() => set("streets", [...inp.streets, { side: inp.streets.some((s) => s.side === "left") ? "rear" : "left", width: 15 }])}>+ Add a street (corner plot)</button>}
+                <div className="note">A street side takes the street setback; the other sides take the side and rear setbacks.</div>
+              </div>
+            </div>
+          </div>
+          <div className="box">
+            <div className="h2">The land's price</div>
+            <div className="grid2">
+              <Field label="Land price per m²" value={inp.landPrice} min={500} max={20000} step={50} unit="SAR/m²" onChange={(v) => set("landPrice", v)} hint={`= ${fSAR(r.costs.land)} for the plot`} />
+              <div>
+                <Field label="Transfer tax (RETT)" value={inp.rettPct} min={0} max={10} step={0.5} unit="%" onChange={(v) => set("rettPct", v)} />
+                <Field label="Broker's fee" value={inp.brokerPct} min={0} max={5} step={0.25} unit="%" onChange={(v) => set("brokerPct", v)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      // ---------- step 2: what you build ----------
+      const StepBuild = () => (
+        <div>
+          <div className="box">
+            <div className="eyebrow">Step 2</div><div className="h1">What you may build</div>
+            <div style={{ margin: "8px 0 12px" }}><Seg label="Project" value={x.type} onChange={(v) => setInp((s) => { const keep = { ...s, type: v }; ["frontSetbackPct", "frontSetbackMin", "frontSetbackMax", "sideSetback", "rearSetback", "groundCoverPct", "upperCoverPct", "floors", "annexPct", "utilityPct", "unitSize", "parkingPerUnit", "buildCost", "villaWidth", "villaPlotMin"].forEach((k) => { keep[k] = null; }); if (v === "villas") { keep.priceBasis = "unit"; if (!(+s.priceUnit > 1500000)) keep.priceUnit = 2500000; } else { keep.priceBasis = "sqm"; if (+s.priceUnit > 3000000) keep.priceUnit = OPP_BASE.priceUnit; } return keep; })} options={[["apartments", "Apartment building"], ["villas", "Villas / townhouses"]]} /></div>
+            <div className="code"><b>Typical Riyadh rules — {C.label.toLowerCase()}.</b> {C.note} <i>These are editable defaults, not the official code: check your plot's building permit or planning certificate and change any rule to match it.</i></div>
+            <div className="grid2">
+              <div>
+                <div className="h2">Setbacks</div>
+                {ruleField("frontSetbackPct", "Street setback, share of the street width", 0, 40, 1, "%", `front ${r.setbacks.front.toFixed(1)} m`)}
+                <div className="grid2" style={{ gap: "0 14px" }}>
+                  {ruleField("frontSetbackMin", "…at least", 0, 10, 0.5, "m")}
+                  {ruleField("frontSetbackMax", "…at most", 0, 15, 0.5, "m")}
+                </div>
+                {ruleField("sideSetback", "Side setback", 0, 6, 0.5, "m")}
+                {ruleField("rearSetback", "Rear setback", 0, 6, 0.5, "m")}
+              </div>
+              <div>
+                <div className="h2">Floors and coverage</div>
+                {ruleField("floors", "Floors above ground (ground included)", 1, 12, 1, "floors", r.floors > C.floorsUsual ? `above the usual ${C.floorsUsual} — only if the permit allows it` : null)}
+                {ruleField("groundCoverPct", "Ground-floor coverage", 20, 100, 1, "% of the plot")}
+                {ruleField("upperCoverPct", "Upper-floor coverage", 20, 100, 1, "% of the plot")}
+                {ruleField("annexPct", "Roof annex", 0, 100, 5, "% of a floor")}
+              </div>
+            </div>
+          </div>
+          <div className="box">
+            <div className="grid2">
+              <div>
+                {villas ? <>
+                  <div className="h2">The villas</div>
+                  <div className="rule-row"><label className="lbl">Number of villas</label><span><NumIn label="Number of villas" v={inp.villaCount} on={(v) => set("villaCount", v)} placeholder={String(r.geometry.n)} w={70} /></span></div>
+                  {r.land.hasDims ? ruleField("villaWidth", "…or a plot width of", 6, 30, 0.5, "m", `${r.geometry.n} plots of ${r.geometry.plotW.toFixed(1)} m × ${r.land.depth.toFixed(1)} m`) : <Field label="…or a plot area of" value={inp.villaPlot} min={150} max={1000} step={10} unit="m²" onChange={(v) => set("villaPlot", v)} />}
+                  <Check on={inp.attached} set={(v) => set("attached", v)} label="Attached townhouses (no setback between them)" />
+                  {ruleField("villaPlotMin", "Smallest plot allowed", 100, 600, 10, "m²")}
+                </> : <>
+                  <div className="h2">Basement and parking</div>
+                  <Check on={inp.basement} set={(v) => set("basement", v)} label="Basement (parking and services — a cost, not sold)" />
+                  {inp.basement && <Field label="Basement levels" value={inp.basementLevels} min={1} max={3} step={1} unit="levels" onChange={(v) => set("basementLevels", v)} hint={`${fM2(r.areas.basement)} · room for about ${r.parking.room.basement} cars`} />}
+                  <Check on={inp.groundParking} set={(v) => set("groundParking", v)} label="The ground floor is parking (not sold)" />
+                </>}
+                {ruleField("parkingPerUnit", `Parking spaces per ${unitWord}`, 0, 3, 0.5, "spaces", `${r.parking.need} needed · room for about ${r.parking.total}`)}
+              </div>
+              <div>
+                <div className="h2">The plot, to scale</div>
+                <Sketch r={r} />
+                <div className="note">Blue: the street(s). Dashed: the line the setbacks leave. Dark: the footprint the coverage allows{r.geometry.groundBound === "setbacks" ? " — here the setbacks, not the coverage, limit it" : ""}.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      // ---------- step 3: what you sell ----------
+      const StepSell = () => (
+        <div>
+          <div className="box">
+            <div className="eyebrow">Step 3</div><div className="h1">What you sell</div>
+            <div className="grid2" style={{ marginTop: 8 }}>
+              <div>
+                {ruleField("utilityPct", "Utility share (stairs, lifts, corridors, walls)", 0, 40, 1, "% of the built area", `${fM2(r.areas.sellable)} sellable of ${fM2(r.areas.sellableGross)}`)}
+                {!villas && <>
+                  {ruleField("unitSize", "Apartment size you aim for", 50, 400, 5, "m²", `${r.units.auto} apartments fit`)}
+                  <div className="rule-row"><label className="lbl">…or the number of apartments</label><span><NumIn label="Number of apartments" v={inp.unitsOverride} on={(v) => set("unitsOverride", v)} placeholder={String(r.units.auto)} w={70} /></span></div>
+                </>}
+                <div className="note"><b>{r.units.count} {unitWord}{r.units.count === 1 ? "" : "s"}</b>, about {fM2(r.units.avgSize)} each.</div>
+              </div>
+              <div>
+                <div style={{ marginBottom: 10 }}><Seg label="Price entered as" value={x.priceBasis} onChange={(v) => setInp((s) => ({ ...s, priceBasis: v, ...(v === "unit" ? { priceUnit: Math.round((r.units.avgSize * s.priceSqm || s.priceUnit) / 10000) * 10000 } : { priceSqm: r.units.avgSize > 0 ? Math.round(s.priceUnit / r.units.avgSize / 50) * 50 : s.priceSqm }) }))} options={[["unit", `Price per ${unitWord}`], ["sqm", "Price per m²"]]} /></div>
+                {x.priceBasis === "sqm" ? <Field label="Price per m² of sellable area" value={inp.priceSqm} min={1000} max={15000} step={50} unit="SAR/m²" onChange={(v) => set("priceSqm", v)} hint={`= ${fSAR(r.units.price)} per ${unitWord}`} />
+                  : <Field label={`Price per ${unitWord}`} value={inp.priceUnit} min={100000} max={villas ? 8000000 : 3000000} step={10000} unit="SAR" onChange={(v) => set("priceUnit", v)} hint={r.areas.sellable > 0 ? `= ${fSAR(r.revenue.gdv / r.areas.sellable)} per m² of sellable area` : null} />}
+                <Field label="Sell them all within" value={inp.saleMonths} min={1} max={48} step={1} unit="months after completion" onChange={(v) => set("saleMonths", Math.round(v))} />
+                <Field label="Selling costs" value={inp.saleCostPct} min={0} max={10} step={0.5} unit="% of the price" onChange={(v) => set("saleCostPct", v)} hint="broker and marketing" />
+              </div>
+            </div>
+          </div>
+          <div className="box">
+            <div className="h2">Off-plan sales (Wafi)</div>
+            <div className="grid2">
+              <Field label="Sold off-plan, during construction" value={inp.offPlanPct} min={0} max={100} step={5} unit="% of the units" onChange={(v) => set("offPlanPct", v)} hint="buyers pay as the building progresses (through an escrow account), so you need less of your own cash" />
+              <Field label="Off-plan discount" value={inp.offPlanDiscountPct} min={0} max={20} step={1} unit="% below the price" onChange={(v) => set("offPlanDiscountPct", v)} />
+            </div>
+          </div>
+        </div>
+      );
+
+      // ---------- step 4: costs and time ----------
+      const StepCost = () => (
+        <div>
+          <div className="box">
+            <div className="eyebrow">Step 4</div><div className="h1">Costs and time</div>
+            <div className="grid2" style={{ marginTop: 8 }}>
+              <div>
+                {ruleField("buildCost", "Building cost per m² (above ground)", 800, 6000, 50, "SAR/m²", `= ${fSAR(r.areas.aboveGround * x.buildCost)} for ${fM2(r.areas.aboveGround)}`)}
+                {!villas && inp.basement && <Field label="Basement cost per m²" value={inp.basementCost} min={800} max={6000} step={50} unit="SAR/m²" onChange={(v) => set("basementCost", v)} />}
+                <Field label="Design, permits, supervision" value={inp.softPct} min={0} max={20} step={0.5} unit="% of construction" onChange={(v) => set("softPct", v)} />
+                <Field label="Contingency" value={inp.contPct} min={0} max={20} step={0.5} unit="%" onChange={(v) => set("contPct", v)} />
+                <Field label="VAT on construction" value={inp.vatPct} min={0} max={15} step={0.5} unit="%" onChange={(v) => set("vatPct", v)} hint="a residential sale carries no VAT, so it is not recovered" />
+                <div className="rule-row"><label className="lbl">Extras (kitchens, AC, landscaping)</label><span><NumIn label="Extras" v={inp.finishExtra} on={(v) => set("finishExtra", v || 0)} /> SAR</span></div>
+                <div className="rule-row"><label className="lbl">Permit and connection fees</label><span><NumIn label="Permit fees" v={inp.permitFees} on={(v) => set("permitFees", v || 0)} /> SAR</span></div>
+              </div>
+              <div>
+                <Field label="Design and permits" value={inp.designMonths} min={0} max={24} step={1} unit="months" onChange={(v) => set("designMonths", Math.round(v))} />
+                <Field label="Construction" value={inp.buildMonths} min={6} max={48} step={1} unit="months" onChange={(v) => set("buildMonths", Math.round(v))} />
+                <Field label="Land loan" value={inp.loanLtv} min={0} max={70} step={5} unit="% of the land price" onChange={(v) => set("loanLtv", v)} hint={inp.loanLtv > 0 ? `${fSAR(r.costs.loan)} borrowed, interest ${fSAR(r.costs.interest)} until completion` : "0 = all your own cash"} />
+                {inp.loanLtv > 0 && <Field label="Loan rate" value={inp.loanRate} min={2} max={12} step={0.25} unit="% a year" onChange={(v) => set("loanRate", v)} />}
+                <Field label="Your target margin" value={inp.targetMarginPct} min={5} max={50} step={1} unit="% profit on cost" onChange={(v) => set("targetMarginPct", v)} hint="Go at or above it; Borderline at half of it or more" />
+                <Field label="Discount rate (for NPV)" value={inp.discountRate} min={0} max={25} step={0.5} unit="% a year" onChange={(v) => set("discountRate", v)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      // ---------- the answer ----------
+      const sens = r.sensitivity, maxAbs = Math.max(1, ...sens.cells.flat().map((c) => Math.abs(c.profit)));
+      const heat = (p) => { const a = Math.min(1, Math.abs(p) / maxAbs) * 0.75 + 0.1; return p >= 0 ? `rgba(39,107,85,${a})` : `rgba(163,61,41,${a})`; };
+      const torMax = Math.max(1, ...r.tornado.map((t) => Math.max(Math.abs(t.low), Math.abs(t.high))));
+      const flowData = r.cashflow.map((f) => ({ t: f.t, cum: Math.round(f.cum) }));
+      const Answer = () => (
+        <div>
+          <div className="print-only"><div className="eyebrow">Land opportunity</div><div className="h1">{name || "This plot"}</div></div>
+          <section className="box verdict" style={{ borderLeftColor: V.col }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><span className="pill" style={{ background: V.col }}>{V.word}</span><span style={{ fontSize: 13, color: K.sub }}>target {x.targetMarginPct}% profit on cost</span></div>
+            <div className="h1" style={{ marginTop: 8 }}>{name ? `${name}: ` : ""}{K2.profit >= 0 ? `${fM(K2.profit)} profit` : `${fM(-K2.profit)} loss`} on {fM(r.costs.total)} — {fPct(K2.marginOnCost)} on cost, which {V.line}.</div>
+            <p className="lead">{r.units.count} {unitWord}{r.units.count === 1 ? "" : "s"} of about {fM2(r.units.avgSize)} on {fM2(r.areas.land)} of land, sold for {fM(r.revenue.total)}. {RL.atTarget != null ? <>The most you should pay for the land to reach your target is <b>{fSAR(RL.atTarget)} per m²</b> ({RL.headroom >= 0 ? `${fSAR(RL.headroom)} above` : `${fSAR(-RL.headroom)} below`} the {fSAR(x.landPrice)} you entered); above <b>{fSAR(RL.atBreakEven)}</b> per m² it loses money.</> : null}</p>
+            <div className="no-print" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <button className="btn gold" onClick={() => saveAs()}>Save this opportunity</button>
+              <button className="btn" onClick={() => window.print()}>Print / PDF memo</button>
+              <button className="btn ink" onClick={toRealEstate}>Open in the real-estate tool →</button>
+            </div>
+            <div className="note no-print">“Open in the real-estate tool” makes a build-and-sell scenario there with this land, building, units and price, and your cash, salary and loans from its current scenario — to see whether you can fund it, month by month.</div>
+          </section>
+          <section className="box">
+            <div className="h2">The numbers that decide</div>
+            <div className="kpis">
+              <Kpi k="Profit" v={fM(K2.profit)} tone={K2.profit >= 0 ? K.pos : K.neg} s={`${fM(K2.profitPerUnit)} per ${unitWord}`} />
+              <Kpi k="Margin on cost" v={fPct(K2.marginOnCost)} tone={K2.marginOnCost >= x.targetMarginPct / 100 ? K.pos : K2.marginOnCost > 0 ? K.brassTx : K.neg} s={`${fPct(K2.marginOnGdv)} of the sales`} />
+              <Kpi k="IRR" v={fPct(K2.irr)} s={`NPV at ${x.discountRate}%: ${fM(K2.npv)}`} />
+              <Kpi k="Peak cash needed" v={fM(K2.peakCash)} s={`month ${K2.peakT}${K2.paybackT != null ? ` · back in month ${K2.paybackT}` : " · never back"}`} />
+              <Kpi k="Profit per m² of land" v={fSAR(K2.profitPerLandM2)} s={`land ${fSAR(x.landPrice)} per m²`} />
+              <Kpi k="Cost per sellable m²" v={fSAR(K2.costPerSellable)} s={`land ${fSAR(K2.landPerSellable)} + build ${fSAR(K2.buildPerSellable)}`} />
+              <Kpi k={`Cost per ${unitWord}`} v={fM(K2.costPerUnit)} s={`sells for ${fM(r.units.price)}`} />
+              <Kpi k="Equity multiple" v={K2.equityMultiple == null ? "—" : `${K2.equityMultiple.toFixed(2)}×`} s="money back per riyal put in" />
+            </div>
+          </section>
+          <section className="box">
+            <div className="h2">Break-even: how much can go wrong</div>
+            <div className="scroll-x"><table className="t"><tbody>
+              <tr><td>Lowest sale price{x.priceBasis === "unit" ? ` per ${unitWord}` : " per m²"}<div className="n">profit = 0</div></td><td className="v">{x.priceBasis === "unit" ? fSAR(B.priceUnit) : fSAR(B.priceSqm)}</td><td className="v" style={{ color: K.sub }}>{B.priceDropPct != null ? (B.priceDropPct >= 0 ? `prices can fall ${B.priceDropPct.toFixed(0)}%` : `prices must rise ${(-B.priceDropPct).toFixed(0)}%`) : ""}</td></tr>
+              <tr><td>Sale price for your {x.targetMarginPct}% target</td><td className="v">{x.priceBasis === "unit" ? fSAR(B.targetPriceUnit) : fSAR(B.targetPriceSqm)}</td><td></td></tr>
+              <tr><td>Highest building cost per m²<div className="n">profit = 0</div></td><td className="v">{fSAR(B.buildCost)}</td><td className="v" style={{ color: K.sub }}>{B.buildCostRisePct != null ? (B.buildCostRisePct >= 0 ? `costs can rise ${B.buildCostRisePct.toFixed(0)}%` : `costs must fall ${(-B.buildCostRisePct).toFixed(0)}%`) : ""}</td></tr>
+              <tr><td>{villas ? "Villas" : "Apartments"} you must sell to cover every cost</td><td className="v">{B.units == null ? "—" : `${B.units} of ${r.units.count}`}</td><td className="v" style={{ color: K.sub }}>{B.unitsShare != null ? fPct(B.unitsShare, 0) : ""}</td></tr>
+              <tr className="tot"><td>Most you should pay for the land, per m²<div className="n">for your {x.targetMarginPct}% target · the figure to negotiate with</div></td><td className="v" style={{ color: RL.headroom >= 0 ? K.pos : K.neg }}>{fSAR(RL.atTarget)}</td><td className="v" style={{ color: K.sub }}>{RL.headroomPct != null ? `${RL.headroomPct >= 0 ? "+" : ""}${RL.headroomPct.toFixed(0)}% vs your price` : ""}</td></tr>
+              <tr><td>Land price per m² at which it breaks even</td><td className="v">{fSAR(RL.atBreakEven)}</td><td></td></tr>
+            </tbody></table></div>
+          </section>
+          <div className="grid2" style={{ marginTop: 14 }}>
+            <section className="box" style={{ marginTop: 0 }}>
+              <div className="h2">What you can build and sell</div>
+              <table className="t"><tbody>
+                <tr><td>Land</td><td className="v">{fM2(r.areas.land)}</td></tr>
+                <tr><td>Footprint (ground floor){villas ? ` · ${r.geometry.n} villas` : ""}<div className="n">limited by the {r.geometry.groundBound}</div></td><td className="v">{fM2(r.areas.footprint)}</td></tr>
+                <tr><td>Upper floors ({r.floors - 1} × {fM2(r.geometry.upper * (villas ? r.geometry.n : 1))})</td><td className="v">{fM2(r.areas.upperFloor * (r.floors - 1))}</td></tr>
+                <tr><td>Roof annex ({x.annexPct}%)</td><td className="v">{fM2(r.areas.annex)}</td></tr>
+                <tr className="tot"><td>Building area above ground<div className="n">{r.areas.far.toFixed(2)} × the land</div></td><td className="v">{fM2(r.areas.aboveGround)}</td></tr>
+                {r.areas.basement > 0 && <tr><td>Basement (not sold)</td><td className="v">{fM2(r.areas.basement)}</td></tr>}
+                <tr><td>Utility areas ({x.utilityPct}%){x.groundParking ? " and the parking ground floor" : ""}</td><td className="v">−{fM2(r.areas.aboveGround - r.areas.sellable)}</td></tr>
+                <tr className="tot"><td>Sellable area</td><td className="v">{fM2(r.areas.sellable)}</td></tr>
+                <tr><td>{villas ? "Villas" : "Apartments"}</td><td className="v">{r.units.count} × {fM2(r.units.avgSize)}</td></tr>
+              </tbody></table>
+            </section>
+            <section className="box" style={{ marginTop: 0 }}>
+              <div className="h2">What it costs and what it brings</div>
+              <table className="t"><tbody>
+                <tr><td>Land ({fSAR(x.landPrice)}/m²)</td><td className="v">{fSAR(r.costs.land)}</td></tr>
+                <tr><td>Transfer tax and broker</td><td className="v">{fSAR(r.costs.rett + r.costs.broker)}</td></tr>
+                <tr><td>Construction{r.areas.basement > 0 ? " (incl. basement)" : ""}</td><td className="v">{fSAR(r.costs.construction)}</td></tr>
+                <tr><td>Design, permits, supervision · contingency</td><td className="v">{fSAR(r.costs.soft + r.costs.cont)}</td></tr>
+                {r.costs.finish + r.costs.permits > 0 && <tr><td>Extras and fees</td><td className="v">{fSAR(r.costs.finish + r.costs.permits)}</td></tr>}
+                <tr><td>VAT ({x.vatPct}%)</td><td className="v">{fSAR(r.costs.vat)}</td></tr>
+                <tr><td>Selling costs ({x.saleCostPct}%)</td><td className="v">{fSAR(r.costs.saleCosts)}</td></tr>
+                {r.costs.interest > 0 && <tr><td>Land-loan interest</td><td className="v">{fSAR(r.costs.interest)}</td></tr>}
+                <tr className="tot"><td>Total cost</td><td className="v">{fSAR(r.costs.total)}</td></tr>
+                <tr><td>Sales{r.revenue.offRevenue > 0 ? ` (${x.offPlanPct}% off-plan)` : ""}</td><td className="v">{fSAR(r.revenue.total)}</td></tr>
+                <tr className="tot"><td>Profit</td><td className="v" style={{ color: K2.profit >= 0 ? K.pos : K.neg }}>{fSAR(K2.profit)}</td></tr>
+              </tbody></table>
+            </section>
+          </div>
+          <section className="box">
+            <div className="h2">If prices and costs move</div>
+            <div className="scroll-x"><table className="heat" style={{ borderCollapse: "collapse", minWidth: 420 }}>
+              <thead><tr><th>sale price ↓ · building cost →</th>{sens.cost.map((c) => <th key={c}>{c > 0 ? "+" : ""}{c}%</th>)}</tr></thead>
+              <tbody>{sens.price.slice().reverse().map((p, ri) => { const row = sens.cells[sens.price.length - 1 - ri]; return <tr key={p}><th>{p > 0 ? "+" : ""}{p}%</th>{row.map((c, ci) => <td key={ci} style={{ background: heat(c.profit), color: Math.abs(c.profit) / maxAbs > 0.45 ? "#fff" : K.text, outline: p === 0 && sens.cost[ci] === 0 ? "2px solid #0E1A2B" : "none" }} title={`profit ${fM(c.profit)}`}>{fPct(c.margin, 0)}</td>)}</tr>; })}</tbody>
+            </table></div>
+            <div className="note">Margin on cost for each pair; the outlined cell is your case.</div>
+          </section>
+          <div className="grid2" style={{ marginTop: 14 }}>
+            <section className="box" style={{ marginTop: 0 }}>
+              <div className="h2">What moves the profit most</div>
+              {r.tornado.some((t) => t.span <= 0.5) && <div className="note" style={{ marginTop: -4, marginBottom: 8 }}>Not shown, no effect on the profit here: {r.tornado.filter((t) => t.span <= 0.5).map((t) => t.label.toLowerCase()).join(", ")}{x.loanLtv > 0 ? "" : " (time costs money only with a land loan; it moves the IRR)"}.</div>}
+              {r.tornado.filter((t) => t.span > 0.5).map((t) => <div key={t.label} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12.5 }}>{t.label}</div>
+                <div style={{ display: "flex", alignItems: "center", height: 14 }}>
+                  <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}><div style={{ width: `${Math.abs(Math.min(t.low, t.high, 0)) / torMax * 100}%`, height: 12, background: K.neg, borderRadius: "3px 0 0 3px" }} /></div>
+                  <div style={{ width: 1, height: 16, background: K.ink }} />
+                  <div style={{ flex: 1 }}><div style={{ width: `${Math.max(t.low, t.high, 0) / torMax * 100}%`, height: 12, background: K.pos, borderRadius: "0 3px 3px 0" }} /></div>
+                </div>
+                <div style={{ fontSize: 11.5, color: K.sub, display: "flex", justifyContent: "space-between" }}><span>{fM(Math.min(t.low, t.high))}</span><span>+{fM(Math.max(t.low, t.high))}</span></div>
+              </div>)}
+            </section>
+            <section className="box" style={{ marginTop: 0 }}>
+              <div className="h2">Three cases</div>
+              <table className="t"><thead><tr><th></th><th className="v">Profit</th><th className="v">Margin</th><th className="v">IRR</th></tr></thead><tbody>
+                {r.cases.map((c) => <tr key={c.label}><td>{c.label}</td><td className="v" style={{ color: c.profit >= 0 ? K.pos : K.neg }}>{fM(c.profit)}</td><td className="v">{fPct(c.margin)}</td><td className="v">{fPct(c.irr)}</td></tr>)}
+              </tbody></table>
+            </section>
+          </div>
+          <section className="box">
+            <div className="h2">Your cash, month by month</div>
+            <div aria-hidden="true" style={{ height: 220 }}><ResponsiveContainer><AreaChart data={flowData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke="#E7E1D3" vertical={false} /><XAxis dataKey="t" tick={{ fontSize: 11 }} /><YAxis tickFormatter={fM} tick={{ fontSize: 11 }} width={56} />
+              <Tooltip formatter={(v) => fSAR(v)} labelFormatter={(t) => `month ${t}`} /><ReferenceLine y={0} stroke="#0E1A2B" />
+              <Area dataKey="cum" stroke="#2F6DB5" fill="#2F6DB5" fillOpacity={0.18} name="cumulative cash" isAnimationActive={false} />
+            </AreaChart></ResponsiveContainer></div>
+            <p className="sr-only" style={{ position: "absolute", left: -9999 }}>Cumulative cash: lowest {fM(-K2.peakCash)} in month {K2.peakT}.</p>
+            <div className="note">Land in month 0 · design and permits to month {r.months.design} · construction to month {r.months.done}{r.revenue.offRevenue > 0 ? " (off-plan payments come in as it is built)" : ""} · sales to month {r.months.end}.</div>
+          </section>
+          {r.warnings.length > 0 && <section className="box"><div className="h2">Watch out</div>{r.warnings.map((w, i) => <div key={i} className="warn">{w}</div>)}</section>}
+        </div>
+      );
+
+      // ---------- the opportunities list ----------
+      const SORTS = [["margin", "Margin on cost", (q) => q.kpis.marginOnCost], ["profit", "Profit", (q) => q.kpis.profit], ["perLand", "Profit per m² of land", (q) => q.kpis.profitPerLandM2], ["irr", "IRR", (q) => q.kpis.irr == null ? -Infinity : q.kpis.irr], ["peak", "Least peak cash", (q) => -q.kpis.peakCash], ["headroom", "Land headroom", (q) => q.residualLand.headroomPct == null ? -Infinity : q.residualLand.headroomPct]];
+      const rows = Object.entries(list).map(([n, s]) => ({ n, q: computeOpp(s.inp), at: s.savedAt })).sort((a, b) => { const f = SORTS.find((s) => s[0] === sortBy)[2]; return f(b.q) - f(a.q); });
+      const List = () => (
+        <div className="box">
+          <div className="eyebrow">Opportunities</div><div className="h1">Every plot you saved, ranked</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", margin: "8px 0 12px" }}><span className="lbl">Rank by</span><select aria-label="Rank by" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>{SORTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            {undo && <span style={{ fontSize: 13 }}>Removed “{undo.n}”. <button className="lnk" onClick={restore}>Undo</button></span>}</div>
+          {rows.length === 0 ? <p className="lead">Nothing saved yet. Fill in a plot and press “Save this opportunity” on Your answer.</p> :
+          <div className="scroll-x"><table className="t" style={{ minWidth: 760 }}>
+            <thead><tr><th>#</th><th>Plot</th><th>Verdict</th><th className="v">Land m²</th><th className="v">Units</th><th className="v">Sales</th><th className="v">Profit</th><th className="v">Margin</th><th className="v">IRR</th><th className="v">Peak cash</th><th className="v">Max land/m²</th><th></th></tr></thead>
+            <tbody>{rows.map(({ n, q }, i) => <tr key={n}>
+              <td>{i + 1}</td><td><button className="lnk" style={{ fontSize: 13 }} onClick={() => open(n)}>{n}</button><div style={{ fontSize: 11.5, color: K.sub }}>{q.code.label}</div></td>
+              <td><span className="pill" style={{ background: VERDICT[q.verdict].col, fontSize: 10.5 }}>{VERDICT[q.verdict].word}</span></td>
+              <td className="v">{fSAR(q.areas.land)}</td><td className="v">{q.units.count}</td><td className="v">{fM(q.revenue.total)}</td>
+              <td className="v" style={{ color: q.kpis.profit >= 0 ? K.pos : K.neg }}>{fM(q.kpis.profit)}</td><td className="v">{fPct(q.kpis.marginOnCost)}</td><td className="v">{fPct(q.kpis.irr)}</td><td className="v">{fM(q.kpis.peakCash)}</td>
+              <td className="v" style={{ color: (q.residualLand.headroom || 0) >= 0 ? K.pos : K.neg }}>{fSAR(q.residualLand.atTarget)}<div style={{ fontSize: 11, color: K.sub }}>vs {fSAR(q.inp.landPrice)}</div></td>
+              <td><button className="lnk" onClick={() => remove(n)}>remove</button></td>
+            </tr>)}</tbody>
+          </table></div>}
+        </div>
+      );
+
+      // ---------- the live summary ----------
+      const Rail = () => (
+        <aside className="rail">
+          <div className="box verdict" style={{ borderLeftColor: V.col, marginTop: 0 }}>
+            <span className="pill" style={{ background: V.col }}>{V.word}</span>
+            <div style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, marginTop: 8, color: K2.profit >= 0 ? K.pos : K.neg }}>{fM(K2.profit)}</div>
+            <div style={{ fontSize: 12.5, color: K.sub }}>profit · {fPct(K2.marginOnCost)} on cost (target {x.targetMarginPct}%)</div>
+            <div style={{ marginTop: 10, display: "grid", gap: 4, fontSize: 12.5 }}>
+              {[["Sellable", fM2(r.areas.sellable)], [villas ? "Villas" : "Apartments", `${r.units.count} × ${fM2(r.units.avgSize)}`], ["Sales", fM(r.revenue.total)], ["Total cost", fM(r.costs.total)], ["IRR", fPct(K2.irr)], ["Peak cash", fM(K2.peakCash)], ["Max land price", `${fSAR(RL.atTarget)}/m²`], ["Break-even price", x.priceBasis === "unit" ? fM(B.priceUnit) : `${fSAR(B.priceSqm)}/m²`]].map(([k, v]) => <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><span>{k}</span><span className="mono">{v}</span></div>)}
+            </div>
+            {tab !== "answer" && <button className="btn small" style={{ marginTop: 10 }} onClick={() => setTab("answer")}>See the full answer →</button>}
+          </div>
+        </aside>
+      );
+
+      return (
+        <div>
+          <header className="hdr"><div className="hdr-in">
+            <div style={{ flex: 1, minWidth: 200 }}><div style={{ fontWeight: 700, fontSize: 15 }}>Land opportunity</div><div style={{ fontSize: 12, color: "#C8D3DF" }}><a href="index.html">All models</a> · Riyadh · SAR</div></div>
+            {flash && <span style={{ fontSize: 12.5, color: "#D9B36A" }}>{flash}</span>}
+            <button className="hbtn" onClick={() => { setInp({ ...OPP_BASE }); setName(""); setTab("land"); }}>New plot</button>
+            <button className="hbtn gold" onClick={() => saveAs()}>Save</button>
+          </div></header>
+          <nav className="tabs" aria-label="Steps"><div className="tabs-in">{tabs.map(([k, l], i) => <button key={k} className={"tab" + (tab === k ? " on" : "")} aria-current={tab === k ? "step" : undefined} onClick={() => setTab(k)}><span className="n">{k === "list" ? Object.keys(list).length : i + 1}</span>{l}</button>)}</div></nav>
+          <div className="shell">
+            <main>{tab === "land" ? StepLand() : tab === "build" ? StepBuild() : tab === "sell" ? StepSell() : tab === "cost" ? StepCost() : tab === "answer" ? Answer() : List()}
+              {tab !== "answer" && tab !== "list" && <div className="no-print" style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}><button className="btn ink" onClick={() => setTab(tabs[tabs.findIndex((t) => t[0] === tab) + 1][0])}>Next →</button></div>}
+            </main>
+            {tab !== "list" && Rail()}
+          </div>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

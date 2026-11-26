@@ -15,3 +15,5 @@ jobs:
           node-version: 22
       - name: Engine identities, bank limits, golden values, the previous version's frozen answers, page compile
         run: node --test "tests/re2/*.test.js"
+      - name: Land-opportunity engine, the handoff to the real-estate tool, page compile
+        run: node --test "tests/opp/*.test.js"
